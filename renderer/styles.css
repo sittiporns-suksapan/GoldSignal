@@ -362,17 +362,19 @@ form button.primary { width: 100%; padding: 12px; margin-top: 8px; font-size: 14
 .rule-list li b { color: var(--text); }
 .rule-list .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); flex: none; opacity: .8; transform: translateY(-2px); }
 
-/* แถบบันทึกลอยตามผู้ใช้เลื่อน */
+/* แถบบันทึกลอยติดขอบล่างสุด */
 .sticky-save {
   position: sticky;
-  bottom: 10px;
+  bottom: 0;
   z-index: 5;
-  background: linear-gradient(180deg, transparent, var(--bg) 28%);
-  padding: 18px 2px 4px;
-  margin-top: -10px;
+  background: var(--bg);
+  border-top: 1px solid var(--line-soft);
+  padding: 10px 2px 12px;
+  margin-top: 4px;
 }
 .sticky-save button.primary { width: 100%; padding: 12px; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
-.sticky-save .save-note { text-align: center; margin-top: 8px; }
+.sticky-save .save-note { text-align: center; margin-top: 0; margin-bottom: 8px; }
+@media (min-height: 700px) { .sticky-save { bottom: 0; } }
 
 form .fx-result + .row2 { margin-top: 14px; }
 
