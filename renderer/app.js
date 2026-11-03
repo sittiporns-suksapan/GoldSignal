@@ -256,7 +256,7 @@ function wireZoom() {
     setTimeout(fitWithGap, 60);
   };
   $('z-max').addEventListener('click', () => setChartMax(!document.body.classList.contains('chart-max')));
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('chart-max')) setChartMax(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('chart-max') && !($('#pend-card') && $('pend-card').classList.contains('max'))) setChartMax(false); });
   $('z-live').addEventListener('click', followLatest);
   syncLinesBtn();
   $('z-lines').addEventListener('click', () => {
