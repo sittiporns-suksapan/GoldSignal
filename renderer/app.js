@@ -694,6 +694,14 @@ function renderTradePanel(snap) {
   const oz = (meta.spec && meta.spec.contractSize) || 100;
   const rb = riskBuy != null && riskBuy > 0 ? (riskBuy * lotVal * oz) : null;
   const rs = riskSell != null && riskSell > 0 ? (riskSell * lotVal * oz) : null;
+  // hint ช่อง SL/TP: แสดงราคาที่ระบบจะตั้งให้จริง ตามฝั่งที่จะกด (กรอกเองได้เสมอ)
+  if (live) {
+    const sB = stopsFor('buy', snap), sS = stopsFor('sell', snap);
+    if (sB && sS) {
+      $('t-sl-hint').innerHTML = `กรอกเองได้ • ซื้อ → <b>${sB.sl.toFixed(d)}</b> ขาย → <b>${sS.sl.toFixed(d)}</b>`;
+      $('t-tp-hint').innerHTML = `ซื้อ → <b>${sB.tp.toFixed(d)}</b> ขาย → <b>${sS.tp.toFixed(d)}</b> • ใส่ 0 = ไม่ตั้ง TP`;
+    }
+  }
   // สถานะสวิตช์จากฝั่ง MT5 จริง (EA + AutoTrading)
   const gateTxt = live && !meta.spec
     ? '⚠ EA ใน MT5 รุ่นเก่า ส่งไม้ไม่ได้ — แท็บ MT5 → ติดตั้ง EA แล้วลากลงชาร์ตใหม่'

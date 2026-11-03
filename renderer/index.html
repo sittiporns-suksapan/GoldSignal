@@ -175,15 +175,31 @@
                 </label>
               </div>
             </div>
-            <div id="trade-live" class="trade">
+            <div id="trade-live" class="trade trade-new">
               <div class="traderow">
                 <button class="tside sell" id="t-sell"><small>SELL</small><span id="t-bid">—</span></button>
                 <div class="tmid">
                   <label>ล็อต <input type="number" id="t-lot" min="0.01" step="0.01" value="0.01" /></label>
-                  <label>SL <input type="number" id="t-sl" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = คิดจาก ATR ตามฝั่งที่กด" /></label>
-                  <label>TP <input type="number" id="t-tp" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = คิดจาก ATR ตามฝั่งที่กด (ใส่ 0 = ไม่ตั้ง TP)" /></label>
                 </div>
                 <button class="tside buy" id="t-buy"><small>BUY</small><span id="t-ask">—</span></button>
+              </div>
+              <div class="stoprow">
+                <div class="stopbox sl">
+                  <div class="sb-head"><span>🛡 Stop Loss</span><span class="sb-sub">ตัดขาดทุน</span></div>
+                  <div class="fld">
+                    <input type="number" id="t-sl" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = คิดจาก ATR ตามฝั่งที่กด — ดูราคาที่ระบบจะตั้งให้ใน hint ด้านล่าง" />
+                    <i class="unit">USD</i>
+                  </div>
+                  <small class="stop-hint" id="t-sl-hint">ว่าง = อัตโนมัติ</small>
+                </div>
+                <div class="stopbox tp">
+                  <div class="sb-head"><span>🎯 Take Profit</span><span class="sb-sub">เก็บกำไร</span></div>
+                  <div class="fld">
+                    <input type="number" id="t-tp" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = คิดจาก ATR ตามฝั่งที่กด — ใส่ 0 = ไม่ตั้ง TP" />
+                    <i class="unit">USD</i>
+                  </div>
+                  <small class="stop-hint" id="t-tp-hint">ว่าง = อัตโนมัติ • ใส่ 0 = ไม่ตั้ง TP</small>
+                </div>
               </div>
               <div class="tradeinfo" id="t-info">—</div>
             </div>
@@ -251,8 +267,8 @@
               </div>
               <div class="prow">
                 <label>ราคาเข้า <input type="number" id="p-entry" step="0.01" placeholder="ราคาที่จะรอ" /></label>
-                <label>SL <input type="number" id="p-sl" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า ∓ ATR×1.8 ตามฝั่ง" /></label>
-                <label>TP <input type="number" id="p-tp" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า ± ATR×4.5 ตามฝั่ง (ใส่ 0 = ไม่ตั้ง TP)" /></label>
+                <label class="stopbox sl">SL — ตัดขาดทุน <input type="number" id="p-sl" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า ∓ ATR×1.8 ตามฝั่ง" /></label>
+                <label class="stopbox tp">TP — เก็บกำไร <input type="number" id="p-tp" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า ± ATR×4.5 ตามฝั่ง (ใส่ 0 = ไม่ตั้ง TP)" /></label>
                 <button class="pgo" id="p-go">วางคำสั่งรอ</button>
               </div>
               <div id="pend-hint" class="pend-hint"></div>
@@ -295,10 +311,11 @@
 
     <!-- ============ RISK SETTINGS ============ -->
     <section id="tab-risk" class="tab">
-      <div class="grid-settings">
-        <div class="card">
-          <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-shield" /></svg>เงินทุนและความเสี่ยง</h2></div>
-          <form id="form-risk">
+      <div class="grid-settings settings-new">
+        <form id="form-risk" class="settings-form" autocomplete="off">
+          <!-- ฝั่งจัดการ: 3 การ์ด + แถบบันทึกลอย -->
+          <div class="card">
+            <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-wallet" /></svg>เงินทุนและความเสี่ยง</h2><span class="ct-sub">แก้ได้</span></div>
             <label>ทุนที่ใช้คำนวณ (USD)
               <input type="number" id="s-equity" min="0" step="10" />
             </label>
@@ -306,6 +323,7 @@
               <input type="number" id="s-riskpct" min="0.05" max="2" step="0.05" />
               <small id="risk-note" class="muted">ล็อตจะถูกคำนวณให้ขาดทุนไม่เกิน % นี้แม้ราคาแตะ SL</small>
             </label>
+            <div id="calc-example" class="calc fx-result">ใส่ทุนแล้วดูตัวเลขจริงที่แท็บหน้าจอหลัก ในแต่ละบัตรสัญญาณ</div>
             <div class="row2">
               <label>RR ขั้นต่ำ (TP/SL)
                 <input type="number" id="s-minrr" min="1" max="10" step="0.1" />
@@ -314,6 +332,10 @@
                 <input type="number" id="s-minconf" min="0" max="95" step="1" />
               </label>
             </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-clock" /></svg>จังหวะและโหมดการทำงาน</h2></div>
             <div class="row2">
               <label>จำนวนไม้สูงสุด/วัน
                 <input type="number" id="s-maxday" min="1" max="50" step="1" />
@@ -342,7 +364,10 @@
               <input type="checkbox" id="s-autostart" />
               <span>เปิดวิเคราะห์อัตโนมัติเมื่อเปิดเครื่อง (Login item — ตัวช่วยทำงานตลอดเวลา)</span>
             </label>
-            <h4>ทีมเอเจนต์ (Council)</h4>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-users" /></svg>ทีมเอเจนต์ (Council)</h2></div>
             <label class="toggle">
               <input type="checkbox" id="s-councilon" />
               <span>เปิดทีมเอเจนต์ตรวจสัญญาณทุกไม้</span>
@@ -359,21 +384,39 @@
                 <input type="number" id="s-councilmin" min="50" max="95" step="1" />
               </label>
             </div>
-            <button type="submit" class="primary">บันทึกการตั้งค่า</button>
-            <p class="note">กฎที่ล็อคถาวรในโค้ด: ทุกสัญญาณต้องมี SL • ล็อตคิดจาก % ความเสี่ยง (ไม่เกิน 2% ต่อไม้) • ล็อตต่ำกว่า 0.01 = ปฏิเสธ • RR ต่ำกว่าพื้น 1.0 = ปฏิเสธ — แก้ไม่ได้แม้แต่ plugin</p>
-          </form>
-        </div>
+          </div>
 
-        <div class="card">
-          <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-wallet" /></svg>ตัวคำนวณเงินเสี่ยง</h2></div>
-          <div id="calc-example" class="calc">ใส่ทุนแล้วดูตัวเลขจริงที่แท็บหน้าจอหลัก ในแต่ละบัตรสัญญาณ</div>
-          <div class="card-head spaced"><h2 class="ct"><svg class="ic"><use href="#i-alert" /></svg>ข้อควรระวัง</h2></div>
-          <ul class="warn-list">
-            <li>แอปนี้เป็น<b>ผู้ช่วยวิเคราะห์</b> — ไม่ยิงออร์เดอร์เองอัตโนมัติ ส่งไม้จริงได้เฉพาะเมื่อคุณเปิดสวิตช์ + ยืนยัน 2 ชั้นเท่านั้น</li>
-            <li>อ่านข่าวเศรษฐกิจ (Fed, NFP, CPI) ก่อนเทรดสาย (session) สำคัญเป็นอย่างยิ่ง</li>
-            <li>XAUUSD เคลื่อนแรง — SL ที่ระบบให้คือเส้นตาย อย่าขยับออกไป</li>
-            <li>ล็อตแนะนำคำนวณจากสัญญาณ 100 ออนซ์/ล็อต ตรวจ spec โบรกเกอร์ของคุณด้วย</li>
-          </ul>
+          <!-- แถบบันทึกลอยตามการ์ด -->
+          <div class="sticky-save">
+            <button type="submit" class="primary">บันทึกการตั้งค่า</button>
+            <p class="note save-note">ค่าที่เกินกรอบจะถูกบีบให้อยู่ในเพดานปลอดภัยอัตโนมัติ</p>
+          </div>
+        </form>
+
+        <!-- ฝั่งอ้างอิง: กฎล็อค + ข้อควรระวัง -->
+        <div class="settings-ref">
+          <div class="card locked-card">
+            <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-shield" /></svg>กฎล็อคถาวรในโค้ด</h2></div>
+            <p class="fixed-tag">แก้ไม่ได้แม้แต่ plugin</p>
+            <ul class="rule-list">
+              <li><span class="dot"></span>ทุกสัญญาณต้องมี <b>Stop Loss</b> — ไม่มี SL / SL ผิดฝั่ง = ปฏิเสธ</li>
+              <li><span class="dot"></span>ความเสี่ยงต่อไม้ ≤ <b>2% ของทุนจริง</b> — ล็อตคำนวณให้อยู่ในเพดานเสมอ</li>
+              <li><span class="dot"></span>RR ต่ำกว่าพื้น <b>1.0</b> = ปฏิเสธ</li>
+              <li><span class="dot"></span>ล็อตต่ำกว่า <b>0.01</b> = ปฏิเสธ (ทุนเล็ก + SL กว้างเจอบ่อย — ตั้งใจให้เป็นแบบนี้)</li>
+              <li><span class="dot"></span>สัญญาณ/คำสั่งจริงรวมกันนับโควตา + คูลดาวน์สัญญาณเดิม</li>
+              <li><span class="dot"></span>โหมดเข้ม: สวนมติสภา / ไม่มีมติ = ไม่อนุญาตเข้าไม้</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-alert" /></svg>ข้อควรระวัง</h2></div>
+            <ul class="warn-list">
+              <li>แอปนี้เป็น<b>ผู้ช่วยวิเคราะห์</b> — ไม่ยิงออร์เดอร์เองอัตโนมัติ ส่งไม้จริงได้เฉพาะเมื่อคุณเปิดสวิตช์ + ยืนยัน 2 ชั้นเท่านั้น</li>
+              <li>อ่านข่าวเศรษฐกิจ (Fed, NFP, CPI) ก่อนเทรดสาย (session) สำคัญเป็นอย่างยิ่ง</li>
+              <li>XAUUSD เคลื่อนแรง — SL ที่ระบบให้คือเส้นตาย อย่าขยับออกไป</li>
+              <li>ล็อตแนะนำคำนวณจากสัญญาณ 100 ออนซ์/ล็อต ตรวจ spec โบรกเกอร์ของคุณด้วย</li>
+            </ul>
+          </div>
         </div>
       </div>
     </section>
