@@ -1679,8 +1679,17 @@ function renderKpis(snap) {
   setKpi('kpi-bias', bias === 'bull' ? 'ขาขึ้น ▲' : bias === 'bear' ? 'ขาลง ▼' : a ? 'ออกข้าง' : '—', bias === 'bull' ? 'up' : bias === 'bear' ? 'down' : '');
   const c = snap.council;
   if (!c) setKpi('kpi-council', 'ปิดอยู่');
-  else if (c.side === 'none') setKpi('kpi-council', `ไม่มีมติ • ${Math.max(0, c.confidence)}%`);
-  else setKpi('kpi-council', `${c.side === 'buy' ? 'ซื้อ' : 'ขาย'} ${c.confidence}% • ${c.agree} เสียง`, c.side === 'buy' ? 'up' : 'down');
+  else if (c.side === 'none') setKpi('kpi-council', `ไม่ผ่านมติ • ${Math.max(0, c.confidence)}%`, '');
+  else {
+    // ผ่านมติ = สภาออกทิศ + ครบเกณฑ์จริงที่ใช้ (โหมดเข้ม: มั่นใจรวม ≥ councilMin และเห็นพ้อง ≥ โควตา)
+    const strict = !(snap.risk && snap.risk.councilStrict === false);
+    const pass = strict
+      ? (c.confidence || 0) >= ((snap.risk && snap.risk.councilMin) || 70) && (c.agree || 0) >= (c.quorumNeed || 3)
+      : true;
+    setKpi('kpi-council', pass
+      ? `ผ่านมติ ✓ ${c.confidence}% • ${c.agree} เสียง`
+      : `มีมติ (ไม่ผ่านเกณฑ์) ${c.confidence}% • ${c.agree}/${c.quorumNeed || 3}+ เสียง`, c.side === 'buy' ? 'up' : 'down');
+  }
   const g = snap.guard || {};
   const used = (g.dailyCount || 0) + (g.manualCount || 0);
   setKpi('kpi-quota', g.maxPerDay ? `${used} / ${g.maxPerDay} ไม้` : '—', g.maxPerDay && used >= g.maxPerDay ? 'down' : '');
