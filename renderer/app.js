@@ -1425,6 +1425,7 @@ async function renderLine() {
   const card = $('line-card');
   if (!card) return;
   if (window.GS_WEB) { card.hidden = true; return; }
+  const maskUid = (u) => (u && u.length > 12 ? u.slice(0, 5) + '•••' + u.slice(-4) : (u || ''));
   let v;
   try { v = await window.api.lineGet(); } catch { return; }
   $('line-on').checked = !!v.enabled;
@@ -1435,7 +1436,10 @@ async function renderLine() {
     `<span class="wc-chip">${nEv} เรื่อง</span>`,
   ].join('');
   $('line-token-st').textContent = v.tokenSet ? `✓ ตั้งแล้ว (${v.tokenHint})` : 'ยังไม่ได้ใส่ token';
-  if (document.activeElement !== $('line-user')) $('line-user').value = v.userId || '';
+  if (document.activeElement !== $('line-user')) {
+    $('line-user').value = ($('line-user').type === 'password') && v.userId ? '' : (v.userId || '');
+    $('line-user').placeholder = v.userId ? `บันทึกแล้ว (${maskUid(v.userId)}) — แตะ 👁 เพื่อดู` : 'เช่น U99fc69b4… (U + 32 ตัว)';
+  }
   $('line-events').innerHTML = Object.entries(v.events).map(([k, e]) => `<label><input type="checkbox" data-line-ev="${esc(k)}"${e.on ? ' checked' : ''} />${esc(e.label)}</label>`).join('');
 }
 if ($('line-card') && !window.GS_WEB) {
@@ -1453,7 +1457,19 @@ if ($('line-card') && !window.GS_WEB) {
     $('line-token').value = '';
     toast('🔑 บันทึก token แล้ว', 'ok');
   }));
-  $('line-user-save').addEventListener('click', run(async () => { await window.api.lineSet({ userId: $('line-user').value.trim() }); toast('บันทึก userId แล้ว', 'ok'); }));
+  $('line-user-save').addEventListener('click', run(async () => { await window.api.lineSet({ userId: $('line-user').value.trim() }); $('line-user').value = ''; toast('บันทึก userId แล้ว — ซ่อนอยู่ กด 👁 เพื่อดู', 'ok'); }));
+  // ปุ่ม 👁: สลับแสดง/ซ่อน token และ userId
+  const eye = (btn, inp) => { $(btn).addEventListener('click', async () => {
+    const i = $(inp); const toText = i.type === 'password';
+    if (toText && !i.value.trim() && inp === '#line-user') {
+      // ว่าง = ดึงค่าที่บันทึกไว้มาแสดงชั่วคราว
+      try { const v = await window.api.lineGet(); i.value = (v && v.userId) || ''; } catch { void 0; }
+    }
+    i.type = toText ? 'text' : 'password';
+    if (!toText && inp === '#line-user') { i.value = ''; renderLine(); } // กลับเป็นซ่อน = เคลียร์ค่าออกจากจอ
+  }); };
+  eye('#line-token-eye', '#line-token');
+  eye('#line-user-eye', '#line-user');
   $('line-on').addEventListener('change', run(async () => {
     const on = $('line-on').checked;
     try { await window.api.lineSet({ enabled: on }); } catch (e) { $('line-on').checked = false; throw e; }
