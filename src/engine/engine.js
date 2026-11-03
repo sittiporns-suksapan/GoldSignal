@@ -109,6 +109,7 @@ class AnalysisEngine extends EventEmitter {
       // แหล่งราคาเปลี่ยน (MT5 spot ↔ Yahoo ฟิวเจอร์ส ต่างกัน $10-40) → ของที่จดจากราคาอีกแหล่งเทียบกันไม่ได้
       if (this._priceSource && this._priceSource !== data.source) {
         this.skills.pending = [];
+        this.councilStats.pending = [];   // โหวต/มติที่รอตรวจผลยังไม่จบ = ราคาคนละตลาด ถือเป็นผลไม่ได้
         this.active.clear();
         this.pushLog('engine', `แหล่งราคาเปลี่ยน ${this._priceSource} → ${data.source}: ล้างโหวตที่รอตรวจผล + สัญญาณที่เปิดอยู่ (ราคาคนละตลาด)`, 'warn');
       }

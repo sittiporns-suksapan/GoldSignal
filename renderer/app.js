@@ -428,12 +428,13 @@ function renderSignals(snap) {
     const s = list[0], m = s.metrics || {};
     try { localStorage.setItem('gs.lastSignal', JSON.stringify({ side: s.side, entry: s.entry, sl: s.sl, tp: s.tp, confidence: s.confidence, ts: s.ts, pluginName: s.pluginName || s.plugin, lot: m.lot, rr: m.rr })); } catch { void 0; }
   }
-  renderOnce('signals', `s${list.length}`, box, list.length ? list.map(signalCard).join('') : noSignalHtml(snap));
+  // key ระดับรายการ: จำนวนเดิมแต่มีดใหม่ (คนละสัญญาณ) ต้องวาดใหม่เสมอ
+  const sKey = list.map((x) => `${x.ts || ''}|${x.side}|${x.entry}|${x.confidence}`).join('•');
+  renderOnce('signals', `s[${sKey}]`, box, list.length ? list.map(signalCard).join('') : noSignalHtml(snap));
   const f = $('filtered');
-  const fh = (snap.filtered || []).length
-    ? snap.filtered.map((x) => `<div class="frow"><b>${esc(x.plugin)}</b> — ${esc(x.reason)}</div>`).join('')
-    : '<div class="empty">ไม่มี</div>';
-  renderOnce('filtered', `f${(snap.filtered || []).length}`, f, fh);
+  const flist = snap.filtered || [];
+  renderOnce('filtered', `f[${flist.map((x) => String(x.reason).slice(0, 40)).join('|')}]`, f,
+    flist.length ? flist.map((x) => `<div class="frow"><b>${esc(x.plugin)}</b> — ${esc(x.reason)}</div>`).join('') : '<div class="empty">ไม่มี</div>');
 }
 
 /* ---------- ไม้จริง: ประวัติเข้าจริง + สรุปแต่ละไม้ + รวมรายวัน (จาก deal ปิดของ MT5) ---------- */

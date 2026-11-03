@@ -328,15 +328,15 @@ function boot() {
     return true;
   });
   const notifiedSet = new Set();
-  // แจ้งเตือน macOS ครั้งเดียวต่อ key (กัน spam) — คลิกแล้วเปิดหน้าต่าง
-  const notifyOnce = (key, title, body) => {
+  // แจ้งเตือน macOS ครั้งเดียวต่อ key (กัน spam) — คลิกแล้วเปิดหน้าต่าง (หรือลิงก์ที่กำหนด เช่น หน้าโหลดอัปเดต)
+  const notifyOnce = (key, title, body, url) => {
     if (notifiedSet.has(key)) return;
     if (notifiedSet.size > 64) notifiedSet.clear();
     notifiedSet.add(key);
     if (engine.settings.notifySignal === false) return;
     try {
       const n = new Notification({ title, body });
-      n.on('click', () => { if (win && !win.isDestroyed()) { win.show(); win.focus(); } });
+      n.on('click', () => { if (url) shell.openExternal(url); else if (win && !win.isDestroyed()) { win.show(); win.focus(); } });
       n.show();
     } catch (err) { engine.pushLog('notify', `แจ้งเตือนไม่สำเร็จ: ${err.message}`, 'warn'); }
   };
@@ -900,7 +900,7 @@ async function checkAppUpdate(engine, notifyOnce) {
     if (isNewer(tag, app.getVersion()) && engine.lastUpdateNotified !== tag) {
       engine.lastUpdateNotified = tag;
       engine.pushLog('app', `🚀 มีเวอร์ชันใหม่ ${tag} (รุ่นนี้ ${app.getVersion()}) — เปิด https://github.com/${REPO}/releases เพื่อโหลด DMG`, 'info');
-      notifyOnce(`update-${tag}`, `GoldSignal ${tag} ออกแล้ว`, `แตะเพื่อเปิดหน้าดาวน์โหลด (ตอนนี้: ${app.getVersion()})`);
+      notifyOnce(`update-${tag}`, `GoldSignal ${tag} ออกแล้ว`, `แตะเพื่อเปิดหน้าดาวน์โหลด (ตอนนี้: ${app.getVersion()})`, `https://github.com/${REPO}/releases`);
     }
   } catch (e) { void e; } // เน็ตหลุด/Rate limit = งานเสริม ไม่ทำให้ระบบหยุด
 }
