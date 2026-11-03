@@ -428,11 +428,12 @@ function renderSignals(snap) {
     const s = list[0], m = s.metrics || {};
     try { localStorage.setItem('gs.lastSignal', JSON.stringify({ side: s.side, entry: s.entry, sl: s.sl, tp: s.tp, confidence: s.confidence, ts: s.ts, pluginName: s.pluginName || s.plugin, lot: m.lot, rr: m.rr })); } catch { void 0; }
   }
-  box.innerHTML = list.length ? list.map(signalCard).join('') : noSignalHtml(snap);
+  renderOnce('signals', `s${list.length}`, box, list.length ? list.map(signalCard).join('') : noSignalHtml(snap));
   const f = $('filtered');
-  f.innerHTML = (snap.filtered || []).length
+  const fh = (snap.filtered || []).length
     ? snap.filtered.map((x) => `<div class="frow"><b>${esc(x.plugin)}</b> — ${esc(x.reason)}</div>`).join('')
     : '<div class="empty">ไม่มี</div>';
+  renderOnce('filtered', `f${(snap.filtered || []).length}`, f, fh);
 }
 
 /* ---------- ไม้จริง: ประวัติเข้าจริง + สรุปแต่ละไม้ + รวมรายวัน (จาก deal ปิดของ MT5) ---------- */
@@ -1304,10 +1305,25 @@ function renderCommentaryFeed(snap) {
 }
 
 /* ---------- ประวัติจุดรอเข้า: กระดานซื้อ/ขายแยกกัน ---------- */
+// ---------- memo ผล render: ข้อมูลเดิมซ้ำกัน (ราคาไม่เปลี่ยน/ข้อมูลยังเดิม) = กระโดน HTML ซ้ำ ----------
+// ชาร์ตวาดเองทุกทิค — ที่เหลือใช้ key ต่อการ์ด เทียบก่อนเขียน innerHTML (ลด GC + หน้าจอไม่กระพริบ)
+const renderMemo = {};
+const memoHtml = (name, key, html) => {
+  if (renderMemo[name] === key && renderMemo[name + ':html'] === html) return false;
+  renderMemo[name] = key; renderMemo[name + ':html'] = html;
+  return true;
+};
+const renderOnce = (name, key, box, html) => { if (box && memoHtml(name, key, html)) box.innerHTML = html; };
+
+// กันเหนียว render ซ้ำ: zone มีราคาลอยตัวสด → key รวม bid/ask เพื่อวาดเมื่อมีอะไรเปลี่ยนจริง (ชื่อ zoneRendersKey — zoneKey ถูกใช้โดยวาดเส้นกราฟ)
+function zoneRendersKey(snap) {
+  const m = snap.meta || {};
+  return `${(snap.zoneHistory || []).length}|${(snap.zoneOpen || []).length}|${(snap.roundLog || []).length}|${m.bid}|${m.ask}`;
+}
 function renderZoneHistory(snap) {
-  for (const box of [$('zonehist'), $('zonehist-mini')]) {
-    if (box) box.innerHTML = zoneHistoryHtml(snap);
-  }
+  const html = zoneHistoryHtml(snap);
+  renderOnce('zone', zoneRendersKey(snap), $('zonehist'), html);
+  renderOnce('zoneMini', zoneRendersKey(snap), $('zonehist-mini'), html);
 }
 function zoneHistoryHtml(snap) {
   const s = snap.zoneSummary || { buy: {}, sell: {} };
@@ -1446,7 +1462,14 @@ if ($('webctl-card') && !window.GS_WEB) {
   }));
   $('wc-logout-all').addEventListener('click', wrap(async () => { await window.api.webAccessLogoutAll(); toast('ออกจากระบบเว็บทุกเครื่องแล้ว', 'ok'); }));
   renderWebCtl();
-  setInterval(renderWebCtl, 5000);
+  // ตัวเฝ้าแผงระยะไกล: ข้ามเมื่อจอซ่อน/อยู่แท็บอื่น/แผงย่อแล้ว (ลด IPC + เรนเดอร์จอหลัก) — กลับมาโชว์วาดทันที
+  setInterval(() => {
+    if (document.hidden) return;
+    const pane = $('wc-body');
+    if (pane && pane.hidden) return;
+    if ($('tab-mt5') && !$('tab-mt5').classList.contains('active')) return;
+    renderWebCtl();
+  }, 5000);
 }
 
 /* ---------- แจ้งเตือน Telegram (ตั้งค่าได้เฉพาะในแอปบนเครื่อง) ---------- */
@@ -1703,10 +1726,25 @@ function renderKpis(snap) {
   }
 }
 
+const rendererErrorMemo = {};   // กันอุทกภัย spam: จุดเดียวพังซ้ำ = รายงานบ่อยน้อยลง
+const rendererErrorCount = {};
 function applySnapshot(snap, first) {
   if (!snap) return;
-  try {
-    lastSnap = snap;
+  lastSnap = snap;
+  // กันเหนียว: แต่ละการ์ดแยกกัน — render เดียวพัง = จุดเดียวหยุด ที่เหลือวาดต่อ (หน้าจอไม่ตายทั้งใบ)
+  const guard = (name, fn) => {
+    try { fn(); }
+    catch (err) {
+      rendererErrorCount[name] = (rendererErrorCount[name] || 0) + 1;
+      const c = rendererErrorCount[name];
+      if (c === 1 || (c % 50 === 0 && Date.now() - (rendererErrorMemo[name] || 0) > 30_000)) {
+        rendererErrorMemo[name] = Date.now();
+        console.error(`render ${name} ล้ม:`, err);
+        window.api && window.api.reportError && window.api.reportError(`render ${name}: ` + (err && err.message), err && err.stack);
+      }
+    }
+  };
+  const fresh = () => {
     if (snap.candles && Object.keys(snap.candles).length) Object.assign(candStore, snap.candles);
     // แท่งที่กำลังก่อตัว: แทนแท่งสุดท้าย (เวลาเดียวกัน) หรือต่อท้าย (แท่งใหม่)
     for (const [tf, bar] of Object.entries(snap.candleTail || {})) {
@@ -1715,32 +1753,29 @@ function applySnapshot(snap, first) {
       const last = arr[arr.length - 1];
       if (last.t === bar.t) arr[arr.length - 1] = bar; else if (bar.t > last.t) arr.push(bar);
     }
-    renderTicker(snap);
-    renderStandby(snap.standby, snap.session);
-    renderCommentary(snap);
-    renderDataAlert(snap);
-    renderSession(snap);
-    renderEntryPlan(snap);
-    renderTradePanel(snap);
-    autoEnterTick(snap);
-    renderPositions(snap.meta);
-    renderPendings(snap);
-    badgeFor(snap.connectorStatuses, (snap.risk && snap.risk.source) || $('source-sel').value);
-    renderMarket(snap.analysis);
-    renderGuards(snap.guard, snap.risk || {});
-    renderSignals(snap);
-    renderOppCounts(snap);
-    renderZoneHistory(snap);
-    renderCouncil(snap.council, snap.error, snap.councilStats);
-    renderKpis(snap);
-    renderLadder(snap);
-    renderDeferred(snap);
-    updateChart(candStore);
-  } catch (err) {
-    // บันทึกผิดพลาดหน้าจอจริงลง log — ไดรกรรมห้ามเงียบ
-    console.error('applySnapshot ล้ม:', err);
-    window.api && window.api.reportError && window.api.reportError('applySnapshot: ' + (err && err.message), err && err.stack);
-  }
+  };
+  guard('store', fresh);
+  guard('ticker', () => renderTicker(snap));
+  guard('standby', () => renderStandby(snap.standby, snap.session));
+  guard('commentary', () => renderCommentary(snap));
+  guard('dataAlert', () => renderDataAlert(snap));
+  guard('session', () => renderSession(snap));
+  guard('entryplan', () => renderEntryPlan(snap));
+  guard('trade', () => renderTradePanel(snap));
+  guard('autoEnter', () => autoEnterTick(snap));
+  guard('positions', () => renderPositions(snap.meta));
+  guard('pendings', () => renderPendings(snap));
+  guard('connBadge', () => badgeFor(snap.connectorStatuses, (snap.risk && snap.risk.source) || $('source-sel').value));
+  guard('market', () => renderMarket(snap.analysis));
+  guard('guards', () => renderGuards(snap.guard, snap.risk || {}));
+  guard('signals', () => renderSignals(snap));
+  guard('oppCounts', () => renderOppCounts(snap));
+  guard('zoneHistory', () => renderZoneHistory(snap));
+  guard('council', () => renderCouncil(snap.council, snap.error, snap.councilStats));
+  guard('kpis', () => renderKpis(snap));
+  guard('ladder', () => renderLadder(snap));
+  guard('deferred', () => renderDeferred(snap));
+  guard('chart', () => updateChart(candStore));
 }
 
 async function loadSettingsToForm() {
@@ -1832,6 +1867,19 @@ $('btn-refresh').addEventListener('click', () => { $('conn-badge').textContent =
 $('btn-newwin').addEventListener('click', async () => {
   if (window.GS_WEB) return;
   try { await window.api.openNewWindow(); toast('🗔 เปิดหน้าต่างใหม่แล้ว — ข้อมูลสดเท่าเดิม', 'ok'); } catch (err) { toast('✗ ' + err.message, 'err'); }
+});
+// ตรวจอัปเดต (ปุ่มบนการ์ดบันทึก) — เจอรุ่นใหม่ = แจ้ง + ลิงก์ดาวน์โหลดในหน้าจอและ log
+const btnUpdateCheck = $('btn-update-check');
+if (btnUpdateCheck) btnUpdateCheck.addEventListener('click', async () => {
+  const st = $('update-st');
+  btnUpdateCheck.disabled = true;
+  if (st) st.textContent = 'กำลังตรวจ...';
+  try {
+    const r = await window.api.updateCheck();
+    if (st) st.textContent = r.latest ? `มีรุ่นใหม่: ${r.latest} (รุ่นนี้ ${r.current})` : `ล่าสุดแล้ว (${r.current})`;
+    toast(r.latest ? `🚀 มีเวอร์ชันใหม่ ${r.latest} — ดู https://github.com/ProgramZa2560/GoldSignal/releases` : '✓ รุ่นล่าสุดอยู่แล้ว', r.latest ? 'ok' : '');
+  } catch { if (st) st.textContent = 'ตรวจไม่สำเร็จ — ลองใหม่'; }
+  finally { btnUpdateCheck.disabled = false; }
 });
 
 /* ---------- plugins tab ---------- */
@@ -1967,11 +2015,13 @@ function renderCouncil(c, error, stats) {
     const adj = Number.isFinite(a.weightAdj) && Math.abs(a.weightAdj - 1) > 0.01 ? ` • น้ำหนักตามสนาม ×${a.weightAdj.toFixed(2)}` : '';
     return `<div class="cagent" title="${esc(a.reason)}${a.skillNote ? ' | ' + esc(a.skillNote) : ''}"><span class="cname">${esc(a.name)}</span><span class="${cls}">${txt}</span><span class="creason">${esc(a.reason)}</span></div><div class="cagent-skill">${esc(skTxt)}${esc(adj)}${a.skillNote ? ' • ' + esc(a.skillNote) : ''}</div>`;
   }).join('');
-  $('council-agents').innerHTML = rows +
+  const notesHtml =
     (c.boosts && c.boosts.length ? `<div class="council-note boost">➕ ${esc(c.boosts.map(String).join(' | '))}</div>` : '') +
     (c.caps && c.caps.length ? `<div class="council-note">⚠ ${esc(c.caps.map(String).join(' | '))}</div>` : '') +
     (c.calibrated ? `<div class="council-note boost">🎓 ปรับความมั่นใจตามผลจริงของสภา: ${esc(c.calibrated.before)}% → ${c.confidence}% (${esc(c.calibrated.note || '')})</div>` : '') +
     (stats ? councilStatsHtml(stats) : '');
+  const ck = `${c.side}|${c.confidence}|${c.agree}|${(c.votes || []).map((v) => `${v.id}${v.side}${v.conf}`).join('')}|${stats ? `${stats.verdict && stats.verdict.n}|${stats.lean && stats.lean.n}` : ''}`;
+  renderOnce('council', ck, $('council-agents'), rows + notesHtml);
 }
 
 // แถบผลงานจริงของสภา (สมุด council-stats): ตรวจมติย้อนหลัง 30 นาทีทุกใบ

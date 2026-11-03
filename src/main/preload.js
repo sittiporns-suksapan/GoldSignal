@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('api', {
   lineGet: () => ipcRenderer.invoke('line-get'),
   lineSet: (p) => ipcRenderer.invoke('line-set', p),
   lineTest: () => ipcRenderer.invoke('line-test'),
+  updateCheck: () => ipcRenderer.invoke('update-check'),
   closeAll: () => ipcRenderer.invoke('close-all'),
   openNewWindow: () => ipcRenderer.invoke('open-new-window'),
   pickBridgeFile: () => ipcRenderer.invoke('pick-bridge-file'),

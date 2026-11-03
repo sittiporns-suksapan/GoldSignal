@@ -147,9 +147,13 @@ class AnalysisEngine extends EventEmitter {
       // จำมติรอบนี้ไว้ — ไม้จำลองที่เปิดจากโซนในรอบนี้จะแนบ "มติสภา ณ จังหวะเปิด" ให้ดูคู่กันเสมอ
       this._lastCouncil = councilVerdict || null;
       // 2) plugin ให้คำแนะนำ (รองรับ plugin ที่ทำงานแบบ async เช่นเรียก LLM ภายนอก)
-      // plugin ได้สำเนา (frozen) — โค้ดผู้ใช้แก้ค่าตั้ง/มติสภาที่ด่านความเสี่ยงอ่านต่อไม่ได้
+      // plugin ได้สำเนา (frozen) — โค้ดผู้ใช้แก้ค่าตั้ง/มติสภา/แท่งเทียน ที่สภา/กฎความเสี่ยงใช้ต่อไม่ได้
+      // (แท่งเทียน: แช่แข็งแบบอ่านอย่างเดียวตามไทม์เฟรม — เร็วกว่า structuredClone ทั้งก้อนหลายเท่า)
+      const frozenCandles = this._frozen && this._frozenSrc === candles
+        ? this._frozen
+        : ((this._frozenSrc = candles), (this._frozen = Object.freeze(Object.fromEntries(Object.entries(candles).map(([tf, arr]) => [tf, Object.freeze((Array.isArray(arr) ? arr : []).map(Object.freeze))])))));
       const raw = await this.plugins.runStrategies({
-        analysis: structuredClone(analysis), candles, price, settings: Object.freeze({ ...effSettings }), council: councilVerdict ? Object.freeze(structuredClone(councilVerdict)) : null,
+        analysis: structuredClone(analysis), candles: frozenCandles, price, settings: Object.freeze({ ...effSettings }), council: councilVerdict ? Object.freeze(structuredClone(councilVerdict)) : null,
         ind: PLUGIN_IND,
         log: (msg, lvl) => this.logger('plugin', msg, lvl),
       });

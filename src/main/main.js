@@ -25,7 +25,7 @@ const { createLine } = require('./line');
 const handlers = new Map();
 const handle = (channel, fn) => { handlers.set(channel, fn); ipcMain.handle(channel, fn); };
 // คำสั่งที่ห้ามเรียกจากเว็บ: เปิดหน้าต่าง/กล่องเลือกไฟล์บนเครื่อง + จัดการรหัสเว็บ (ต้องทำที่เครื่องเท่านั้น)
-const WEB_BLOCKED = new Set(['pick-bridge-file', 'open-plugins-dir', 'open-history-window', 'open-new-window', 'web-access-get', 'web-access-set', 'web-access-logout-all', 'tunnel-start', 'tunnel-stop', 'pages-setup', 'tg-get', 'tg-set', 'tg-detect', 'tg-test', 'line-get', 'line-set', 'line-test']);
+const WEB_BLOCKED = new Set(['pick-bridge-file', 'open-plugins-dir', 'open-history-window', 'open-new-window', 'web-access-get', 'web-access-set', 'web-access-logout-all', 'tunnel-start', 'tunnel-stop', 'pages-setup', 'tg-get', 'tg-set', 'tg-detect', 'tg-test', 'line-get', 'line-set', 'line-test', 'update-check']);
 
 // ---------- paths ----------
 const isDev = !app.isPackaged;
@@ -876,6 +876,33 @@ function boot() {
     writeSettings(sanitizeSettings(engine.settings));
     return r.filePaths[0];
   });
+
+  // ---------- ตัวตรวจเวอร์ชันใหม่: ปุ่มตรวจเอง + อัตโนมัติทุก 6 ชม. + ครั้งแรกหลังเปิด 20 วิ ----------
+  handle('update-check', async () => { await checkAppUpdate(engine, notifyOnce); return { latest: engine.lastUpdateNotified || null, current: app.getVersion() }; });
+  setInterval(() => checkAppUpdate(engine, notifyOnce), 6 * 3600_000);
+  setTimeout(() => checkAppUpdate(engine, notifyOnce), 20_000);
+}
+
+// ---------- ตรวจเวอร์ชันใหม่ (โปรแกรมอัปเดตแบบเบา): GitHub Releases เทียบ semver -------
+const REPO = 'ProgramZa2560/GoldSignal';
+const semverParts = (s) => String(s || '').replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
+function isNewer(newV, curV) {
+  const a = semverParts(newV), b = semverParts(curV);
+  for (let i = 0; i < 3; i++) if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
+  return false;
+}
+async function checkAppUpdate(engine, notifyOnce) {
+  try {
+    const res = await net.fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { 'user-agent': 'GoldSignal' }, signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) return;
+    const j = await res.json();
+    const tag = String(j.tag_name || '').replace(/^v/i, '');
+    if (isNewer(tag, app.getVersion()) && engine.lastUpdateNotified !== tag) {
+      engine.lastUpdateNotified = tag;
+      engine.pushLog('app', `🚀 มีเวอร์ชันใหม่ ${tag} (รุ่นนี้ ${app.getVersion()}) — เปิด https://github.com/${REPO}/releases เพื่อโหลด DMG`, 'info');
+      notifyOnce(`update-${tag}`, `GoldSignal ${tag} ออกแล้ว`, `แตะเพื่อเปิดหน้าดาวน์โหลด (ตอนนี้: ${app.getVersion()})`);
+    }
+  } catch (e) { void e; } // เน็ตหลุด/Rate limit = งานเสริม ไม่ทำให้ระบบหยุด
 }
 
 // กันแอปล้มจาก error ที่ไม่ได้ดักไว้ (เช่น ไฟล์ bridge ถูกลบกลางการอ่าน) — บันทึกแล้วทำงานต่อ
