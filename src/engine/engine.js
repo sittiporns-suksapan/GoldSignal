@@ -144,6 +144,8 @@ class AnalysisEngine extends EventEmitter {
         // สมุดผลงานสภา: จดมติ (และมติเงา เกือบมีมติ) → ตรวจผล 30 นาที → ปรับความมั่นใจของมติใหม่
         this.councilStats.open(councilVerdict, price, m15atr, Date.now());
       }
+      // จำมติรอบนี้ไว้ — ไม้จำลองที่เปิดจากโซนในรอบนี้จะแนบ "มติสภา ณ จังหวะเปิด" ให้ดูคู่กันเสมอ
+      this._lastCouncil = councilVerdict || null;
       // 2) plugin ให้คำแนะนำ (รองรับ plugin ที่ทำงานแบบ async เช่นเรียก LLM ภายนอก)
       // plugin ได้สำเนา (frozen) — โค้ดผู้ใช้แก้ค่าตั้ง/มติสภาที่ด่านความเสี่ยงอ่านต่อไม่ได้
       const raw = await this.plugins.runStrategies({
@@ -293,6 +295,15 @@ class AnalysisEngine extends EventEmitter {
     const z = plan[side];
     if (!z || !Number.isFinite(price)) return;
     if (this.zoneOpen.some((t) => t.side === side)) return; // ฝั่งนี้มีไม้จำลองเปิดอยู่แล้ว = ไม่เปิดซ้อน
+    // มติสภา "ณ จังหวะเปิดไม้" — จดคู่ไว้ดูว่าจังหวะที่โซน HIT สภาตัดสินกี่ %
+    const cv = this._lastCouncil || null;
+    const councilAtOpen = cv ? {
+      side: cv.side,
+      confidence: Math.round(cv.confidence || 0),
+      agree: cv.agree || 0,
+      quorumNeed: cv.quorumNeed || null,
+      net: cv.net != null ? Math.round(cv.net * 10) / 10 : null,
+    } : null;
     const atr = Number(plan.atr) || 1;
     const sl = side === 'buy' ? ind.round(z.bottom - 0.5 * atr, 2) : ind.round(z.top + 0.5 * atr, 2);
     const rr = 2.2;
@@ -304,11 +315,13 @@ class AnalysisEngine extends EventEmitter {
       id: `zt-${ts}-${side}`, side, entry: ind.round(price, 2), sl, tp, source: this._priceSource || null,
       zone: z.center, levelType: z.levelType, openedAt: ts, status: 'open',
       slDist: ind.round(slDist, 2), lot,
+      councilAtOpen,
     };
     this.zoneOpen.push(t);
     this._openedRefs = this._openedRefs || [];
     this._openedRefs.push(t);
-    this.logger('zone', `จุดรอ${side === 'buy' ? 'ซื้อ' : 'ขาย'} HIT → เปิดไม้เสมือน: เข้า ${t.entry} SL ${t.sl} TP ${t.tp} ล็อต ${t.lot}`);
+    const cTxt = councilAtOpen ? ` • สภา: ${councilAtOpen.side === 'none' ? `ไม่มีมติ ${councilAtOpen.confidence}%` : `${councilAtOpen.side === 'buy' ? 'ซื้อ' : 'ขาย'} ${councilAtOpen.confidence}% เห็นพ้อง ${councilAtOpen.agree}`}` : ' • สภา: ปิดอยู่';
+    this.logger('zone', `จุดรอ${side === 'buy' ? 'ซื้อ' : 'ขาย'} HIT → เปิดไม้เสมือน: เข้า ${t.entry} SL ${t.sl} TP ${t.tp} ล็อต ${t.lot}${cTxt}`);
     this._saveZoneHistory();
   }
 

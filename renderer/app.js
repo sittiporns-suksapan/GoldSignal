@@ -1306,9 +1306,12 @@ function renderZoneHistory(snap) {
     const sc = s[side] || {};
     const score = `ชนะ <b>${sc.w || 0}</b> • แพ้ <b>${sc.l || 0}</b> • หมดเวลา ${sc.time || 0} • รวม <b class="${(sc.total || 0) >= 0 ? 'up' : 'down'}">${(sc.total || 0) >= 0 ? '+' : ''}$${fmtD(sc.total || 0, 2)}</b>` +
       (openRows.length ? ` • ลอยตัว <b class="${floatSum >= 0 ? 'up' : 'down'}">${floatSum >= 0 ? '+' : '-'}$${fmtD(Math.abs(floatSum), 2)}</b>` : '');
+    const cTxt = (t) => { const c = t.councilAtOpen; if (!c) return ''; return c.side === 'none'
+      ? `<span class="zcouncil none">สภา: ไม่มีมติ ${c.confidence}%${c.net != null ? ` (เอน ${c.net > 0 ? 'ซื้อ' : 'ขาย'} ${Math.abs(c.net)})` : ''} → ${c.confidence >= 50 ? 'ไม่ขอไม้จริง' : 'เงียบ'}</span>`
+      : `<span class="zcouncil ${c.side}">สภา ณ เปิดไม้: ${c.side === 'buy' ? 'ซื้อ' : 'ขาย'} ${c.confidence}% • เห็นพ้อง ${c.agree}${c.quorumNeed ? `/${c.quorumNeed}+` : ''} → ไม้จริง ${c.confidence >= 70 && c.agree >= (c.quorumNeed || 3) ? 'ผ่านสภา (ผ่านเกตต่อ)' : 'ไม่ผ่านสภา'}</span>`; };
     const lines = [
-      ...openRows.map((t) => `<div class="zh-line"><span class="t">เปิดอยู่</span><span>${t.side === 'buy' ? 'BUY' : 'SELL'} ${fmtD(t.entry, 2)} • SL ${fmtD(t.sl, 2)} • TP ${fmtD(t.tp, 2)}</span>${(() => { const l = liveOf(t); return l ? `<span class="res open ${l.pnl >= 0 ? 'up' : 'down'}">${l.pnl >= 0 ? '+' : '-'}$${fmtD(Math.abs(l.pnl), 2)} (${l.pts >= 0 ? '+' : ''}${Math.round(l.pts)} จุด)</span>` : '<span class="res open">เปิด</span>'; })()}</div>`),
-      ...rows.map((t) => `<div class="zh-line"><span class="t">${fmtTs(t.closedAt || t.openedAt)}</span><span>${t.side === 'buy' ? 'BUY' : 'SELL'} ${fmtD(t.entry, 2)} → ${fmtD(t.exit != null ? t.exit : 0, 2)}</span><span class="res ${t.status || ''}">${t.status || '-'} ${t.pnl != null ? (t.pnl >= 0 ? '+' : '') + fmtD(t.pnl, 2) : ''}</span></div>`),
+      ...openRows.map((t) => `<div class="zh-line"><span class="t">เปิดอยู่</span><span>${t.side === 'buy' ? 'BUY' : 'SELL'} ${fmtD(t.entry, 2)} • SL ${fmtD(t.sl, 2)} • TP ${fmtD(t.tp, 2)}</span>${(() => { const l = liveOf(t); return l ? `<span class="res open ${l.pnl >= 0 ? 'up' : 'down'}">${l.pnl >= 0 ? '+' : '-'}$${fmtD(Math.abs(l.pnl), 2)} (${l.pts >= 0 ? '+' : ''}${Math.round(l.pts)} จุด)</span>` : '<span class="res open">เปิด</span>'; })()}${cTxt(t)}</div>`),
+      ...rows.map((t) => `<div class="zh-line"><span class="t">${fmtTs(t.closedAt || t.openedAt)}</span><span>${t.side === 'buy' ? 'BUY' : 'SELL'} ${fmtD(t.entry, 2)} → ${fmtD(t.exit != null ? t.exit : 0, 2)}</span><span class="res ${t.status || ''}">${t.status || '-'} ${t.pnl != null ? (t.pnl >= 0 ? '+' : '') + fmtD(t.pnl, 2) : ''}</span>${cTxt(t)}</div>`),
     ];
     return `<div class="zh-side ${side}"><h5>${side === 'buy' ? 'ไม้จำลองซื้อ (BUY)' : 'ไม้จำลองขาย (SELL)'}</h5>
       <div class="zh-score">${score}</div>

@@ -475,6 +475,13 @@ code { background: var(--inset); border: 1px solid var(--line-soft); padding: 1p
 .zh-all:hover { color: var(--gold); border-color: var(--gold-line); }
 .zh-line .res.TP { color: var(--up-text); } .zh-line .res.SL { color: var(--down-text); } .zh-line .res.TIME, .zh-line .res.open { color: var(--muted); }
 .zh-line .res.open.up { color: var(--up-text); } .zh-line .res.open.down { color: var(--down-text); }
+
+/* มติสภา ณ จังหวะเปิดไม้จำลอง — ยาวแยกบรรทัดเดียวใต้แถว */
+.zh-line { flex-wrap: wrap; }
+.zh-line .zcouncil { flex-basis: 100%; font-size: 11px; color: var(--muted); text-align: left; line-height: 1.5; }
+.zh-line .zcouncil.buy { color: var(--up-text); }
+.zh-line .zcouncil.sell { color: var(--down-text); }
+.zh-line .zcouncil.none { color: var(--warn); }
 .zh-rounds { grid-column: 1 / -1; box-shadow: inset 3px 0 0 var(--gold) !important; }
 .zh-rounds h5 { color: var(--gold-hi); }
 .zh-rounds .zact { font-weight: 600; }
