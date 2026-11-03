@@ -758,6 +758,76 @@ footer b { color: var(--warn); font-weight: 600; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
+/* ---------- มือถือ (เว็บระยะไกลจากโทรศัพท์) ---------- */
+@media (max-width: 788px) {
+  main { padding: 12px 10px 18px; overflow-x: hidden; }
+  .card { padding: 12px 13px; border-radius: 13px; }
+  .ct { font-size: 13.5px; }
+
+  /* แถบบน: แบรนด์ + ราคาพอดีจอ, เมนูแท็บเลื่อนนอยได้ */
+  #topbar { padding: 8px 10px; }
+  .brand small { display: none; }
+  .ticker { column-gap: 7px; }
+  .ticker #price { font-size: 15px; }
+  #tabs { overflow-x: auto; scrollbar-width: none; }
+  #tabs::-webkit-scrollbar { display: none; }
+  #tabs button { white-space: nowrap; padding: 7px 11px; }
+  .conn { gap: 6px; }
+  #source-sel { max-width: 118px; font-size: 11px; }
+  #conn-badge { display: none; }     /* ไม่มากกว่า: สถานะอยู่ในแท็บข้อมูล/การ์ดเชื่อมต่อ */
+  .icon-btn { width: 36px; height: 36px; }
+
+  /* ตัวเลขหลัก 2 คอลัมน์ซ้อนกันสวยงามบนจอเล็ก */
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .kpi { padding: 9px 11px; }
+  .kpi b { font-size: 14px; }
+  .hero { gap: 10px; }
+
+  /* ชาร์ต: สูงพอเห็นแนว + โซน */
+  #chart { height: 44vh; min-height: 260px; }
+  .chart-body { gap: 8px; }
+
+  /* แผงส่งคำสั่ง: ปุ่มใหญ่ขึ้นนิด ใช้นิ้วแม่น */
+  .traderow { gap: 8px; }
+  .tmid input { width: 100%; }
+  .tside { padding: 9px 8px; }
+  .tside span { font-size: 17px; }
+  .stoprow { gap: 8px; }
+  .stopbox .fld input { padding: 10px 46px 10px 10px; font-size: 15px; }
+  .positions table { min-width: 430px; }
+  .positions { overflow-x: auto; }
+
+  /* ปิดอัตโนมัติ/การ์ดยาว: ช่องค่ากว้างขึ้น เปิด-ปิดคลิกง่าย */
+  .autoclose .ac-line input[type=number] { width: 92px; }
+  .autoclose .ac-now { min-width: 90px; }
+  .switch-row { padding: 6px 2px; }
+
+  /* การ์ดโอกาส/แท็บย่อ/กระดาน: คอลัมน์เดียว */
+  .hist-tabs, #o-tabs { width: 100%; overflow-x: auto; }
+  .hist-tabs button, #o-tabs button { padding: 6px 10px; }
+  .zh, .zh-rounds { grid-template-columns: 1fr; }
+  .hist-pane { padding: 8px 0; }
+
+  /* ตั้งค่า: ฟอร์มพอดีจอ + ปุ่มบันทึกลอยเต็มกว้าง */
+  .settings-new { grid-template-columns: 1fr; }
+  form input[type=number], form input[type=text], form select { font-size: 16px; padding: 10px 12px; }  /* 16px กัน iOS ซูมอัตโนมัติ */
+  .row2 { gap: 10px; }
+  .toggle { padding: 11px 12px; }
+  .sticky-save { padding: 8px 2px 10px; }
+
+  /* คำสั่งรอขยาย: เต็มจอมือถือ + กริด 2 คอลัมน์ */
+  .pend.max { width: calc(100vw - 14px); max-height: 92vh; top: 4vh; }
+  .pend.max .prow { grid-template-columns: 1fr 1fr; }
+  .pend.max .prow .pgo { grid-column: 1 / -1; }
+
+  /* หน้าต่างยืนยัน/ทอสต์: พอดีจอ */
+  .mbox { width: 92vw; padding: 18px 16px; }
+  #toasts { right: 10px; top: 54px; left: 10px; }
+  .wc-inline { flex-wrap: wrap; }
+  .wc-inline input { flex: 1 1 130px; }
+  footer { padding: 8px 10px; font-size: 10px; }
+}
+
 /* hidden ต้องชนะ display ของ class เสมอ (เดิม .card/.wc-card ทับ [hidden] → ซ่อนการ์ดบนเว็บไม่ได้) */
 [hidden] { display: none !important; }
 

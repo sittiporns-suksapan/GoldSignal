@@ -124,9 +124,9 @@ function startWebServer({ port = BASE_PORT, getSnapshot, logger = () => {}, hand
         if (!abs.startsWith(path.resolve(rendererDir) + path.sep) || !TYPES[path.extname(abs)] || !fs.existsSync(abs) || !fs.statSync(abs).isFile()) return send(res, 404, 'not found', 'text/plain');
         let body = fs.readFileSync(abs);
         if (rel === 'index.html' || rel === 'history.html') {
-          // หน้าเว็บ: โหลดตัวแทน window.api ก่อนสคริปต์แอป + viewport ให้มือถือย่อทั้งหน้าได้
+          // หน้าเว็บ: ตัวแทน window.api ก่อนสคริปต์แอป + viewport จริงตามเครื่อง (มือถือเลย์เอาต์มือถือ ไม่หย่อนทั้งหน้า)
           body = body.toString('utf8')
-            .replace('<head>', '<head>\n  <meta name="viewport" content="width=1320" />')
+            .replace('<head>', '<head>\n  <meta name="viewport" content="width=device-width, initial-scale=1" />')
             .replace(/<script src="(app|history)\.js"><\/script>/, '<script src="web-api.js"></script>\n  $&');
         }
         return send(res, 200, body, TYPES[path.extname(abs)]);
