@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('api', {
   lineSet: (p) => ipcRenderer.invoke('line-set', p),
   lineTest: () => ipcRenderer.invoke('line-test'),
   closeAll: () => ipcRenderer.invoke('close-all'),
+  openNewWindow: () => ipcRenderer.invoke('open-new-window'),
   pickBridgeFile: () => ipcRenderer.invoke('pick-bridge-file'),
   reportError: (msg, stack) => ipcRenderer.invoke('client-error', { msg: String(msg).slice(0, 500), stack: String(stack || '').slice(0, 2000) }),
   onSnapshot: (cb) => ipcRenderer.on('snapshot', (_e, snap) => cb(snap)),

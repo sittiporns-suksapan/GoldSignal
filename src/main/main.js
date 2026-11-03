@@ -25,7 +25,7 @@ const { createLine } = require('./line');
 const handlers = new Map();
 const handle = (channel, fn) => { handlers.set(channel, fn); ipcMain.handle(channel, fn); };
 // คำสั่งที่ห้ามเรียกจากเว็บ: เปิดหน้าต่าง/กล่องเลือกไฟล์บนเครื่อง + จัดการรหัสเว็บ (ต้องทำที่เครื่องเท่านั้น)
-const WEB_BLOCKED = new Set(['pick-bridge-file', 'open-plugins-dir', 'open-history-window', 'web-access-get', 'web-access-set', 'web-access-logout-all', 'tunnel-start', 'tunnel-stop', 'pages-setup', 'tg-get', 'tg-set', 'tg-detect', 'tg-test', 'line-get', 'line-set', 'line-test']);
+const WEB_BLOCKED = new Set(['pick-bridge-file', 'open-plugins-dir', 'open-history-window', 'open-new-window', 'web-access-get', 'web-access-set', 'web-access-logout-all', 'tunnel-start', 'tunnel-stop', 'pages-setup', 'tg-get', 'tg-set', 'tg-detect', 'tg-test', 'line-get', 'line-set', 'line-test']);
 
 // ---------- paths ----------
 const isDev = !app.isPackaged;
@@ -298,10 +298,35 @@ function boot() {
 
   const send = (channel, payload) => {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+    for (const w of extraWins) if (!w.isDestroyed()) w.webContents.send(channel, payload);
     if (web) web.broadcast(channel, payload); // เบราว์เซอร์ที่ล็อกอินอยู่ได้ข้อมูลชุดเดียวกัน
     if (channel === 'auto-enter') notify(payload && payload.ok ? 'autoTrade' : 'orderFail', `🤖 ${payload && payload.msg}\n${thTime()}`);
     else if (channel === 'auto-close') notify('autoTrade', `🔒 ${payload && payload.msg}\n${thTime()}`);
   };
+  // หน้าต่างซ้ำ: เปิดแอปแบบหลายหน้าต่าง (จอลอง/จอทรฟ่าเหล้ง) — ข้อมูลสดเท่าเดิม
+  const extraWins = [];
+  handle('open-new-window', () => {
+    const w = new BrowserWindow({
+      width: 1240, height: 800,
+      minWidth: 940, minHeight: 620,
+      title: 'GoldSignal — หน้าต่างใหม่',
+      backgroundColor: '#07080b',
+      autoHideMenuBar: true,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        backgroundThrottling: false,
+      },
+    });
+    w.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//i.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+    w.webContents.on('will-navigate', (e) => e.preventDefault());
+    extraWins.push(w);
+    w.on('closed', () => { const i = extraWins.indexOf(w); if (i >= 0) extraWins.splice(i, 1); });
+    w.loadFile(path.join(__dirname, '..', '..', 'renderer', 'index.html'));
+    return true;
+  });
   const notifiedSet = new Set();
   // แจ้งเตือน macOS ครั้งเดียวต่อ key (กัน spam) — คลิกแล้วเปิดหน้าต่าง
   const notifyOnce = (key, title, body) => {

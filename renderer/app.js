@@ -1738,6 +1738,10 @@ $('source-sel').addEventListener('change', async (e) => {
 });
 
 $('btn-refresh').addEventListener('click', () => { $('conn-badge').textContent = 'กำลังอัปเดต...'; window.api.refreshNow(); });
+$('btn-newwin').addEventListener('click', async () => {
+  if (window.GS_WEB) return;
+  try { await window.api.openNewWindow(); toast('🗔 เปิดหน้าต่างใหม่แล้ว — ข้อมูลสดเท่าเดิม', 'ok'); } catch (err) { toast('✗ ' + err.message, 'err'); }
+});
 
 /* ---------- plugins tab ---------- */
 async function renderPlugins() {

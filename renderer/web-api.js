@@ -83,6 +83,7 @@
     lineGet: () => Promise.resolve(null),
     lineSet: onlyOnHost('ตั้งค่า LINE'),
     lineTest: onlyOnHost('ส่งทดสอบ LINE'),
+    openNewWindow: onlyOnHost('เปิดหน้าต่างใหม่'),
     onSnapshot: on('snapshot'),
     onOrderResult: on('order-result'),
     onAutoClose: on('auto-close'),
