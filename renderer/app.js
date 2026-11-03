@@ -1301,6 +1301,51 @@ if ($('webctl-card') && !window.GS_WEB) {
   setInterval(renderWebCtl, 5000);
 }
 
+/* ---------- แจ้งเตือน Telegram (ตั้งค่าได้เฉพาะในแอปบนเครื่อง) ---------- */
+async function renderTg() {
+  const card = $('tg-card');
+  if (!card) return;
+  if (window.GS_WEB) { card.hidden = true; return; }
+  let v;
+  try { v = await window.api.tgGet(); } catch { return; }
+  $('tg-on').checked = !!v.enabled;
+  $('tg-token-st').textContent = v.tokenSet ? `✓ ตั้งแล้ว (${v.tokenHint})` : 'ยังไม่ได้ใส่ token';
+  if (document.activeElement !== $('tg-chat')) $('tg-chat').value = v.chatId || '';
+  $('tg-events').innerHTML = Object.entries(v.events).map(([k, e]) => `<label><input type="checkbox" data-tg-ev="${esc(k)}"${e.on ? ' checked' : ''} />${esc(e.label)}</label>`).join('');
+}
+if ($('tg-card') && !window.GS_WEB) {
+  const run = (fn) => async () => { try { await fn(); } catch (err) { toast('✗ ' + err.message, 'err'); } renderTg(); };
+  $('tg-token-save').addEventListener('click', run(async () => {
+    const t = $('tg-token').value.trim();
+    if (!t) throw new Error('วาง token ก่อน');
+    await window.api.tgSet({ token: t });
+    $('tg-token').value = '';
+    toast('🔑 บันทึก token แล้ว', 'ok');
+  }));
+  $('tg-chat-save').addEventListener('click', run(async () => { await window.api.tgSet({ chatId: $('tg-chat').value.trim() }); toast('บันทึก chat id แล้ว', 'ok'); }));
+  $('tg-detect').addEventListener('click', run(async () => {
+    const r = await window.api.tgDetect($('tg-token').value.trim() || null);
+    if (!r.chats.length) { $('tg-chat-st').textContent = `ยังไม่เจอแชต — เปิดแชตกับ @${r.bot} แล้วพิมพ์อะไรก็ได้ 1 ข้อความ แล้วกดใหม่`; return; }
+    const c = r.chats[0];
+    $('tg-chat').value = c.id;
+    if ($('tg-token').value.trim()) { await window.api.tgSet({ token: $('tg-token').value.trim() }); $('tg-token').value = ''; }
+    await window.api.tgSet({ chatId: c.id });
+    $('tg-chat-st').textContent = `เจอ ${r.chats.length} แชต — ใช้ "${c.name}" (${c.id}) กับ bot @${r.bot}`;
+    toast('✓ ตั้ง chat id แล้ว', 'ok');
+  }));
+  $('tg-on').addEventListener('change', run(async () => {
+    const on = $('tg-on').checked;
+    try { await window.api.tgSet({ enabled: on }); } catch (e) { $('tg-on').checked = false; throw e; }
+    toast(on ? '🔔 เปิดแจ้งเตือน Telegram แล้ว' : 'ปิดแจ้งเตือน Telegram แล้ว', 'ok');
+  }));
+  $('tg-events').addEventListener('change', run(async (e) => {
+    const ev = Object.fromEntries([...document.querySelectorAll('[data-tg-ev]')].map((x) => [x.dataset.tgEv, x.checked]));
+    await window.api.tgSet({ events: ev });
+  }));
+  $('tg-test').addEventListener('click', run(async () => { await window.api.tgTest(); toast('📨 ส่งข้อความทดสอบแล้ว — ดูใน Telegram', 'ok'); }));
+  renderTg();
+}
+
 /* ---------- snapshot flow ---------- */
 function renderDataAlert(snap) {
   const el = $('data-alert');

@@ -445,6 +445,25 @@
           </div>
           <p class="note">ถ้ายังไม่เชื่อม MT5 ระบบใช้ข้อมูลฟรี COMEX (GC=F) อัตโนมัติ — วิเคราะห์ไม่หยุด</p>
         </div>
+        <div class="card tg-card" id="tg-card">
+          <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-bolt" /></svg>แจ้งเตือน Telegram <span class="ct-sub">เข้าไม้ / ปิดไม้ / ระบบอัตโนมัติ ส่งเข้ามือถือทันที</span></h2>
+            <label class="switch-row"><span class="small">เปิดแจ้งเตือน</span><span class="switch"><input type="checkbox" id="tg-on" /><span></span></span></label></div>
+          <ol class="steps tg-steps">
+            <li>ใน Telegram ค้นหา <b>@BotFather</b> → พิมพ์ <code>/newbot</code> ตั้งชื่อ → จะได้ <b>token</b></li>
+            <li>วาง token ด้านล่าง → กดบันทึก</li>
+            <li>เปิดแชตกับ bot ของคุณ กด <b>Start</b> หรือพิมพ์อะไรก็ได้ 1 ข้อความ</li>
+            <li>กด <b>หา chat id</b> → เปิดสวิตช์ → กด <b>ส่งทดสอบ</b></li>
+          </ol>
+          <label class="wc-lbl" for="tg-token">Bot token</label>
+          <div class="wc-inline"><input type="password" id="tg-token" autocomplete="off" placeholder="123456789:AA…" /><button id="tg-token-save" class="wc-btn">บันทึก</button></div>
+          <div id="tg-token-st" class="wc-hint"></div>
+          <label class="wc-lbl" for="tg-chat">Chat id</label>
+          <div class="wc-inline"><input type="text" id="tg-chat" placeholder="เช่น 123456789" /><button id="tg-detect" class="wc-btn">หา chat id</button><button id="tg-chat-save" class="wc-btn">บันทึก</button></div>
+          <div id="tg-chat-st" class="wc-hint"></div>
+          <div class="wc-lbl">แจ้งเรื่องไหนบ้าง</div>
+          <div id="tg-events" class="tg-events"></div>
+          <div class="wc-foot"><span class="muted small">token เก็บในเครื่องนี้เท่านั้น (หน้าเว็บระยะไกลไม่เห็น)</span><span class="wc-grow"></span><button id="tg-test" class="wc-btn primary">ส่งทดสอบ</button></div>
+        </div>
         <div class="card wc-card" id="webctl-card">
           <div class="card-head">
             <h2 class="ct"><svg class="ic"><use href="#i-bolt" /></svg>แผงระยะไกล <span class="ct-sub">เว็บควบคุมเต็ม — หน้าตาและปุ่มเหมือนแอป • รหัสเดียวกันทุกช่องทาง</span></h2>

@@ -16,12 +16,13 @@ const { startWebServer, startRemotePush } = require('./webserver');
 const { createWebAuth } = require('./webauth');
 const { createTunnel } = require('./tunnel');
 const pages = require('./pages');
+const { createTelegram } = require('./telegram');
 
 // คำสั่งทุกตัวลงทะเบียนที่เดียว: หน้าต่างแอปเรียกผ่าน IPC • หน้าเว็บเรียกผ่าน HTTP (ชุดเดียวกัน ตรวจเกตเดียวกัน)
 const handlers = new Map();
 const handle = (channel, fn) => { handlers.set(channel, fn); ipcMain.handle(channel, fn); };
 // คำสั่งที่ห้ามเรียกจากเว็บ: เปิดหน้าต่าง/กล่องเลือกไฟล์บนเครื่อง + จัดการรหัสเว็บ (ต้องทำที่เครื่องเท่านั้น)
-const WEB_BLOCKED = new Set(['pick-bridge-file', 'open-plugins-dir', 'open-history-window', 'web-access-get', 'web-access-set', 'web-access-logout-all', 'tunnel-start', 'tunnel-stop', 'pages-setup']);
+const WEB_BLOCKED = new Set(['pick-bridge-file', 'open-plugins-dir', 'open-history-window', 'web-access-get', 'web-access-set', 'web-access-logout-all', 'tunnel-start', 'tunnel-stop', 'pages-setup', 'tg-get', 'tg-set', 'tg-detect', 'tg-test']);
 
 // ---------- paths ----------
 const isDev = !app.isPackaged;
@@ -193,6 +194,14 @@ function boot() {
   // แดชบอร์ดเว็บ (โหมดดูเท่านั้น — localhost เครื่องนี้เท่านั้น): ข้อมูลชุดเดียวกับหน้าจอแอป
   // เว็บ GoldSignal: ใช้งานได้เหมือนแอปทั้งหมด (ล็อกอินด้วยรหัสที่ตั้งในแอป)
   const webAuth = createWebAuth(path.join(app.getPath('userData'), 'web-auth.json'));
+  // แจ้งเตือน Telegram (token อยู่ไฟล์แยก — หน้าเว็บอ่าน/แก้ไม่ได้)
+  const tg = createTelegram({ file: path.join(app.getPath('userData'), 'telegram.json'), logger: engine.pushLog });
+  handle('tg-get', () => tg.view());
+  handle('tg-set', (_e, p) => tg.set(p || {}));
+  handle('tg-detect', (_e, token) => tg.detectChat(token));
+  handle('tg-test', () => tg.test());
+  const thTime = (ms = Date.now()) => new Date(ms).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const px = (n) => (Number.isFinite(Number(n)) && Number(n) ? Number(n).toFixed(2) : '-');
   let webUrl = null, web = null;
   startWebServer({
     getSnapshot: () => engine.lastSnap, logger: engine.pushLog,
@@ -280,6 +289,8 @@ function boot() {
   const send = (channel, payload) => {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
     if (web) web.broadcast(channel, payload); // เบราว์เซอร์ที่ล็อกอินอยู่ได้ข้อมูลชุดเดียวกัน
+    if (channel === 'auto-enter') tg.notify(payload && payload.ok ? 'autoTrade' : 'orderFail', `🤖 ${payload && payload.msg}\n${thTime()}`);
+    else if (channel === 'auto-close') tg.notify('autoTrade', `🔒 ${payload && payload.msg}\n${thTime()}`);
   };
   const notifiedSet = new Set();
   // แจ้งเตือน macOS ครั้งเดียวต่อ key (กัน spam) — คลิกแล้วเปิดหน้าต่าง
@@ -295,12 +306,26 @@ function boot() {
     } catch (err) { engine.pushLog('notify', `แจ้งเตือนไม่สำเร็จ: ${err.message}`, 'warn'); }
   };
 
+  const tgSignalSeen = new Set();
+  let tgRoundTs = Date.now();
   engine.on('snapshot', (snap) => {
     send('snapshot', snap);
     autoEnterMain(snap); // เข้าไม้อัตโนมัติฝั่ง main — ทำงานต่อแม้ปิดหน้าต่าง
     // ระบบรอเข้า: แจ้งเตือนทันทีที่โอกาสผ่านทุกเกต (ครั้งเดียวต่อสัญญาณ)
     const approved = (snap.signals || []).filter((x) => !x.held);
+    // ไม้เสมือน: แจ้งรายการใหม่ในประวัติรอบ (ลง/ปิดไม้เสมือน)
+    for (const r of snap.roundLog || []) {
+      if (!(r.ts > tgRoundTs)) continue;
+      tgRoundTs = r.ts;
+      if (/^(ลงไม้เสมือน|ปิดไม้เสมือน)/.test(r.action)) tg.notify('virtual', `🧪 ${r.action}\n${r.detail}\n${thTime(r.ts)}`);
+    }
     for (const s of approved) {
+      const tk = `${s.plugin}|${s.side}|${Math.round(s.entry)}`;
+      if (!tgSignalSeen.has(tk)) {
+        tgSignalSeen.add(tk);
+        if (tgSignalSeen.size > 100) tgSignalSeen.clear();
+        tg.notify('signal', `📣 สัญญาณ ${s.side === 'buy' ? 'BUY' : 'SELL'} ${s.confidence}% — ${s.pluginName}\nเข้า ${px(s.entry)} • SL ${px(s.sl)} • TP ${px(s.tp)} • ล็อต ${(s.metrics && s.metrics.lot) || '-'}\n${thTime()}`);
+      }
       notifyOnce(`${s.plugin}|${s.side}|${Math.round(s.entry)}`,
         `GoldSignal — ${s.side === 'buy' ? 'BUY' : 'SELL'} SIGNAL ${s.confidence}% พร้อมแล้ว!`,
         `${s.pluginName}: เข้า ${s.entry} • SL ${s.sl} • TP ${s.tp} • ล็อต ${(s.metrics && s.metrics.lot) || '-'} • (สภา: ${snap.council ? snap.council.confidence + '%' : '-'})`);
@@ -704,6 +729,52 @@ function boot() {
       engine.pushLog('order', `ปิดอัตโนมัติไม่สำเร็จ: ${err.message}`, 'err');
     }
   }
+  // ---------- Telegram: ติดตามไม้จริงเข้า/ปิด จากรายการไม้ใน bridge (ครอบคลุมทั้งไม้จากแอป, คำสั่งรอ trigger, เปิดเองใน MT5) ----------
+  let tgKnown = null;              // ticket → position ล่าสุดที่เห็น
+  const tgClosing = new Map();     // ticket → { p, at } รอประวัติปิดจาก EA (กำไรจริง + เหตุผล)
+  const REASON_TH = { TP: 'ถึง TP 🎯', SL: 'โดน SL', SO: 'Stop out', manual: 'ปิดเอง' };
+  function tgTrackPositions() {
+    const mt5 = engine.connectors.mt5;
+    const meta = mt5.latest && mt5.latest.meta;
+    if (!meta || !mt5.isLive()) return;
+    const cur = new Map((meta.positions || []).map((p) => [Number(p.ticket), p]));
+    if (tgKnown === null) { tgKnown = cur; return; } // รอบแรกหลังเปิดแอป: จำไว้เฉยๆ ไม่แจ้งไม้เก่า
+    const cc = (meta.account && meta.account.currency) || '';
+    const pt = Math.pow(10, -(meta.digits || 2));
+    for (const [t, p] of cur) {
+      if (tgKnown.has(t)) continue;
+      tg.notify('realOpen', `🟢 เข้าไม้จริง ${p.type === 'buy' ? 'BUY' : 'SELL'} ${Number(p.volume).toFixed(2)} ล็อต @ ${px(p.open)}\nSL ${px(p.sl)} • TP ${px(p.tp)}\nticket #${t} • ${thTime()}`);
+    }
+    for (const [t, p] of tgKnown) if (!cur.has(t) && !tgClosing.has(t)) tgClosing.set(t, { p, at: Date.now(), auto: autoCloseBusy.has(t) });
+    tgKnown = cur;
+    for (const [t, w] of tgClosing) {
+      const h = (meta.history || []).find((x) => Number(x.pid) === t);
+      if (!h && Date.now() - w.at < 30_000) continue;
+      tgClosing.delete(t);
+      const p = w.p;
+      const close = h ? Number(h.close) : null;
+      const profit = h ? Number(h.profit) : Number(p.profit);
+      const pts = close != null ? ((p.type === 'buy' ? close - p.open : p.open - close) / pt) : null;
+      const why = w.auto ? 'ระบบปิดอัตโนมัติ 🔒' : h ? (REASON_TH[h.reason] || h.reason) : 'ปิดแล้ว';
+      tg.notify('realClose', `${profit >= 0 ? '✅' : '❌'} ปิดไม้ ${p.type === 'buy' ? 'BUY' : 'SELL'} ${Number(p.volume).toFixed(2)} ล็อต @ ${px(p.open)} → ${close != null ? px(close) : '-'} (${why})\n${profit >= 0 ? 'กำไร +' : 'ขาดทุน '}${profit.toFixed(2)} ${cc}${pts != null ? ` (${pts >= 0 ? '+' : ''}${Math.round(pts)} จุด)` : ''}\nticket #${t} • ${thTime()}`);
+    }
+  }
+  setInterval(tgTrackPositions, 2000);
+  // ระบบ: MT5 หลุดเกิน 60 วิ / กลับมา • tunnel ล่ม
+  let tgMt5Down = null, tgMt5Alerted = false, tgTunState = 'off';
+  setInterval(() => {
+    const live = engine.connectors.mt5.isLive();
+    if (!live) {
+      if (tgMt5Down == null) tgMt5Down = Date.now();
+      if (!tgMt5Alerted && Date.now() - tgMt5Down > 60_000) { tgMt5Alerted = true; tg.notify('system', `⚠️ MT5 ไม่อัปเดตข้อมูลเกิน 1 นาที — ตรวจว่า MT5 เปิดอยู่และ EA อยู่บนชาร์ต\n(ไม้ที่เปิดอยู่ยังมี SL/TP ที่โบรกเกอร์)\n${thTime()}`); }
+    } else {
+      if (tgMt5Alerted) tg.notify('system', `✅ MT5 กลับมาเชื่อมต่อแล้ว\n${thTime()}`);
+      tgMt5Down = null; tgMt5Alerted = false;
+    }
+    const ts = tunnel.status();
+    if (ts.state === 'error' && tgTunState !== 'error') tg.notify('system', `⚠️ tunnel ${ts.provider} ล่ม: ${ts.msg}\n${thTime()}`);
+    tgTunState = ts.state;
+  }, 10_000);
   let lastQ = null;
   const pushTick = () => {
     try {
@@ -734,6 +805,11 @@ function boot() {
       if (r.status !== 'ok' && r.cmd && r.cmd.action === 'open') engine.manualToday = Math.max(0, engine.manualToday - 1);
       engine.pushLog('order', `ผล id=${r.id}: ${r.status === 'ok' ? '✅ ทำสำเร็จ' : '❌ ล้มเหลว — ' + r.msg} (retcode ${r.retcode}, ticket ${r.ticket || '-'})`, r.status === 'ok' ? 'info' : 'err');
       send('order-result', r);
+      const a = r.cmd && r.cmd.action;
+      if (r.status !== 'ok') tg.notify('orderFail', `❌ คำสั่ง ${a || '-'} ล้มเหลว: ${r.msg} (retcode ${r.retcode})${r.cmd && r.cmd.ticket ? ' • ticket #' + r.cmd.ticket : ''}\n${thTime()}`);
+      else if (a === 'limit' || a === 'stop') tg.notify('pending', `⏳ วางคำสั่งรอ ${String(r.cmd.side).toUpperCase()} ${a.toUpperCase()} ล็อต ${r.cmd.lot} @ ${px(r.cmd.entry)} • SL ${px(r.cmd.sl)} • TP ${px(r.cmd.tp)}\nticket #${r.ticket || '-'} • ${thTime()}`);
+      else if (a === 'cancel') tg.notify('pending', `🗑 ยกเลิกคำสั่งรอ #${r.cmd.ticket}\n${thTime()}`);
+      else if (a === 'pmodify' || a === 'modify') tg.notify('pending', `✏️ แก้${a === 'pmodify' ? 'คำสั่งรอ' : ' SL/TP ไม้'} #${r.cmd.ticket}: SL ${px(r.cmd.sl)} • TP ${px(r.cmd.tp)}${a === 'pmodify' ? ' • ราคา ' + px(r.cmd.entry) : ''}\n${thTime()}`);
     }
   }
   // โพล fallback ทุก 250ms — เร็วเท่าจังหวะที่ EA เขียนราคา (ครอบคลุมถ้า watch ใช้ไม่ได้บนเครื่องนั้น)
@@ -750,6 +826,7 @@ function boot() {
       const msg = `คำสั่ง id=${c.id} (${c.action}) หมดอายุ — MT5 ไม่ได้หยิบภายใน 15 วิ จึงยกเลิกแล้ว ไม่มีไม้เข้า • สาเหตุที่พบบ่อย: (1) EA ตั้ง AllowOrders = false (2) ปุ่ม AutoTrading ใน MT5 ยังไม่เขียว (3) MT5/ตลาดปิดอยู่`;
       engine.pushLog('order', msg, 'warn');
       send('order-result', { id: c.id, status: 'stale', msg, cmd: c });
+      tg.notify('orderFail', `⏳ ${msg}\n${thTime()}`);
     }
   }, 2000);
   handle('pick-bridge-file', async () => {

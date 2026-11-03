@@ -672,6 +672,37 @@ console.log('\n[7] Engine end-to-end');
     } finally { w.server.closeAllConnections(); w.server.close(); }
   });
 
+  await ok('Telegram: ตั้งค่า/ตรวจรูปแบบ • ส่งเฉพาะเหตุการณ์ที่เปิด • หา chat id • token ไม่หลุดออก view', async () => {
+    const { createTelegram } = require(path.join(root, 'src', 'main', 'telegram'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gstg-'));
+    const sent = [];
+    const fakeFetch = async (url, o) => {
+      const method = url.split('/').pop();
+      const body = JSON.parse(o.body);
+      if (method === 'sendMessage') sent.push(body);
+      const result = method === 'getMe' ? { username: 'gs_test_bot' }
+        : method === 'getUpdates' ? [{ message: { chat: { id: 555111, first_name: 'Ploy', type: 'private' } } }] : true;
+      return { status: 200, json: async () => ({ ok: true, result }) };
+    };
+    const tg = createTelegram({ file: path.join(dir, 'telegram.json'), fetchImpl: fakeFetch });
+    const TOKEN = '123456789:AAHfakeTokenForSmokeTest_abcdefghijk';
+    assert.throws(() => tg.set({ token: 'bad' }), /รูปแบบ/);
+    assert.throws(() => tg.set({ enabled: true }), /token/, 'ยังไม่มี token/chat = เปิดไม่ได้');
+    tg.set({ token: TOKEN });
+    const d = await tg.detectChat();
+    assert.equal(d.bot, 'gs_test_bot'); assert.equal(d.chats[0].id, '555111');
+    tg.set({ chatId: d.chats[0].id, enabled: true, events: { virtual: false } });
+    const v = tg.view();
+    assert.ok(!JSON.stringify(v).includes('AAHfakeToken'), 'view ไม่คืน token เต็ม');
+    assert.equal(fs.statSync(path.join(dir, 'telegram.json')).mode & 0o777, 0o600, 'ไฟล์ token สิทธิ์ 600');
+    assert.equal(tg.notify('virtual', 'x'), false, 'ปิดประเภทนี้ = ไม่ส่ง');
+    assert.equal(tg.notify('realOpen', '🟢 เข้าไม้จริง BUY'), true);
+    for (let i = 0; i < 40 && !sent.length; i++) await new Promise((r) => setTimeout(r, 25));
+    assert.equal(sent[0].chat_id, '555111'); assert.ok(/เข้าไม้จริง/.test(sent[0].text));
+    tg.set({ enabled: false });
+    assert.equal(tg.notify('realOpen', 'y'), false, 'สวิตช์ปิด = เงียบ');
+  });
+
   ok('เว็บ: ตัวแทน window.api มีคำสั่งครบทุกตัวของ preload', () => {
     const pre = fs.readFileSync(path.join(root, 'src', 'main', 'preload.js'), 'utf8');
     const shim = fs.readFileSync(path.join(root, 'renderer', 'web-api.js'), 'utf8');
