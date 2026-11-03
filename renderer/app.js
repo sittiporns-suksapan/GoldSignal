@@ -243,6 +243,20 @@ function wireZoom() {
   $('z-in').addEventListener('click', () => chartM.timeScale().applyOptions({ barSpacing: Math.min(90, curSpacing() * 1.35) }));
   $('z-out').addEventListener('click', () => chartM.timeScale().applyOptions({ barSpacing: Math.max(1.5, curSpacing() * 0.72) }));
   $('z-fit').addEventListener('click', fitWithGap);
+  // ขยายชาร์ตเต็มหน้าต่าง (กว้าง+สูงเต็มโปรแกรม) • Esc / กดซ้ำ = ย่อกลับ — autoSize ปรับขนาดชาร์ตเอง
+  // ย้ายการ์ดชาร์ตไปไว้ใต้ <body> ตอนขยาย (กล่องแม่มี backdrop-filter ทำให้ position:fixed ไม่เต็มจอ)
+  const chartHome = document.createComment('chart-card-home');
+  $('chart-card').before(chartHome);
+  const setChartMax = (on) => {
+    const card = $('chart-card');
+    if (on) document.body.appendChild(card); else chartHome.after(card);
+    document.body.classList.toggle('chart-max', on);
+    $('z-max').classList.toggle('on', on);
+    $('z-max').textContent = on ? '✕ ย่อ' : '⛶ ขยาย';
+    setTimeout(fitWithGap, 60);
+  };
+  $('z-max').addEventListener('click', () => setChartMax(!document.body.classList.contains('chart-max')));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('chart-max')) setChartMax(false); });
   $('z-live').addEventListener('click', followLatest);
   syncLinesBtn();
   $('z-lines').addEventListener('click', () => {
@@ -1377,6 +1391,30 @@ if ($('tg-card') && !window.GS_WEB) {
   $('tg-test').addEventListener('click', run(async () => { await window.api.tgTest(); toast('📨 ส่งข้อความทดสอบแล้ว — ดูใน Telegram', 'ok'); }));
   renderTg();
 }
+
+/* ---------- ช่องกรอกราคา: ทศนิยมตาม digits ของโบรกเกอร์ + ปรับละเอียดด้วยลูกศร ----------
+   ออกจากช่อง = จัดรูปเป็นทศนิยม 2 ตำแหน่ง (เช่น 3930 → 3930.00)
+   ↑/↓ = ±0.01 • Shift+↑/↓ = ±0.10 • Alt/Option+↑/↓ = ±1.00 • ช่องราคาเข้าว่าง + กด ↑/↓ = เริ่มจากราคาตลาด */
+const PRICE_INPUTS = '#t-sl, #t-tp, #p-entry, #p-sl, #p-tp, .pin';
+const priceDigits = () => (lastSnap && lastSnap.meta && lastSnap.meta.digits) || 2;
+const marketPx = () => { const m = (lastSnap && lastSnap.meta) || {}; return Number(m.bid) || Number(lastSnap && lastSnap.price) || null; };
+document.addEventListener('focusout', (e) => {
+  const el = e.target;
+  if (!(el instanceof HTMLInputElement) || !el.matches(PRICE_INPUTS) || el.value === '') return;
+  const n = Number(el.value);
+  if (Number.isFinite(n) && n > 0) el.value = n.toFixed(priceDigits());
+});
+document.addEventListener('keydown', (e) => {
+  const el = e.target;
+  if (!(el instanceof HTMLInputElement) || !el.matches(PRICE_INPUTS) || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+  e.preventDefault();
+  const d = priceDigits();
+  const base = el.value === '' ? marketPx() : Number(el.value);
+  if (!Number.isFinite(base)) return;
+  const stepV = e.altKey ? 1 : e.shiftKey ? 0.1 : Math.pow(10, -d);
+  el.value = (base + (e.key === 'ArrowUp' ? stepV : -stepV)).toFixed(d);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+});
 
 /* ---------- snapshot flow ---------- */
 function renderDataAlert(snap) {

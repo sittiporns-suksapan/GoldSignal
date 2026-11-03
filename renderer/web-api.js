@@ -90,6 +90,8 @@
 
   // ปุ่มออกจากระบบ (มุมล่างซ้าย — เฉพาะหน้าเว็บ)
   window.addEventListener('DOMContentLoaded', () => {
+    // การ์ดตั้งค่าเฉพาะเครื่องหลัก (Telegram / แผงระยะไกล) ไม่แสดงบนเว็บ
+    for (const id of ['tg-card', 'webctl-card']) { const el = document.getElementById(id); if (el) el.hidden = true; }
     const b = document.createElement('button');
     b.textContent = 'ออกจากระบบเว็บ';
     b.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:99;padding:6px 12px;border-radius:8px;border:1px solid var(--line,#2a2f3a);background:var(--surface-2,#14171f);color:var(--muted,#9aa0ab);font-size:12px;cursor:pointer';

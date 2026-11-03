@@ -634,6 +634,17 @@ footer b { color: var(--warn); font-weight: 600; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
+/* hidden ต้องชนะ display ของ class เสมอ (เดิม .card/.wc-card ทับ [hidden] → ซ่อนการ์ดบนเว็บไม่ได้) */
+[hidden] { display: none !important; }
+
+/* ---------- ชาร์ตขยายเต็มหน้าต่าง ---------- */
+body.chart-max { overflow: hidden; }
+body.chart-max #chart-card { position: fixed; inset: 76px 16px 40px; z-index: 70; margin: 0; display: flex; flex-direction: column; box-shadow: 0 30px 80px rgba(0, 0, 0, .65); }
+body.chart-max #chart-card .chart-body { flex: 1; min-height: 0; height: auto; }
+body.chart-max #chart { height: calc(100vh - 76px - 40px - 96px); }
+body.chart-max::before { content: ""; position: fixed; inset: 0; background: rgba(4, 5, 8, .72); z-index: 60; }
+#z-max.on { color: var(--gold); border-color: var(--gold-line); }
+
 /* ---------- แผงระยะไกล (เว็บควบคุมเต็ม) ---------- */
 .wc-card { grid-column: 1 / -1; }
 .wc-card .card-head { margin-bottom: 0; }
