@@ -619,6 +619,11 @@ footer b { color: var(--warn); font-weight: 600; }
   #topbar { grid-template-columns: auto 1fr; grid-template-areas: "brand right" "nav nav"; row-gap: 10px; }
   .topright { justify-self: end; }
   #tabs { justify-self: stretch; justify-content: center; }
+  /* หน้าต่างกลาง (1000–1240px): ยังคง 2 ฝั่ง ชาร์ตซ้าย + แผงส่งคำสั่งขวา (ฝั่งขวาแคบลง) */
+  .grid-main { grid-template-columns: minmax(0, 1.5fr) minmax(330px, 1fr); }
+  .chart-body { grid-template-columns: minmax(0, 1fr) 190px; }
+}
+@media (max-width: 1000px) {
   .grid-main { grid-template-columns: 1fr; }
   .col-right { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 0 var(--gap); align-items: start; }
 }
