@@ -316,6 +316,8 @@ class AnalysisEngine extends EventEmitter {
       zone: z.center, levelType: z.levelType, openedAt: ts, status: 'open',
       slDist: ind.round(slDist, 2), lot,
       councilAtOpen,
+      // ตรวจทิศยอดของแต่ละเอเจนต์ ณ จุดเปิด — ผลไม้จำลองปิดแล้วจะป้อนกลับเป็นบทเรียนรายคน
+      votesAtOpen: cv && Array.isArray(cv.votes) ? cv.votes.map((v) => ({ id: v.id, side: v.side, conf: Math.round(v.conf || 0) })).filter((v) => v.id) : null,
     };
     this.zoneOpen.push(t);
     this._openedRefs = this._openedRefs || [];
@@ -346,11 +348,32 @@ class AnalysisEngine extends EventEmitter {
         if (this.zoneHistory.length > 40) this.zoneHistory = this.zoneHistory.slice(-40);
         this._closedThisRound = this._closedThisRound || [];
         this._closedThisRound.push(t);
+        this._learnFromVirtual(t);
         this.logger('zone', `ไม้เสมือนจุดรอเข้าจบ: ${t.side} → ${result} → ${t.pnl >= 0 ? '+' : ''}$${t.pnl}`);
         this._saveZoneHistory();
       } else stillOpen.push(t);
     }
     this.zoneOpen = stillOpen;
+  }
+
+  // ---------- ให้สภาเรียนรู้จากผลไม้จำลองจริง ----------
+  // ไม้จำลองปิด = ผลลัพธ์จริงของจังหวะเปิด → สมุดสภา (รวมช่วงความมั่นใจ) + สกิลรายเอเจนต์ที่โหวตตอนนั้น
+  _learnFromVirtual(t) {
+    const c = t && t.councilAtOpen;
+    if (!c) return;
+    // ชนะ = จบ TP หรือ หมดเวลาแต่กำไรลอยตัวสำคัญ (≥ +0.5 × ระยะ SL) • แพ้ = SL หรือขาดทุนจริงจัง
+    const budget = (t.slDist || 0) * 100 * (Number(t.lot) || 0.01);
+    const win = t.status === 'TP' ? 1 : t.status === 'SL' ? -1 : (t.pnl >= budget * 0.5 ? 1 : t.pnl <= -budget * 0.5 ? -1 : 0);
+    this.councilStats.observeTrade(c, win);
+    for (const v of (t.votesAtOpen || [])) {
+      if (v.side === 'none' || (v.conf || 0) < 50) continue;
+      let rec = win;
+      if (rec !== 0 && v.side !== t.side) rec = -rec;    // โหวตสวนทิศไม้ = ผลสวน
+      if (rec !== 0) this.skills.recordAgent(v.id, rec);
+    }
+    if (win !== 0) {
+      this.logger('skills', `เรียนรู้จากไม้จำลอง #${t.id}: สภา ${c.side === 'none' ? `ไม่มีมติ ${c.confidence}%` : `${c.side} ${c.confidence}%`} → ${win > 0 ? 'ผลจริงชนะ' : 'ผลจริงแพ้'} — ปรับสถิติสภา/เอเจนต์แล้ว`, win > 0 ? 'ok' : 'warn');
+    }
   }
 
   _zoneSummary() {

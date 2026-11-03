@@ -89,6 +89,13 @@ class SkillBook {
     this._dirty = true;
   }
 
+  // ผลจริงจากไม้จำลองที่ปิด → นับเป็นผลงานเอเจนต์ทันที (เข้มกว่ารอตรวจ 30 นาที)
+  recordAgent(agent, v) {
+    if (!agent) return;
+    this._record(agent, v);
+    this.save();
+  }
+
   // สรุปสกิลต่อเอเจนต์: hit rate จากตัวเล็กล่าสุด (ring) เป็นหลัก
   summary(agentId) {
     const s = this.stats[agentId];

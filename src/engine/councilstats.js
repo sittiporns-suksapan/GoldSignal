@@ -121,6 +121,14 @@ class CouncilStats {
     return { n, hit, grade, allW: (g && g.w) || 0, allL: (g && g.l) || 0 };
   }
 
+  // กินผลจาก "ไม้จำลองที่ปิด" — ตัวอย่างเรียนรู้เข้มข้นกว่าตรวจ 30 นาที: TP=ชนะ SL=แพ้ TIME=ดูกำไรลอยตัว
+  observeTrade(c, win) {
+    const v = win === 1 ? 1 : win === -1 ? -1 : 0;
+    this._record('verdict', c && c.confidence, v);
+    this.save();
+    return true;
+  }
+
   // ตัวคูณปรับความมั่นใจของมติใหม่ (แม่นสูง = 1.0-1.15, ต่ำ = 0.85-1.0) — ยังไม่มีตัวเลขพอ = 1.0
   calibration(conf) {
     const s = this.bandSummary(conf);

@@ -442,6 +442,28 @@ ok('councilstats: จดมติ/มติเงา → ตรวจผล 30 �
   const cs2 = new CouncilStats({ storePath: p0 });
   const cal2 = cs2.calibration(75);
   assert.ok(cal2.factor > 1, 'โหลดจากดิสก์แล้วยังปรับได้ตรงกัน');
+  // ไม้จำลองปิด TP = เรียนรู้ทันที
+  cs2.observeTrade({ side: 'buy', confidence: 70, agree: 3 }, 1);
+  const sTrade = cs2.snapshot();
+  assert.ok(sTrade.verdict.n >= 1, 'ผลไม้จำลองเข้าสถิติสภา');
+});
+ok('skillbook: recordAgent รับผลไม้จำลอง → ผลงานเอเจนต์ปรับทันที', () => {
+  const { SkillBook } = require(path.join(root, 'src', 'engine', 'skillbook'));
+  const fsx = require('fs'), osmod = require('os');
+  const p1 = path.join(fsx.mkdtempSync(path.join(osmod.tmpdir(), 'gsskill-')), 'skills.json');
+  const sb = new SkillBook({ storePath: p1 });
+  sb.recordAgent('structure', 1);
+  sb.recordAgent('structure', -1);
+  const s = sb.summary('structure');   // ยัง < 8 ตัวอย่าง = ไม่โชว์ % กันตัดสินชาวบ้าน
+  assert.equal(s.n, 2, 'จดจากไม้จำลองได้ 2 ตัวอย่าง');
+  assert.equal(s.hit, null, 'สถิติสั้น (<8) ไม่โชว์ %');
+  for (let i = 0; i < 7; i++) sb.recordAgent('structure', 1);   // สะสมไปอีก = ครบ 9 (ชนะ 8 แพ้ 1)
+  const s9 = sb.summary('structure');
+  assert.equal(s9.n, 9, 'นับครบ 9 ตัวอย่าง');
+  assert.equal(s9.allW, 8, 'ชนะ 8 จากไม้จำลอง/โหวต');
+  assert.equal(s9.allL, 1, 'แพ้ 1');
+  assert.ok(Math.abs(s9.hit - 8 / 9) < 0.02, `hit=${s9.hit}`);
+  assert.equal(s9.grade, 'ยอดเยี่ยม');
 });
 ok('เอเจนต์ v2: โครงสร้าง BOS/CHoCH ขารางจริง + สดไทม์เฟรม', () => {
   const v = council.runCouncil({ analysis: require(path.join(root, 'src', 'engine', 'analysis')).analyzeMarket(candles), candles, price: candles.M5[candles.M5.length - 1].c, now: Date.now(), ind }, {});
