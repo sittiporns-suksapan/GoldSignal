@@ -625,13 +625,47 @@ function startEditPending(p) {
 }
 
 const closingTicketsPending = new Set();
-// ปุ่ม ⛶ ขยายการ์ดคำสั่งรอเต็มจอ / Esc = ย่อกลับ
+// ปุ่ม ⛶ ขยายการ์ดคำสั่งรอเต็มจอ / Esc = ย่อกลับ / ลากหัวการ์ดเพื่อย้ายได้
 $('pend-max').addEventListener('click', () => {
   const el = $('pend-card');
   const max = !el.classList.contains('max');
   el.classList.toggle('max', max);
   $('pend-max').textContent = max ? '↘ ย่อ' : '⛶';
+  if (max) setupPendDrag();
+  else { el.style.left = ''; el.style.top = ''; el.style.transform = ''; }
 });
+// ลากการ์ดขยายด้วยหัวการ์ด (pointer events — ได้ทั้งเมาส์/สัมผัส)
+function setupPendDrag() {
+  const el = $('pend-card'), head = el && el.querySelector('.pend-head');
+  if (!el || !head || head.dataset.drag === '1') return;
+  head.dataset.drag = '1';
+  head.style.cursor = 'grab'; head.style.userSelect = 'none';
+  let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
+  const onDown = (e) => {
+    if (dragging) return;
+    if (e.target.closest('#pend-max')) return; // ปุ่มย่อไม่ลาก
+    const r = el.getBoundingClientRect();
+    ox = r.left; oy = r.top;
+    sx = e.clientX; sy = e.clientY;
+    dragging = true;
+    el.style.transform = 'none';
+    el.style.left = `${Math.round(ox)}px`; el.style.top = `${Math.round(oy)}px`;
+    el.classList.add('dragging');
+    try { head.setPointerCapture(e.pointerId); } catch { void 0; }
+  };
+  const onMove = (e) => {
+    if (!dragging) return;
+    const vw = window.innerWidth, vh = window.innerHeight, r = el.getBoundingClientRect();
+    const nx = Math.min(Math.max(20 - r.width + 80, ox + e.clientX - sx), vw - 84);
+    const ny = Math.min(Math.max(4, oy + e.clientY - sy), vh - 56);
+    el.style.left = `${Math.round(nx)}px`; el.style.top = `${Math.round(ny)}px`;
+  };
+  const onUp = () => { dragging = false; el.classList.remove('dragging'); };
+  head.addEventListener('pointerdown', onDown);
+  head.addEventListener('pointermove', onMove);
+  head.addEventListener('pointerup', onUp);
+  head.addEventListener('pointercancel', onUp);
+}
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && $('pend-card') && $('pend-card').classList.contains('max') && !$('modal').classList.contains('show')) {
     $('pend-card').classList.remove('max');
