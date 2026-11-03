@@ -949,24 +949,39 @@ function renderAutoClose(meta, list) {
   $('ac-cur').textContent = acctCur || '';
   $('ac-loss-cur').textContent = acctCur || '';
   const digits = (meta && meta.digits) || 2;
-  const pts = Number($('ac-pts-v').value);
-  $('ac-pts-px').textContent = pts > 0 ? `(= ราคา ${(pts * Math.pow(10, -digits)).toFixed(digits)})` : '';
-  const allPts = Number($('ac-allpts-v').value);
-  $('ac-allpts-px').textContent = allPts > 0 ? `(= ราคา ${(allPts * Math.pow(10, -digits)).toFixed(digits)})` : '';
-  const st = $('ac-status');
-  if (!list.length) { st.textContent = 'ไม่มีไม้ที่เปิดอยู่'; return; }
-  const total = list.reduce((s, p) => s + (Number(p.profit) || 0), 0);
+  const pxOf = (v) => (v > 0 ? `= ราคา ${(v * Math.pow(10, -digits)).toFixed(digits)}` : '');
+  const val = (id) => Number($(id).value);
+  $('ac-pts-px').textContent = pxOf(val('ac-pts-v'));
+  $('ac-allpts-px').textContent = pxOf(val('ac-allpts-v'));
+  // สรุปบนหัว: เปิดอยู่กี่ตัว
+  const ids = ['ac-all', 'ac-allpts', 'ac-pts', 'ac-loss'];
+  const nOn = ids.filter((id) => $(id).checked).length;
+  $('ac-active').textContent = nOn ? `เปิดอยู่ ${nOn}/4` : 'ปิดทั้งหมด';
+  $('ac-active').classList.toggle('on', nOn > 0);
+  // ความคืบหน้าถึงเป้า (แถบ + ตัวเลขตอนนี้/เป้า)
+  const bar = (id, now, target, fmt) => {
+    const pct = target > 0 && now > 0 ? Math.min(100, (now / target) * 100) : 0;
+    $(id + '-bar').style.width = pct + '%';
+    $(id + '-now').textContent = now == null ? '—' : `${fmt(now)} / ${fmt(target)}`;
+  };
   const bid = meta && Number(meta.bid), ask = meta && Number(meta.ask);
+  const live = list.length && Number.isFinite(bid) && Number.isFinite(ask);
   const ptsOf = (p) => (p.type === 'buy' ? bid - p.open : p.open - ask) / Math.pow(10, -digits);
-  const live = Number.isFinite(bid) && Number.isFinite(ask);
-  const best = live ? Math.max(...list.map(ptsOf)) : null;
+  const total = list.reduce((s, p) => s + (Number(p.profit) || 0), 0);
   const sumPts = live ? list.reduce((s, p) => s + ptsOf(p), 0) : null;
-  const parts = [`กำไรรวมตอนนี้ ${money(total, acctCur, true)}`];
-  if ($('ac-all').checked) parts[0] += ` / เป้า ${fmtD(Number($('ac-all-v').value), 2)} ${acctCur || ''}`;
-  if ($('ac-loss').checked) parts[0] += ` / ตัดขาดทุนที่ -${fmtD(Number($('ac-loss-v').value), 2)} ${acctCur || ''}`;
-  if (sumPts != null) parts.push(`จุดรวม ${sumPts >= 0 ? '+' : ''}${Math.round(sumPts)} จุด${$('ac-allpts').checked ? ` / เป้า ${allPts} จุด` : ''}`);
-  if (best != null) parts.push(`ไม้ที่บวกมากสุด ${best >= 0 ? '+' : ''}${Math.round(best)} จุด${$('ac-pts').checked ? ` / เป้า ${pts} จุด` : ''}`);
-  st.innerHTML = parts.map(esc).join(' • ');
+  const best = live ? Math.max(...list.map(ptsOf)) : null;
+  const m = (x) => `${x >= 0 ? '+' : ''}${fmtD(x, 2)}`;
+  const pt = (x) => `${x >= 0 ? '+' : ''}${Math.round(x)}`;
+  bar('ac-all', list.length ? total : null, val('ac-all-v'), m);
+  bar('ac-allpts', sumPts, val('ac-allpts-v'), pt);
+  bar('ac-pts', best, val('ac-pts-v'), pt);
+  // ตัดขาดทุน: เทียบขนาดขาดทุน (บวก) กับเพดาน
+  const loss = list.length ? Math.max(0, -total) : null;
+  $('ac-loss-bar').style.width = (loss && val('ac-loss-v') > 0 ? Math.min(100, (loss / val('ac-loss-v')) * 100) : 0) + '%';
+  $('ac-loss-now').textContent = loss == null ? '—' : `ขาดทุน ${fmtD(loss, 2)} / ${fmtD(val('ac-loss-v'), 2)}`;
+  $('ac-status').textContent = list.length
+    ? `ไม้ที่เปิด ${list.length} ไม้ • กำไรรวม ${money(total, acctCur, true)}${sumPts != null ? ` • จุดรวม ${pt(sumPts)}` : ''}`
+    : 'ไม่มีไม้ที่เปิดอยู่ — ตั้งเป้าไว้ก่อนได้ ระบบจะเริ่มดูเมื่อมีไม้';
 }
 
 async function saveAutoClose(partial, okMsg) {
@@ -1309,11 +1324,23 @@ async function renderTg() {
   let v;
   try { v = await window.api.tgGet(); } catch { return; }
   $('tg-on').checked = !!v.enabled;
+  const nEv = Object.values(v.events).filter((e) => e.on).length;
+  $('tg-summary').innerHTML = [
+    `<span class="wc-chip ${v.enabled ? 'on' : 'err'}">${v.enabled ? '🔔 แจ้งเตือนเปิด' : '🔕 ปิดอยู่'}</span>`,
+    `<span class="wc-chip ${v.tokenSet && v.chatId ? 'on' : ''}">${v.tokenSet && v.chatId ? 'เชื่อม bot แล้ว' : 'ยังไม่เชื่อม bot'}</span>`,
+    `<span class="wc-chip">${nEv} เรื่อง</span>`,
+  ].join('');
   $('tg-token-st').textContent = v.tokenSet ? `✓ ตั้งแล้ว (${v.tokenHint})` : 'ยังไม่ได้ใส่ token';
   if (document.activeElement !== $('tg-chat')) $('tg-chat').value = v.chatId || '';
   $('tg-events').innerHTML = Object.entries(v.events).map(([k, e]) => `<label><input type="checkbox" data-tg-ev="${esc(k)}"${e.on ? ' checked' : ''} />${esc(e.label)}</label>`).join('');
 }
 if ($('tg-card') && !window.GS_WEB) {
+  const TG_HIDE = 'gs.tg.hidden';
+  const setTgHidden = (h) => { $('tg-body').hidden = h; $('tg-toggle').textContent = h ? 'แสดง ▾' : 'ซ่อน ▴'; $('tg-toggle').setAttribute('aria-expanded', String(!h)); try { localStorage.setItem(TG_HIDE, h ? '1' : '0'); } catch { void 0; } };
+  let tgHidden = false;
+  try { tgHidden = localStorage.getItem(TG_HIDE) === '1'; } catch { void 0; }
+  setTgHidden(tgHidden);
+  $('tg-toggle').addEventListener('click', () => setTgHidden(!$('tg-body').hidden));
   const run = (fn) => async () => { try { await fn(); } catch (err) { toast('✗ ' + err.message, 'err'); } renderTg(); };
   $('tg-token-save').addEventListener('click', run(async () => {
     const t = $('tg-token').value.trim();

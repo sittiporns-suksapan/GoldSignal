@@ -479,14 +479,35 @@ button.danger { background: linear-gradient(180deg, var(--sell-a), var(--sell-b)
 button.danger:hover { color: #fff; filter: brightness(1.1); }
 .closeall-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--inset); border: 1px solid var(--line-soft); }
 .closeall-row[hidden] { display: none; }
-.autoclose { margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--inset); border: 1px solid var(--line); display: grid; gap: 8px; }
-.autoclose .ac-head { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
-.autoclose .ac-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.autoclose .ac-row input[type=number] { width: 90px; padding: 4px 8px; font-size: 12.5px; background: var(--inset); border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font-num); }
-.autoclose .ac-row input[type=number]:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-bg); }
+.autoclose { margin-top: 12px; padding: 12px; border-radius: var(--radius-sm); background: var(--inset); border: 1px solid var(--line); display: grid; gap: 10px; }
 .autoclose:has(input[type=checkbox]:checked) { border-color: var(--gold-line); }
-.autoclose .switch-row.loss input:checked + span { background: linear-gradient(135deg, var(--sell-a), var(--sell-b)); }
+.autoclose .ac-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.autoclose .ac-title { font-size: 13px; font-weight: 700; color: var(--text); }
+.autoclose .ac-chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.autoclose .ac-chip.on { border-color: var(--gold-line); color: var(--gold); }
+.autoclose .ac-grow { flex: 1; }
+.autoclose .ac-sub { font-size: 11px; color: var(--faint); }
+.autoclose .ac-group { display: grid; gap: 6px; padding: 8px; border-radius: var(--radius-sm); background: var(--surface-2); border-left: 3px solid var(--line); }
+.autoclose .ac-group.profit { border-left-color: var(--up); }
+.autoclose .ac-group.loss { border-left-color: var(--down); }
+.autoclose .ac-gh { font-size: 11.5px; font-weight: 700; color: var(--text-2); letter-spacing: .02em; }
+.autoclose .ac-item { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: center; padding: 6px 4px; border-radius: 8px; opacity: .72; transition: opacity .2s var(--ease), background .2s var(--ease); }
+.autoclose .ac-item:has(input[type=checkbox]:checked) { opacity: 1; background: var(--inset); }
+.autoclose .ac-main { display: grid; gap: 5px; min-width: 0; }
+.autoclose .ac-line { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.autoclose .ac-lbl { font-size: 12.5px; color: var(--text-2); }
+.autoclose .ac-line input[type=number] { width: 84px; padding: 4px 8px; font-size: 12.5px; background: var(--inset); border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font-num); }
+.autoclose .ac-line input[type=number]:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-bg); }
+.autoclose .ac-unit { font-size: 12px; color: var(--muted); }
+.autoclose .ac-px { font-size: 11px; color: var(--faint); }
+.autoclose .ac-prog { display: flex; align-items: center; gap: 8px; }
+.autoclose .ac-bar { flex: 1; height: 5px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.autoclose .ac-bar i { display: block; height: 100%; width: 0; border-radius: 99px; background: var(--up); transition: width .3s var(--ease); }
+.autoclose .loss .ac-bar i { background: var(--down); }
+.autoclose .ac-item:not(:has(input[type=checkbox]:checked)) .ac-bar i { background: var(--muted); opacity: .5; }
+.autoclose .ac-now { font-size: 11px; color: var(--muted); font-family: var(--font-num); white-space: nowrap; min-width: 120px; text-align: right; }
 .autoclose .ac-status { font-size: 11.5px; color: var(--muted); }
+.autoclose .loss .switch input:checked + span { background: linear-gradient(135deg, var(--sell-a), var(--sell-b)); }
 .closeall-hint { font-size: 12px; color: var(--muted); }
 .closeall-row.alert { border-color: var(--down-line); background: var(--down-bg); }
 .closeall-row.alert button.danger { animation: alarm 1.4s ease-in-out infinite; }
@@ -648,10 +669,9 @@ footer b { color: var(--warn); font-weight: 600; }
 .wc-grow { flex: 1; }
 
 /* ---------- แจ้งเตือน Telegram ---------- */
-.tg-card { display: grid; gap: 6px; align-content: start; }
-.tg-card .card-head { margin-bottom: 4px; }
-.tg-steps { margin: 0 0 6px; font-size: 12px; }
-.tg-events { display: grid; gap: 6px; }
-.tg-events label { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-2); cursor: pointer; }
-.tg-events input { width: 15px; height: 15px; accent-color: var(--gold); }
-.tg-card .wc-foot { grid-column: auto; margin-top: 8px; }
+.tg-steps { margin: 0 0 4px; font-size: 12px; }
+.tg-steps li { margin: 2px 0; }
+.tg-events { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px; }
+.tg-events label { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-2); cursor: pointer; padding: 7px 10px; border-radius: var(--radius-sm); background: var(--inset); border: 1px solid var(--line); }
+.tg-events label:has(input:checked) { border-color: var(--gold-line); color: var(--text); }
+.tg-events input { width: 15px; height: 15px; accent-color: var(--gold); flex: none; }

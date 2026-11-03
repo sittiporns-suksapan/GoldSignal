@@ -193,38 +193,45 @@
               <button id="btn-close-all" class="danger" title="ปิดทุกไม้ XAUUSD ที่เปิดอยู่ ณ ราคาตลาด (มีหน้ายืนยันก่อนส่ง)">ปิดทุกไม้</button>
             </div>
             <div id="autoclose-box" class="autoclose">
-              <div class="ac-head">ปิดอัตโนมัติเพื่อเซฟกำไร <span class="small muted">— ดูราคาสดทุกทิค ส่งปิดทันทีเมื่อถึงเป้า</span></div>
-              <div class="ac-row">
-                <label class="switch-row" title="กำไรลอยตัวรวมทุกไม้ XAUUSD ถึงเป้า = ปิดทุกไม้ทันที (ไม้ที่ติดลบอยู่ก็ปิดด้วย)">
-                  <span class="switch"><input type="checkbox" id="ac-all" /><span></span></span>
-                  <span class="small">ปิดรวบทุกไม้ เมื่อกำไรรวม ≥</span>
-                </label>
-                <input type="number" id="ac-all-v" min="0.01" step="1" />
-                <span id="ac-cur" class="small">—</span>
+              <div class="ac-head">
+                <span class="ac-title">ปิดอัตโนมัติ</span>
+                <span id="ac-active" class="ac-chip">ปิดทั้งหมด</span>
+                <span class="ac-grow"></span>
+                <span class="ac-sub">ดูราคาสดทุกทิค ถึงเป้าแล้วสั่งปิดทันที</span>
               </div>
-              <div class="ac-row">
-                <label class="switch-row loss" title="ขาดทุนลอยตัวรวมทุกไม้ XAUUSD ถึงจำนวนนี้ = ปิดทุกไม้ทันที (ตัดขาดทุนก่อนลึกกว่านี้)">
-                  <span class="switch"><input type="checkbox" id="ac-loss" /><span></span></span>
-                  <span class="small">ตัดขาดทุนรวบทุกไม้ เมื่อขาดทุนรวม ≥</span>
-                </label>
-                <input type="number" id="ac-loss-v" min="0.01" step="1" />
-                <span id="ac-loss-cur" class="small">—</span>
+              <div class="ac-group profit">
+                <div class="ac-gh">💰 เก็บกำไร</div>
+                <div class="ac-item " title="กำไรลอยตัวรวมทุกไม้ถึงเป้า = ปิดทุกไม้ทันที (ไม้ที่ติดลบก็ปิดด้วย)">
+                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-all" /><span></span></span></label>
+                  <div class="ac-main">
+                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ เมื่อกำไรรวม ≥</span><input type="number" id="ac-all-v" min="0.01" step="1" /><span class="ac-unit" id="ac-cur">THB</span></div>
+                    <div class="ac-prog"><div class="ac-bar"><i id="ac-all-bar"></i></div><span id="ac-all-now" class="ac-now">—</span></div>
+                  </div>
+                </div>
+                <div class="ac-item " title="เอาจุดของทุกไม้มารวมกัน (+200 กับ +100 = 300) ถึงเป้า = ปิดทุกไม้">
+                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-allpts" /><span></span></span></label>
+                  <div class="ac-main">
+                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ เมื่อจุดรวม ≥</span><input type="number" id="ac-allpts-v" min="0.01" step="10" /><span class="ac-unit">จุด</span><span id="ac-allpts-px" class="ac-px"></span></div>
+                    <div class="ac-prog"><div class="ac-bar"><i id="ac-allpts-bar"></i></div><span id="ac-allpts-now" class="ac-now">—</span></div>
+                  </div>
+                </div>
+                <div class="ac-item " title="ไม้ใดบวกถึงจุดนี้ = ปิดไม้นั้นไม้เดียว">
+                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-pts" /><span></span></span></label>
+                  <div class="ac-main">
+                    <div class="ac-line"><span class="ac-lbl">ปิดเฉพาะไม้ที่บวก ≥</span><input type="number" id="ac-pts-v" min="0.01" step="10" /><span class="ac-unit">จุด</span><span id="ac-pts-px" class="ac-px"></span></div>
+                    <div class="ac-prog"><div class="ac-bar"><i id="ac-pts-bar"></i></div><span id="ac-pts-now" class="ac-now">—</span></div>
+                  </div>
+                </div>
               </div>
-              <div class="ac-row">
-                <label class="switch-row" title="เอาจุดบวก/ลบของทุกไม้มารวมกัน (เช่น +200 กับ +100 = 300 จุด) ถึงเป้า = ปิดทุกไม้ทันที">
-                  <span class="switch"><input type="checkbox" id="ac-allpts" /><span></span></span>
-                  <span class="small">ปิดรวบทุกไม้ เมื่อจุดรวมทุกไม้ ≥</span>
-                </label>
-                <input type="number" id="ac-allpts-v" min="1" step="10" />
-                <span class="small">จุด <span id="ac-allpts-px" class="muted"></span></span>
-              </div>
-              <div class="ac-row">
-                <label class="switch-row" title="ไม้ใดบวกถึงจำนวนจุดนี้ = ปิดไม้นั้นทันที (XAUUSD 1 จุด = 0.01 → 100 จุด = $1.00)">
-                  <span class="switch"><input type="checkbox" id="ac-pts" /><span></span></span>
-                  <span class="small">ปิดรายไม้ เมื่อแต่ละไม้บวก ≥</span>
-                </label>
-                <input type="number" id="ac-pts-v" min="1" step="10" />
-                <span class="small">จุด <span id="ac-pts-px" class="muted"></span></span>
+              <div class="ac-group loss">
+                <div class="ac-gh">🛡 ตัดขาดทุน</div>
+                <div class="ac-item " title="ขาดทุนลอยตัวรวมถึงจำนวนนี้ = ปิดทุกไม้ทันที (ตรวจก่อนเป้ากำไรเสมอ)">
+                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-loss" /><span></span></span></label>
+                  <div class="ac-main">
+                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ เมื่อขาดทุนรวม ≥</span><input type="number" id="ac-loss-v" min="0.01" step="1" /><span class="ac-unit" id="ac-loss-cur">THB</span></div>
+                    <div class="ac-prog"><div class="ac-bar"><i id="ac-loss-bar"></i></div><span id="ac-loss-now" class="ac-now">—</span></div>
+                  </div>
+                </div>
               </div>
               <div id="ac-status" class="ac-status"></div>
             </div>
@@ -445,24 +452,41 @@
           </div>
           <p class="note">ถ้ายังไม่เชื่อม MT5 ระบบใช้ข้อมูลฟรี COMEX (GC=F) อัตโนมัติ — วิเคราะห์ไม่หยุด</p>
         </div>
-        <div class="card tg-card" id="tg-card">
-          <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-bolt" /></svg>แจ้งเตือน Telegram <span class="ct-sub">เข้าไม้ / ปิดไม้ / ระบบอัตโนมัติ ส่งเข้ามือถือทันที</span></h2>
-            <label class="switch-row"><span class="small">เปิดแจ้งเตือน</span><span class="switch"><input type="checkbox" id="tg-on" /><span></span></span></label></div>
-          <ol class="steps tg-steps">
-            <li>ใน Telegram ค้นหา <b>@BotFather</b> → พิมพ์ <code>/newbot</code> ตั้งชื่อ → จะได้ <b>token</b></li>
-            <li>วาง token ด้านล่าง → กดบันทึก</li>
-            <li>เปิดแชตกับ bot ของคุณ กด <b>Start</b> หรือพิมพ์อะไรก็ได้ 1 ข้อความ</li>
-            <li>กด <b>หา chat id</b> → เปิดสวิตช์ → กด <b>ส่งทดสอบ</b></li>
-          </ol>
-          <label class="wc-lbl" for="tg-token">Bot token</label>
-          <div class="wc-inline"><input type="password" id="tg-token" autocomplete="off" placeholder="123456789:AA…" /><button id="tg-token-save" class="wc-btn">บันทึก</button></div>
-          <div id="tg-token-st" class="wc-hint"></div>
-          <label class="wc-lbl" for="tg-chat">Chat id</label>
-          <div class="wc-inline"><input type="text" id="tg-chat" placeholder="เช่น 123456789" /><button id="tg-detect" class="wc-btn">หา chat id</button><button id="tg-chat-save" class="wc-btn">บันทึก</button></div>
-          <div id="tg-chat-st" class="wc-hint"></div>
-          <div class="wc-lbl">แจ้งเรื่องไหนบ้าง</div>
-          <div id="tg-events" class="tg-events"></div>
-          <div class="wc-foot"><span class="muted small">token เก็บในเครื่องนี้เท่านั้น (หน้าเว็บระยะไกลไม่เห็น)</span><span class="wc-grow"></span><button id="tg-test" class="wc-btn primary">ส่งทดสอบ</button></div>
+        <div class="card wc-card tg-card" id="tg-card">
+          <div class="card-head">
+            <h2 class="ct"><svg class="ic"><use href="#i-bolt" /></svg>แจ้งเตือน Telegram <span class="ct-sub">เข้าไม้ / ปิดไม้ / ระบบอัตโนมัติ ส่งเข้ามือถือทันที</span></h2>
+            <div class="wc-headr">
+              <span id="tg-summary" class="wc-summary"></span>
+              <label class="switch-row"><span class="small">เปิดแจ้งเตือน</span><span class="switch"><input type="checkbox" id="tg-on" /><span></span></span></label>
+              <button id="tg-toggle" class="wc-toggle" aria-expanded="true">ซ่อน ▴</button>
+            </div>
+          </div>
+          <div id="tg-body" class="wc-body">
+            <section class="wc-sec">
+              <h3 class="wc-h"><span class="wc-n">1</span>เชื่อม bot</h3>
+              <ol class="steps tg-steps">
+                <li><b>@BotFather</b> → <code>/newbot</code> → ได้ token</li>
+                <li>วาง token → บันทึก</li>
+                <li>เปิดแชตกับ bot → กด <b>Start</b></li>
+                <li>กด <b>หา chat id</b> → เปิดสวิตช์ด้านบน</li>
+              </ol>
+              <label class="wc-lbl" for="tg-token">Bot token</label>
+              <div class="wc-inline"><input type="password" id="tg-token" autocomplete="off" placeholder="123456789:AA…" /><button id="tg-token-save" class="wc-btn">บันทึก</button></div>
+              <div id="tg-token-st" class="wc-hint"></div>
+              <label class="wc-lbl" for="tg-chat">Chat id</label>
+              <div class="wc-inline"><input type="text" id="tg-chat" placeholder="เช่น 123456789" /><button id="tg-detect" class="wc-btn">หา chat id</button><button id="tg-chat-save" class="wc-btn">บันทึก</button></div>
+              <div id="tg-chat-st" class="wc-hint"></div>
+            </section>
+            <section class="wc-sec">
+              <h3 class="wc-h"><span class="wc-n">2</span>แจ้งเรื่องไหนบ้าง</h3>
+              <div id="tg-events" class="tg-events"></div>
+            </section>
+            <div class="wc-foot">
+              <span class="muted small">token เก็บในเครื่องนี้เท่านั้น (หน้าเว็บระยะไกลไม่เห็น) • แจ้งเตือนทำงานเมื่อแอปเปิดอยู่</span>
+              <span class="wc-grow"></span>
+              <button id="tg-test" class="wc-btn primary">ส่งทดสอบ</button>
+            </div>
+          </div>
         </div>
         <div class="card wc-card" id="webctl-card">
           <div class="card-head">
