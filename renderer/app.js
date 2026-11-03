@@ -1443,6 +1443,7 @@ async function renderLine() {
   $('line-events').innerHTML = Object.entries(v.events).map(([k, e]) => `<label><input type="checkbox" data-line-ev="${esc(k)}"${e.on ? ' checked' : ''} />${esc(e.label)}</label>`).join('');
 }
 if ($('line-card') && !window.GS_WEB) {
+  try {
   const LINE_HIDE = 'gs.line.hidden';
   const setLineHidden = (h) => { $('line-body').hidden = h; $('line-toggle').textContent = h ? 'แสดง ▾' : 'ซ่อน ▴'; $('line-toggle').setAttribute('aria-expanded', String(!h)); try { localStorage.setItem(LINE_HIDE, h ? '1' : '0'); } catch { void 0; } };
   let lineHidden = true;
@@ -1461,15 +1462,15 @@ if ($('line-card') && !window.GS_WEB) {
   // ปุ่ม 👁: สลับแสดง/ซ่อน token และ userId
   const eye = (btn, inp) => { $(btn).addEventListener('click', async () => {
     const i = $(inp); const toText = i.type === 'password';
-    if (toText && !i.value.trim() && inp === '#line-user') {
+    if (toText && !i.value.trim() && inp === 'line-user') {
       // ว่าง = ดึงค่าที่บันทึกไว้มาแสดงชั่วคราว
       try { const v = await window.api.lineGet(); i.value = (v && v.userId) || ''; } catch { void 0; }
     }
     i.type = toText ? 'text' : 'password';
-    if (!toText && inp === '#line-user') { i.value = ''; renderLine(); } // กลับเป็นซ่อน = เคลียร์ค่าออกจากจอ
+    if (!toText && inp === 'line-user') { i.value = ''; renderLine(); } // กลับเป็นซ่อน = เคลียร์ค่าออกจากจอ
   }); };
-  eye('#line-token-eye', '#line-token');
-  eye('#line-user-eye', '#line-user');
+  eye('line-token-eye', 'line-token');
+  eye('line-user-eye', 'line-user');
   $('line-on').addEventListener('change', run(async () => {
     const on = $('line-on').checked;
     try { await window.api.lineSet({ enabled: on }); } catch (e) { $('line-on').checked = false; throw e; }
@@ -1481,6 +1482,7 @@ if ($('line-card') && !window.GS_WEB) {
   }));
   $('line-test').addEventListener('click', run(async () => { await window.api.lineTest(); toast('📨 ส่งข้อความทดสอบแล้ว — ดูใน LINE', 'ok'); }));
   renderLine();
+  } catch (err) { try { window.api && window.api.reportError && window.api.reportError('line-card bind: ' + (err && err.message), err && err.stack); } catch { void 0; } }
 }
 
 /* ---------- ช่องกรอกราคา: ทศนิยมตาม digits ของโบรกเกอร์ + ปรับละเอียดด้วยลูกศร ----------
