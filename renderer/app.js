@@ -1673,7 +1673,7 @@ function applySnapshot(snap, first) {
     renderMarket(snap.analysis);
     renderGuards(snap.guard, snap.risk || {});
     renderSignals(snap);
-    renderCouncil(snap.council, snap.error);
+    renderCouncil(snap.council, snap.error, snap.councilStats);
     renderKpis(snap);
     renderLadder(snap);
     renderDeferred(snap);
@@ -1890,7 +1890,7 @@ function updateNowMark() {
 setInterval(updateNowMark, 20_000);
 
 /* ---------- council ---------- */
-function renderCouncil(c, error) {
+function renderCouncil(c, error, stats) {
   if (!c) {
     $('council-verdict').className = 'badge';
     $('council-verdict').textContent = error ? 'ไม่มีข้อมูลรอบนี้' : 'ปิดอยู่';
@@ -1911,7 +1911,24 @@ function renderCouncil(c, error) {
   }).join('');
   $('council-agents').innerHTML = rows +
     (c.boosts && c.boosts.length ? `<div class="council-note boost">➕ ${esc(c.boosts.map(String).join(' | '))}</div>` : '') +
-    (c.caps && c.caps.length ? `<div class="council-note">⚠ ${esc(c.caps.map(String).join(' | '))}</div>` : '');
+    (c.caps && c.caps.length ? `<div class="council-note">⚠ ${esc(c.caps.map(String).join(' | '))}</div>` : '') +
+    (c.calibrated ? `<div class="council-note boost">🎓 ปรับความมั่นใจตามผลจริงของสภา: ${esc(c.calibrated.before)}% → ${c.confidence}% (${esc(c.calibrated.note || '')})</div>` : '') +
+    (stats ? councilStatsHtml(stats) : '');
+}
+
+// แถบผลงานจริงของสภา (สมุด council-stats): ตรวจมติย้อนหลัง 30 นาทีทุกใบ
+function councilStatsHtml(stats) {
+  const v = stats.verdict || {}, lean = stats.lean || {}, bands = stats.bands || [];
+  const pct = (x) => (x == null ? '—' : `${Math.round(x * 100)}%`);
+  const bandChips = bands.filter((b) => b.hit != null).map((b) =>
+    `<span class="cstat-chip ${b.hit >= 0.6 ? 'good' : b.hit >= 0.45 ? 'mid' : 'bad'}">${b.band}: ${Math.round(b.hit * 100)}%<small>${b.n}</small></span>`
+  ).join('');
+  return `<div class="council-stats">
+    <div class="cstats-row"><span>ผลจริงของมติสภา (ตรวจ 30 นาที)</span><b>${pct(v.hit)}</b><small>${v.n != null ? v.n + ' มติ' : ''} ${v.grade && v.hit != null ? '• ' + esc(v.grade) : ''}</small></div>
+    <div class="cstats-row"><span>มติเงา (เกือบมีมติ — เอนสุทธิ แต่ไม่ขอผ่าน)</span><b>${pct(lean.hit)}</b><small>${lean.n != null ? lean.n + ' ใบ' : ''}</small></div>
+    <div class="cstats-row band">${bandChips ? `<small class="cband-lbl">ช่วงความมั่นใจที่แม่นจริง:</small>${bandChips}` : '<small>กำลังสะสมผลมติ — ครบ 10 ใบต่อช่วงแล้วเริ่มปรับความมั่นใจอัตโนมัติ</small>'}</div>
+    ${stats.pending ? `<div class="cstats-row"><small>รอตรวจผลอยู่ ${stats.pending} รอบ</small></div>` : ''}
+  </div>`;
 }
 
 /* ---------- boot ---------- */

@@ -413,6 +413,36 @@ ok('skillbook: จดโหวต → ตรวจผล 30 นาที → ส
   const sb3 = new SkillBook({ storePath: p0 });
   assert.ok(Math.abs(sb3.summary('trend').hit - 6 / 9) < 0.02, 'โหลดจากไฟล์ดิสก์ได้ตรงกัน');
 });
+
+ok('councilstats: จดมติ/มติเงา → ตรวจผล 30 นาที → calibration ปรับความมั่นใจตามผลจริง', () => {
+  const { CouncilStats } = require(path.join(root, 'src', 'engine', 'councilstats'));
+  const fsx = require('fs'), osmod = require('os');
+  const p0 = path.join(fsx.mkdtempSync(path.join(osmod.tmpdir(), 'gscouncil-')), 'council-stats.json');
+  const cs = new CouncilStats({ storePath: p0 });
+  const now = Date.now();
+  // มติจริง 70% (band 70-79%) + มติเงา (side none, net 40)
+  cs.open({ side: 'sell', confidence: 70, agree: 4, net: -41 }, 3900, 2, now);
+  cs.open({ side: 'none', confidence: 40, agree: 2, net: -40 }, 3900, 2, now);
+  assert.equal(cs.pending.length, 2, 'จดมติ + มติเงา');
+  cs.open({ side: 'none', confidence: 20, agree: 1, net: -15 }, 3900, 2, now);
+  assert.equal(cs.pending.length, 2, 'เอนอ่อน (net < 30) ไม่จด');
+  // ตรวจผล: ชนะทั้งคู่ (ราคาตก 3 = 1.5×ATR)
+  const outs = cs.processTick(3900 - 3, now + 31 * 60_000);
+  assert.equal(outs.length, 2, 'ตรวจครบ 2 ใบ');
+  assert.equal(cs.summary(cs.stats.bands ? '' : '').n, 0, 'ไม่พังการเรียก summary ตรง (group หลัก)');
+  const sV = cs.snapshot();
+  assert.ok(sV.verdict.n >= 1 && sV.lean.n >= 1, 'ตัวเลขมีทั้งมติและมติเงา');
+  // เติมให้ band 70-79% ครบ 10 = แม่นชัด → calibration factor > 1
+  for (let i = 0; i < 9; i++) cs._record('verdict', 75, 1);
+  const cal = cs.calibration(75);
+  assert.ok(cal.factor > 1, `แม่นจริง → เชื่อหนักขึ้น (ได้ ${cal.factor})`);
+  assert.ok(/s=/.test(cal.note || ''), `มีรายงานใน note: ${cal.note}`);
+  // บันทึก + โหลดรอบใหม่ = สถิติคงอยู่ ฝั่ง bands โหลดครบ
+  cs.save();
+  const cs2 = new CouncilStats({ storePath: p0 });
+  const cal2 = cs2.calibration(75);
+  assert.ok(cal2.factor > 1, 'โหลดจากดิสก์แล้วยังปรับได้ตรงกัน');
+});
 ok('เอเจนต์ v2: โครงสร้าง BOS/CHoCH ขารางจริง + สดไทม์เฟรม', () => {
   const v = council.runCouncil({ analysis: require(path.join(root, 'src', 'engine', 'analysis')).analyzeMarket(candles), candles, price: candles.M5[candles.M5.length - 1].c, now: Date.now(), ind }, {});
   for (const a of v.votes) {

@@ -1,7 +1,7 @@
 {
   "name": "goldsignal",
   "productName": "GoldSignal",
-  "version": "1.6.17",
+  "version": "1.6.18",
   "description": "ระบบวิเคราะห์และหาโอกาสเทรดทอง (XAU/USD) ความเสี่ยงถูกควบคุม — โหมดสัญญาณเท่านั้น",
   "main": "src/main/main.js",
   "author": "Trader",

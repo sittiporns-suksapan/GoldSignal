@@ -321,6 +321,13 @@ function runCouncil(ctx, settings = {}) {
     }
   }
   verdict.caps = caps;
+  // ปรับความมั่นใจด้วยสถิติผลจริงของสภา (council-stats): ช่วงความมั่นใจไหนแม่นจริง = เชื่อหนักขึ้น / แม่นต่ำ = ลดลง
+  const cal = ctx.councilCal && ctx.councilCal.calibration ? ctx.councilCal.calibration(verdict.confidence) : null;
+  if (cal && verdict.side !== 'none' && cal.factor !== 1 && Number.isFinite(cal.factor)) {
+    const before = verdict.confidence;
+    verdict.confidence = Math.max(0, Math.min(95, Math.round(verdict.confidence * cal.factor)));
+    verdict.calibrated = { before, factor: cal.factor, note: cal.note };
+  }
   verdict.adjust = adjust;
   verdict.votes = votes.map(({ id, name, side, conf, reason, skillNote, skillGrade, skillHit, skillN }) => ({
     id, name, side, conf: Math.round(conf || 0), reason: String(reason || ''), skillNote: skillNote || null,

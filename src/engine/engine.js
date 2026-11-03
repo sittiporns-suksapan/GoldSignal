@@ -15,6 +15,7 @@ const { runCouncil, gateSignal, AGENTS } = require('./council');
 const sessions = require('./sessions');
 const { buildEntryPlan } = require('./entryplan');
 const { SkillBook } = require('./skillbook');
+const { CouncilStats } = require('./councilstats');
 const ind = require('./indicators');
 const risk = require('./risk');
 
@@ -33,6 +34,8 @@ class AnalysisEngine extends EventEmitter {
     this.plugins = pluginLoader;
     this.logger = logger;
     this.skills = new SkillBook({ storePath: skillsPath, logger });
+    // สมุดผลงานของสภาทั้งคณะ: จดมติทุกรอบ → ตรวจผลหลัง 30 นาที → ปรับความมั่นใจของมติใหม่ตามอัตราชนะจริง
+    this.councilStats = new CouncilStats({ storePath: skillsPath ? skillsPath.replace(/agent-skills\.json$/, 'council-stats.json') : null, logger });
     this.zoneOpen = [];      // ไม้เสมือนที่เปิดจากจุดรอเข้า (ยังไม่จบ)
     this.zoneHistory = [];   // ไม้เสมือนที่จบแล้ว (ring)
     this.zoneStorePath = zoneStorePath || null;
@@ -123,8 +126,14 @@ class AnalysisEngine extends EventEmitter {
       };
       // 1) สภาทีมเอเจนต์ (น้ำหนักปรับด้วยสกิลของแต่ละคน + เรียกก่อน plugins)
       this.skills.processTick(price, Date.now());
+      const councilResults = this.councilStats.processTick(price, Date.now());
+      for (const r of councilResults) {
+        if (r.result === 'won' || r.result === 'lost') {
+          this.pushLog('council', `ตรวจมติสภาเดิม (${r.kind === 'lean' ? 'มติเงา' : 'มติจริง'}) ${r.side.toUpperCase()} conf ${r.conf}% → ${r.result === 'won' ? 'ชนะ ✓' : 'แพ้ ✗'}`, r.result === 'won' ? 'ok' : 'warn');
+        }
+      }
       const councilVerdict = this.settings.councilEnabled !== false
-        ? runCouncil({ analysis, candles, price, now: Date.now(), ind, skills: this.skills.all() }, effSettings)
+        ? runCouncil({ analysis, candles, price, now: Date.now(), ind, skills: this.skills.all(), councilCal: this.councilStats }, effSettings)
         : null;
       // จดโหวตที่มั่นโค้ง ≥50% ไว้ตรวจผลหลัง 30 นาที (วัดว่าเก่งด้านนั้นแค่ไหน)
       const m15atr = analysis.tf && analysis.tf.M15 && Number.isFinite(analysis.tf.M15.atr) ? analysis.tf.M15.atr : null;
@@ -132,6 +141,8 @@ class AnalysisEngine extends EventEmitter {
         for (const v of councilVerdict.votes) {
           if (v.side !== 'none' && v.conf >= 50) this.skills.openVote(v.id, v.side, price, m15atr, Date.now());
         }
+        // สมุดผลงานสภา: จดมติ (และมติเงา เกือบมีมติ) → ตรวจผล 30 นาที → ปรับความมั่นใจของมติใหม่
+        this.councilStats.open(councilVerdict, price, m15atr, Date.now());
       }
       // 2) plugin ให้คำแนะนำ (รองรับ plugin ที่ทำงานแบบ async เช่นเรียก LLM ภายนอก)
       // plugin ได้สำเนา (frozen) — โค้ดผู้ใช้แก้ค่าตั้ง/มติสภาที่ด่านความเสี่ยงอ่านต่อไม่ได้
@@ -174,7 +185,7 @@ class AnalysisEngine extends EventEmitter {
           this.dailyCount++;
         }
       }
-      const lastSnap = this._snapshot({ data, analysis, price, signals, filtered, connectorLabel: c.label, fallbackReason, council: councilVerdict });
+      const lastSnap = this._snapshot({ data, analysis, price, signals, filtered, connectorLabel: c.label, fallbackReason, council: councilVerdict, councilStats: this.councilStats ? this.councilStats.snapshot() : null });
       lastSnap.session = sessionNow;
       lastSnap.sessionWindows = sessions.WINDOWS;
       lastSnap.sessionToBest = sessions.minutesToNextBest(Date.now());
@@ -555,6 +566,8 @@ class AnalysisEngine extends EventEmitter {
       prevPrice: this.lastSnap ? this.lastSnap.price : null,
       analysis: extra.analysis || null,
       council: extra.council || null,
+      // สมุดผลงานของสภา: อัตราชนะจริงของมติ (ตรวจผล 30 นาที) + แยกตามช่วงความมั่นใจ
+      councilStats: extra.councilStats !== undefined ? extra.councilStats : (this.councilStats ? this.councilStats.snapshot() : null),
       signals: extra.signals || [],
       filteredCount: (extra.filtered || []).length,
       filtered: (extra.filtered || []).slice(0, 6),

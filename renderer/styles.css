@@ -506,6 +506,18 @@ code { background: var(--inset); border: 1px solid var(--line-soft); padding: 1p
 .council-note { font-size: 11.5px; color: var(--warn); padding: 8px 2px 0; }
 .council-note.boost { color: var(--up-text, #4fd18b); }
 
+/* สมุดผลงานสภา (council-stats) */
+.council-stats { margin-top: 10px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--line-soft); display: grid; gap: 6px; }
+.council-stats .cstats-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); }
+.council-stats .cstats-row b { font-family: var(--font-num); font-size: 13px; color: var(--text); }
+.council-stats .cstats-row small { color: var(--faint); }
+.council-stats .cstat-chip { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); font-family: var(--font-num); }
+.council-stats .cstat-chip small { margin-left: 4px; opacity: .7; }
+.council-stats .cstat-chip.good { color: var(--up-text); border-color: var(--up-line); background: var(--up-bg); }
+.council-stats .cstat-chip.mid { color: var(--text-2); }
+.council-stats .cstat-chip.bad { color: var(--down-text); border-color: var(--down-line); }
+.council-stats .cband-lbl { margin-right: 2px; }
+
 /* ---------- trading panel ---------- */
 .trade-card { border-color: var(--gold-line); background: linear-gradient(180deg, rgba(217, 180, 106, .06), rgba(217, 180, 106, 0) 160px), var(--surface); }
 .trade-card::before { left: 0; right: 0; background: linear-gradient(90deg, transparent, var(--gold), transparent); opacity: .55; }
