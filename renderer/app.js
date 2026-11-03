@@ -1324,7 +1324,12 @@ if ($('tg-card') && !window.GS_WEB) {
   }));
   $('tg-chat-save').addEventListener('click', run(async () => { await window.api.tgSet({ chatId: $('tg-chat').value.trim() }); toast('บันทึก chat id แล้ว', 'ok'); }));
   $('tg-detect').addEventListener('click', run(async () => {
-    const r = await window.api.tgDetect($('tg-token').value.trim() || null);
+    const btn = $('tg-detect');
+    if (btn.disabled) return;
+    btn.disabled = true; btn.textContent = 'กำลังหา…';
+    let r;
+    try { r = await window.api.tgDetect($('tg-token').value.trim() || null); }
+    finally { btn.disabled = false; btn.textContent = 'หา chat id'; }
     if (!r.chats.length) { $('tg-chat-st').textContent = `ยังไม่เจอแชต — เปิดแชตกับ @${r.bot} แล้วพิมพ์อะไรก็ได้ 1 ข้อความ แล้วกดใหม่`; return; }
     const c = r.chats[0];
     $('tg-chat').value = c.id;

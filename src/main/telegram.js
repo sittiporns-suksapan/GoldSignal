@@ -55,6 +55,7 @@ function createTelegram({ file, logger = () => {}, fetchImpl = (...a) => fetch(.
 
   // ---------- คิวส่ง ----------
   const queue = [];
+  let detecting = false;
   let busy = false, failStreak = 0;
   async function pump() {
     if (busy) return;
@@ -122,8 +123,24 @@ function createTelegram({ file, logger = () => {}, fetchImpl = (...a) => fetch(.
     async detectChat(token) {
       const t = (token && token.trim()) || cfg.token;
       if (!TOKEN_RE.test(t || '')) throw new Error('ใส่ token ให้ถูกก่อน');
-      const me = await api('getMe', {}, t);
-      const ups = await api('getUpdates', { limit: 50, timeout: 0 }, t);
+      if (detecting) throw new Error('กำลังหา chat id อยู่ — รอสักครู่');
+      detecting = true;
+      let me, ups;
+      try {
+        me = await api('getMe', {}, t);
+        // 409 Conflict = มี getUpdates อื่นของ token นี้ค้างอยู่ (กดซ้ำ/โปรแกรมอื่น) → รอแล้วลองใหม่ 3 ครั้ง
+        for (let i = 0; ; i++) {
+          try { ups = await api('getUpdates', { limit: 50, timeout: 0 }, t); break; }
+          catch (err) {
+            if (!/Conflict/i.test(err.message) || i >= 3) {
+              if (/Conflict/i.test(err.message)) throw new Error('มีโปรแกรมอื่นใช้ bot token นี้ดึงข้อความอยู่ (409) — ปิดโปรแกรม/บอทตัวอื่นที่ใช้ token นี้ หรือสร้าง bot ใหม่ แล้วลองอีกครั้ง');
+              if (/webhook/i.test(err.message)) throw new Error('bot นี้ตั้ง webhook ไว้ — ใส่ chat id เอง หรือลบ webhook ก่อน');
+              throw err;
+            }
+            await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+          }
+        }
+      } finally { detecting = false; }
       const chats = [];
       for (const u of ups.reverse()) {
         const m = u.message || u.channel_post || u.my_chat_member;
