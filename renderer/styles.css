@@ -285,6 +285,17 @@ details.more[open] summary { margin-bottom: 10px; }
 .nosig span { color: var(--muted); }
 .nosig-cap { margin-top: 4px; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--gold-line); background: var(--gold-bg); color: var(--warn); font-size: 12px; }
 
+/* โอกาสล่าสุด (แสดงในหน้ายังไม่มีสัญญาณ) */
+.last-signal { margin-bottom: 10px; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line-soft); background: var(--surface-2); }
+.last-signal .ls-head { font-size: 11px; font-weight: 700; color: var(--gold); letter-spacing: .4px; margin-bottom: 8px; display: flex; justify-content: space-between; gap: 10px; }
+.last-signal .sig-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px 10px; }
+.last-signal .sig-cell { display: grid; gap: 2px; min-width: 0; }
+.last-signal .sig-cell small { color: var(--faint); font-size: 9.5px; letter-spacing: .3px; }
+.last-signal .sig-cell b { font-size: 12.5px; font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.last-signal .sig-cell b.up { color: var(--up-text); }
+.last-signal .sig-cell b.down { color: var(--down-text); }
+@media (max-width: 760px) { .last-signal .sig-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
 /* ---------- key-value rows (market / guards / filtered) ---------- */
 .market .rowc, .guards .grow { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
 .market .rowc span:first-child, .guards .grow span { color: var(--muted); }

@@ -383,13 +383,33 @@ function noSignalHtml(snap) {
   const small = minRisk != null && budget > 0 && budget < minRisk
     ? `<div class="nosig-cap">⚠ ทุนที่ใช้คิด $${fmtD(eq, 0)} × ${fmtD(riskPct, 2)}% = เสี่ยงได้ $${fmtD(budget, 2)}/ไม้ แต่ 0.01 ล็อตกับ SL แค่ 1 ATR ($${fmtD(atr, 2)}) ก็เสี่ยง $${fmtD(minRisk, 2)} แล้ว — สัญญาณที่เจอจะถูกปฏิเสธเพราะ SL กว้างเกินทุน</div>`
     : '';
-  return `<div class="empty nosig"><b>ยังไม่มีสัญญาณที่เข้าได้</b><span>${esc(why)}</span></div>${small}`;
+  let last = null;
+  try { last = JSON.parse(localStorage.getItem('gs.lastSignal') || 'null'); } catch { last = null; }
+  const lastHtml = last && Number.isFinite(Number(last.entry))
+    ? `<div class="last-signal">
+         <div class="ls-head">⏱ โอกาสล่าสุด <span class="muted small">${esc(last.pluginName || '')}</span></div>
+         <div class="sig-grid">
+           <div class="sig-cell"><small>เข้าตอน</small><b>${fmtTs(last.ts)}</b></div>
+           <div class="sig-cell"><small>ฝั่ง</small><b class="${last.side === 'buy' ? 'up' : 'down'}">${last.side === 'buy' ? 'ซื้อ BUY' : 'ขาย SELL'}</b></div>
+           <div class="sig-cell"><small>ราคาเข้า</small><b>${r2(last.entry)}</b></div>
+           <div class="sig-cell"><small>Stop Loss</small><b class="down">${r2(last.sl)}</b></div>
+           <div class="sig-cell"><small>Take Profit</small><b class="up">${r2(last.tp)}</b></div>
+           <div class="sig-cell"><small>ความมั่นใจ</small><b>${Math.min(100, Math.max(0, Number(last.confidence) | 0))}%</b></div>
+         </div>
+       </div>`
+    : '';
+  return `${lastHtml}<div class="empty nosig"><b>ยังไม่มีสัญญาณที่เข้าได้</b><span>${esc(why)}</span></div>${small}`;
 }
 
 function renderSignals(snap) {
   const box = $('signals');
   const list = (snap.signals || []).slice(0, 8);
   $('signals-count').textContent = list.length ? `${list.length} โอกาส` : '';
+  // จำโอกาสล่าสุดไว้โชว์ในหน้ายังไม่มีสัญญาณ ("ของล่าสุด")
+  if (list.length) {
+    const s = list[0], m = s.metrics || {};
+    try { localStorage.setItem('gs.lastSignal', JSON.stringify({ side: s.side, entry: s.entry, sl: s.sl, tp: s.tp, confidence: s.confidence, ts: s.ts, pluginName: s.pluginName || s.plugin, lot: m.lot, rr: m.rr })); } catch { void 0; }
+  }
   box.innerHTML = list.length ? list.map(signalCard).join('') : noSignalHtml(snap);
   const f = $('filtered');
   f.innerHTML = (snap.filtered || []).length
@@ -1424,7 +1444,7 @@ if ($('line-card') && !window.GS_WEB) {
   let lineHidden = true;
   try { lineHidden = localStorage.getItem(LINE_HIDE) !== '0'; } catch { void 0; }
   setLineHidden(lineHidden);
-  $('line-toggle').addEventListener('click', () => setLineHidden($('line-body').hidden));
+  $('line-toggle').addEventListener('click', () => setLineHidden(!$('line-body').hidden));
   const run = (fn) => async () => { try { await fn(); } catch (err) { toast('✗ ' + err.message, 'err'); } renderLine(); };
   $('line-token-save').addEventListener('click', run(async () => {
     const t = $('line-token').value.trim();
