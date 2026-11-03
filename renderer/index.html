@@ -532,6 +532,43 @@
             </div>
           </div>
         </div>
+        <div class="card wc-card line-card" id="line-card">
+          <div class="card-head">
+            <h2 class="ct"><svg class="ic"><use href="#i-bolt" /></svg>แจ้งเตือน LINE <span class="ct-sub">เหตุการณ์ชุดเดียวกับ Telegram ส่งเข้า LINE OA</span></h2>
+            <div class="wc-headr">
+              <span id="line-summary" class="wc-summary"></span>
+              <label class="switch-row"><span class="small">เปิดแจ้งเตือน</span><span class="switch"><input type="checkbox" id="line-on" /><span></span></span></label>
+              <button id="line-toggle" class="wc-toggle" aria-expanded="false">แสดง ▾</button>
+            </div>
+          </div>
+          <div id="line-body" class="wc-body" hidden>
+            <section class="wc-sec">
+              <h3 class="wc-h"><span class="wc-n">1</span>เชื่อม LINE OA</h3>
+              <ol class="steps tg-steps">
+                <li><a href="https://developers.line.biz/" target="_blank" class="wc-link-ext">developers.line.biz</a> → สร้าง <b>Provider + Messaging API channel</b></li>
+                <li>แท็บ <b>Messaging API</b> → <b>Channel access token (long-lived)</b> → Issue → คัดลอก</li>
+                <li>สัญญาณรหัส <b>userId</b>: แท็บ Basic settings → <code>Your user ID</code> (ขึ้นต้น U)</li>
+                <li>เพิ่มเพื่อนด้วย QR ในแท็บ Messaging API → กด <b>ส่งทดสอบ</b> เพื่อยืนยัน</li>
+              </ol>
+              <label class="wc-lbl" for="line-token">Channel access token</label>
+              <div class="wc-inline"><input type="password" id="line-token" autocomplete="off" placeholder="วาง channel access token (ยาว เช่น 209 ตัวอักษร)" /><button id="line-token-save" class="wc-btn">บันทึก</button></div>
+              <div id="line-token-st" class="wc-hint"></div>
+              <label class="wc-lbl" for="line-user">User ID</label>
+              <div class="wc-inline"><input type="text" id="line-user" placeholder="เช่น U1234567890abcdef1234567890abcdef" /><button id="line-user-save" class="wc-btn">บันทึก</button></div>
+              <div id="line-user-st" class="wc-hint"></div>
+            </section>
+            <section class="wc-sec">
+              <h3 class="wc-h"><span class="wc-n">2</span>แจ้งเรื่องไหนบ้าง</h3>
+              <div id="line-events" class="tg-events"></div>
+              <p class="muted small">เปิด/ปิดแยกจาก Telegram ชนิดใดก็ได้</p>
+            </section>
+            <div class="wc-foot">
+              <span class="muted small">token เก็บในเครื่องนี้เท่านั้น (หน้าเว็บระยะไกลไม่เห็น) • แจ้งเตือนทำงานเมื่อแอปเปิดอยู่</span>
+              <span class="wc-grow"></span>
+              <button id="line-test" class="wc-btn primary">ส่งทดสอบ</button>
+            </div>
+          </div>
+        </div>
         <div class="card wc-card" id="webctl-card">
           <div class="card-head">
             <h2 class="ct"><svg class="ic"><use href="#i-bolt" /></svg>แผงระยะไกล <span class="ct-sub">เว็บควบคุมเต็ม — หน้าตาและปุ่มเหมือนแอป • รหัสเดียวกันทุกช่องทาง</span></h2>

@@ -50,6 +50,7 @@ src/main/            ส่วนหลังของแอป (Electron main p
   tunnel.js          cloudflared / ngrok / Tailscale Funnel
   pages.js           ลิงก์ถาวร GitHub Pages (ผ่าน gh CLI) + pages-index.html
   telegram.js        แจ้งเตือน Telegram (คิว, rate limit, เลือกเหตุการณ์)
+  line.js            แจ้งเตือน LINE Messaging API (push, คิว, เลือกเหตุการณ์แยกได้)
 src/engine/          สมองวิเคราะห์ (ไม่พึ่ง Electron — ทดสอบด้วย node ได้)
   engine.js          รอบวิเคราะห์ทุก N วินาที → snapshot
   analysis.js        EMA/RSI/ATR/Bollinger หลายไทม์เฟรม + แนวรับ/ต้าน
@@ -186,6 +187,20 @@ xattr -dr com.apple.quarantine /Applications/GoldSignal.app && open -a /Applicat
 - ส่งด้วย `net.fetch` ของ Electron — `fetch` ของ Node ภายใน Electron ต่อ `api.telegram.org` ไม่ได้ในบางเน็ต (ETIMEDOUT)
 - แอปตั้ง `dns.setDefaultResultOrder('ipv4first')` เพราะเน็ตบางบ้าน IPv6 ไปไม่ถึง
 - error `409 Conflict` = มีโปรแกรมอื่นใช้ token เดียวกันดึงข้อความ → ปิดโปรแกรมนั้น หรือใส่ chat id เอง (ถาม @userinfobot)
+
+## 9.1 แจ้งเตือน LINE
+
+1. [developers.line.biz](https://developers.line.biz/) → **Provider** + **Messaging API channel** ใหม่
+2. แท็บ **Messaging API** → **Channel access token (long-lived)** → Issue → คัดลอก token
+3. แอป → แท็บ MT5 → การ์ด **LINE** → วาง token → บันทึก
+4. แท็บ **Basic settings** → `Your user ID` (ขึ้นต้น U + 32 ตัว) → วางในช่อง User ID → บันทึก
+5. เพิ่มเพื่อน OA (QR ในแท็บ Messaging API) → เปิดสวิตช์ → **ส่งทดสอบ**
+6. เลือกเหตุการณ์ที่จะแจ้งแยกจาก Telegram ได้
+
+หมายเหตุเทคนิค:
+- ส่งผ่าน `POST https://api.line.me/v2/bot/message/push` (Bearer token) — คิวห่าง ≥1.4 วิ, ล้มเหลว 3 ครั้ง = ทิ้งข้อความนั้น
+- `401` = token ผิด/หมดอายุ, `400` = userId ไม่ถูก (ต้องเป็น U… หรือ C… + 32 ตัวอักษร)
+- token อยู่ไฟล์ `line.json` (สิทธิ์ 600) เหมือน `telegram.json` — หน้าเว็บระยะไกลอ่าน/แก้ไม่ได้ (IPC `line-get/set/test` อยู่ใน `WEB_BLOCKED`)
 
 ---
 

@@ -19,12 +19,13 @@ const { createWebAuth } = require('./webauth');
 const { createTunnel } = require('./tunnel');
 const pages = require('./pages');
 const { createTelegram } = require('./telegram');
+const { createLine } = require('./line');
 
 // คำสั่งทุกตัวลงทะเบียนที่เดียว: หน้าต่างแอปเรียกผ่าน IPC • หน้าเว็บเรียกผ่าน HTTP (ชุดเดียวกัน ตรวจเกตเดียวกัน)
 const handlers = new Map();
 const handle = (channel, fn) => { handlers.set(channel, fn); ipcMain.handle(channel, fn); };
 // คำสั่งที่ห้ามเรียกจากเว็บ: เปิดหน้าต่าง/กล่องเลือกไฟล์บนเครื่อง + จัดการรหัสเว็บ (ต้องทำที่เครื่องเท่านั้น)
-const WEB_BLOCKED = new Set(['pick-bridge-file', 'open-plugins-dir', 'open-history-window', 'web-access-get', 'web-access-set', 'web-access-logout-all', 'tunnel-start', 'tunnel-stop', 'pages-setup', 'tg-get', 'tg-set', 'tg-detect', 'tg-test']);
+const WEB_BLOCKED = new Set(['pick-bridge-file', 'open-plugins-dir', 'open-history-window', 'web-access-get', 'web-access-set', 'web-access-logout-all', 'tunnel-start', 'tunnel-stop', 'pages-setup', 'tg-get', 'tg-set', 'tg-detect', 'tg-test', 'line-get', 'line-set', 'line-test']);
 
 // ---------- paths ----------
 const isDev = !app.isPackaged;
@@ -199,10 +200,16 @@ function boot() {
   // แจ้งเตือน Telegram (token อยู่ไฟล์แยก — หน้าเว็บอ่าน/แก้ไม่ได้)
   // ใช้ net.fetch (ระบบเครือข่ายของ Chromium เหมือนเบราว์เซอร์) — fetch ของ Node ใน Electron ต่อ api.telegram.org ไม่ได้ในบางเน็ต (ETIMEDOUT)
   const tg = createTelegram({ file: path.join(app.getPath('userData'), 'telegram.json'), logger: engine.pushLog, fetchImpl: (u, o) => net.fetch(u, o) });
+  // แจ้งเตือน LINE (token/userId อยู่ไฟล์แยก เหมือน Telegram)
+  const line = createLine({ file: path.join(app.getPath('userData'), 'line.json'), logger: engine.pushLog, fetchImpl: (u, o) => net.fetch(u, o) });
+  const notify = (ev, text) => { tg.notify(ev, text); line.notify(ev, text); };
   handle('tg-get', () => tg.view());
   handle('tg-set', (_e, p) => tg.set(p || {}));
   handle('tg-detect', (_e, token) => tg.detectChat(token));
   handle('tg-test', () => tg.test());
+  handle('line-get', () => line.view());
+  handle('line-set', (_e, p) => line.set(p || {}));
+  handle('line-test', () => line.test());
   const thTime = (ms = Date.now()) => new Date(ms).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const px = (n) => (Number.isFinite(Number(n)) && Number(n) ? Number(n).toFixed(2) : '-');
   let webUrl = null, web = null;
@@ -292,8 +299,8 @@ function boot() {
   const send = (channel, payload) => {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
     if (web) web.broadcast(channel, payload); // เบราว์เซอร์ที่ล็อกอินอยู่ได้ข้อมูลชุดเดียวกัน
-    if (channel === 'auto-enter') tg.notify(payload && payload.ok ? 'autoTrade' : 'orderFail', `🤖 ${payload && payload.msg}\n${thTime()}`);
-    else if (channel === 'auto-close') tg.notify('autoTrade', `🔒 ${payload && payload.msg}\n${thTime()}`);
+    if (channel === 'auto-enter') notify(payload && payload.ok ? 'autoTrade' : 'orderFail', `🤖 ${payload && payload.msg}\n${thTime()}`);
+    else if (channel === 'auto-close') notify('autoTrade', `🔒 ${payload && payload.msg}\n${thTime()}`);
   };
   const notifiedSet = new Set();
   // แจ้งเตือน macOS ครั้งเดียวต่อ key (กัน spam) — คลิกแล้วเปิดหน้าต่าง
@@ -320,14 +327,14 @@ function boot() {
     for (const r of snap.roundLog || []) {
       if (!(r.ts > tgRoundTs)) continue;
       tgRoundTs = r.ts;
-      if (/^(ลงไม้เสมือน|ปิดไม้เสมือน)/.test(r.action)) tg.notify('virtual', `🧪 ${r.action}\n${r.detail}\n${thTime(r.ts)}`);
+      if (/^(ลงไม้เสมือน|ปิดไม้เสมือน)/.test(r.action)) notify('virtual', `🧪 ${r.action}\n${r.detail}\n${thTime(r.ts)}`);
     }
     for (const s of approved) {
       const tk = `${s.plugin}|${s.side}|${Math.round(s.entry)}`;
       if (!tgSignalSeen.has(tk)) {
         tgSignalSeen.add(tk);
         if (tgSignalSeen.size > 100) tgSignalSeen.clear();
-        tg.notify('signal', `📣 สัญญาณ ${s.side === 'buy' ? 'BUY' : 'SELL'} ${s.confidence}% — ${s.pluginName}\nเข้า ${px(s.entry)} • SL ${px(s.sl)} • TP ${px(s.tp)} • ล็อต ${(s.metrics && s.metrics.lot) || '-'}\n${thTime()}`);
+        notify('signal', `📣 สัญญาณ ${s.side === 'buy' ? 'BUY' : 'SELL'} ${s.confidence}% — ${s.pluginName}\nเข้า ${px(s.entry)} • SL ${px(s.sl)} • TP ${px(s.tp)} • ล็อต ${(s.metrics && s.metrics.lot) || '-'}\n${thTime()}`);
       }
       notifyOnce(`${s.plugin}|${s.side}|${Math.round(s.entry)}`,
         `GoldSignal — ${s.side === 'buy' ? 'BUY' : 'SELL'} SIGNAL ${s.confidence}% พร้อมแล้ว!`,
@@ -746,7 +753,7 @@ function boot() {
     const pt = Math.pow(10, -(meta.digits || 2));
     for (const [t, p] of cur) {
       if (tgKnown.has(t)) continue;
-      tg.notify('realOpen', `🟢 เข้าไม้จริง ${p.type === 'buy' ? 'BUY' : 'SELL'} ${Number(p.volume).toFixed(2)} ล็อต @ ${px(p.open)}\nSL ${px(p.sl)} • TP ${px(p.tp)}\nticket #${t} • ${thTime()}`);
+      notify('realOpen', `🟢 เข้าไม้จริง ${p.type === 'buy' ? 'BUY' : 'SELL'} ${Number(p.volume).toFixed(2)} ล็อต @ ${px(p.open)}\nSL ${px(p.sl)} • TP ${px(p.tp)}\nticket #${t} • ${thTime()}`);
     }
     for (const [t, p] of tgKnown) if (!cur.has(t) && !tgClosing.has(t)) tgClosing.set(t, { p, at: Date.now(), auto: autoCloseBusy.has(t) });
     tgKnown = cur;
@@ -759,7 +766,7 @@ function boot() {
       const profit = h ? Number(h.profit) : Number(p.profit);
       const pts = close != null ? ((p.type === 'buy' ? close - p.open : p.open - close) / pt) : null;
       const why = w.auto ? 'ระบบปิดอัตโนมัติ 🔒' : h ? (REASON_TH[h.reason] || h.reason) : 'ปิดแล้ว';
-      tg.notify('realClose', `${profit >= 0 ? '✅' : '❌'} ปิดไม้ ${p.type === 'buy' ? 'BUY' : 'SELL'} ${Number(p.volume).toFixed(2)} ล็อต @ ${px(p.open)} → ${close != null ? px(close) : '-'} (${why})\n${profit >= 0 ? 'กำไร +' : 'ขาดทุน '}${profit.toFixed(2)} ${cc}${pts != null ? ` (${pts >= 0 ? '+' : ''}${Math.round(pts)} จุด)` : ''}\nticket #${t} • ${thTime()}`);
+      notify('realClose', `${profit >= 0 ? '✅' : '❌'} ปิดไม้ ${p.type === 'buy' ? 'BUY' : 'SELL'} ${Number(p.volume).toFixed(2)} ล็อต @ ${px(p.open)} → ${close != null ? px(close) : '-'} (${why})\n${profit >= 0 ? 'กำไร +' : 'ขาดทุน '}${profit.toFixed(2)} ${cc}${pts != null ? ` (${pts >= 0 ? '+' : ''}${Math.round(pts)} จุด)` : ''}\nticket #${t} • ${thTime()}`);
     }
   }
   setInterval(tgTrackPositions, 2000);
@@ -769,13 +776,13 @@ function boot() {
     const live = engine.connectors.mt5.isLive();
     if (!live) {
       if (tgMt5Down == null) tgMt5Down = Date.now();
-      if (!tgMt5Alerted && Date.now() - tgMt5Down > 60_000) { tgMt5Alerted = true; tg.notify('system', `⚠️ MT5 ไม่อัปเดตข้อมูลเกิน 1 นาที — ตรวจว่า MT5 เปิดอยู่และ EA อยู่บนชาร์ต\n(ไม้ที่เปิดอยู่ยังมี SL/TP ที่โบรกเกอร์)\n${thTime()}`); }
+      if (!tgMt5Alerted && Date.now() - tgMt5Down > 60_000) { tgMt5Alerted = true; notify('system', `⚠️ MT5 ไม่อัปเดตข้อมูลเกิน 1 นาที — ตรวจว่า MT5 เปิดอยู่และ EA อยู่บนชาร์ต\n(ไม้ที่เปิดอยู่ยังมี SL/TP ที่โบรกเกอร์)\n${thTime()}`); }
     } else {
-      if (tgMt5Alerted) tg.notify('system', `✅ MT5 กลับมาเชื่อมต่อแล้ว\n${thTime()}`);
+      if (tgMt5Alerted) notify('system', `✅ MT5 กลับมาเชื่อมต่อแล้ว\n${thTime()}`);
       tgMt5Down = null; tgMt5Alerted = false;
     }
     const ts = tunnel.status();
-    if (ts.state === 'error' && tgTunState !== 'error') tg.notify('system', `⚠️ tunnel ${ts.provider} ล่ม: ${ts.msg}\n${thTime()}`);
+    if (ts.state === 'error' && tgTunState !== 'error') notify('system', `⚠️ tunnel ${ts.provider} ล่ม: ${ts.msg}\n${thTime()}`);
     tgTunState = ts.state;
   }, 10_000);
   let lastQ = null;
@@ -809,10 +816,10 @@ function boot() {
       engine.pushLog('order', `ผล id=${r.id}: ${r.status === 'ok' ? '✅ ทำสำเร็จ' : '❌ ล้มเหลว — ' + r.msg} (retcode ${r.retcode}, ticket ${r.ticket || '-'})`, r.status === 'ok' ? 'info' : 'err');
       send('order-result', r);
       const a = r.cmd && r.cmd.action;
-      if (r.status !== 'ok') tg.notify('orderFail', `❌ คำสั่ง ${a || '-'} ล้มเหลว: ${r.msg} (retcode ${r.retcode})${r.cmd && r.cmd.ticket ? ' • ticket #' + r.cmd.ticket : ''}\n${thTime()}`);
-      else if (a === 'limit' || a === 'stop') tg.notify('pending', `⏳ วางคำสั่งรอ ${String(r.cmd.side).toUpperCase()} ${a.toUpperCase()} ล็อต ${r.cmd.lot} @ ${px(r.cmd.entry)} • SL ${px(r.cmd.sl)} • TP ${px(r.cmd.tp)}\nticket #${r.ticket || '-'} • ${thTime()}`);
-      else if (a === 'cancel') tg.notify('pending', `🗑 ยกเลิกคำสั่งรอ #${r.cmd.ticket}\n${thTime()}`);
-      else if (a === 'pmodify' || a === 'modify') tg.notify('pending', `✏️ แก้${a === 'pmodify' ? 'คำสั่งรอ' : ' SL/TP ไม้'} #${r.cmd.ticket}: SL ${px(r.cmd.sl)} • TP ${px(r.cmd.tp)}${a === 'pmodify' ? ' • ราคา ' + px(r.cmd.entry) : ''}\n${thTime()}`);
+      if (r.status !== 'ok') notify('orderFail', `❌ คำสั่ง ${a || '-'} ล้มเหลว: ${r.msg} (retcode ${r.retcode})${r.cmd && r.cmd.ticket ? ' • ticket #' + r.cmd.ticket : ''}\n${thTime()}`);
+      else if (a === 'limit' || a === 'stop') notify('pending', `⏳ วางคำสั่งรอ ${String(r.cmd.side).toUpperCase()} ${a.toUpperCase()} ล็อต ${r.cmd.lot} @ ${px(r.cmd.entry)} • SL ${px(r.cmd.sl)} • TP ${px(r.cmd.tp)}\nticket #${r.ticket || '-'} • ${thTime()}`);
+      else if (a === 'cancel') notify('pending', `🗑 ยกเลิกคำสั่งรอ #${r.cmd.ticket}\n${thTime()}`);
+      else if (a === 'pmodify' || a === 'modify') notify('pending', `✏️ แก้${a === 'pmodify' ? 'คำสั่งรอ' : ' SL/TP ไม้'} #${r.cmd.ticket}: SL ${px(r.cmd.sl)} • TP ${px(r.cmd.tp)}${a === 'pmodify' ? ' • ราคา ' + px(r.cmd.entry) : ''}\n${thTime()}`);
     }
   }
   // โพล fallback ทุก 250ms — เร็วเท่าจังหวะที่ EA เขียนราคา (ครอบคลุมถ้า watch ใช้ไม่ได้บนเครื่องนั้น)
@@ -829,7 +836,7 @@ function boot() {
       const msg = `คำสั่ง id=${c.id} (${c.action}) หมดอายุ — MT5 ไม่ได้หยิบภายใน 15 วิ จึงยกเลิกแล้ว ไม่มีไม้เข้า • สาเหตุที่พบบ่อย: (1) EA ตั้ง AllowOrders = false (2) ปุ่ม AutoTrading ใน MT5 ยังไม่เขียว (3) MT5/ตลาดปิดอยู่`;
       engine.pushLog('order', msg, 'warn');
       send('order-result', { id: c.id, status: 'stale', msg, cmd: c });
-      tg.notify('orderFail', `⏳ ${msg}\n${thTime()}`);
+      notify('orderFail', `⏳ ${msg}\n${thTime()}`);
     }
   }, 2000);
   handle('pick-bridge-file', async () => {

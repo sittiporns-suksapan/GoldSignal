@@ -1400,6 +1400,53 @@ if ($('tg-card') && !window.GS_WEB) {
   renderTg();
 }
 
+/* ---------- แจ้งเตือน LINE (ตั้งค่าได้เฉพาะในแอปบนเครื่อง) ---------- */
+async function renderLine() {
+  const card = $('line-card');
+  if (!card) return;
+  if (window.GS_WEB) { card.hidden = true; return; }
+  let v;
+  try { v = await window.api.lineGet(); } catch { return; }
+  $('line-on').checked = !!v.enabled;
+  const nEv = Object.values(v.events).filter((e) => e.on).length;
+  $('line-summary').innerHTML = [
+    `<span class="wc-chip ${v.enabled ? 'on' : 'err'}">${v.enabled ? '🔔 แจ้งเตือนเปิด' : '🔕 ปิดอยู่'}</span>`,
+    `<span class="wc-chip ${v.tokenSet && v.userId ? 'on' : ''}">${v.tokenSet && v.userId ? 'เชื่อม LINE แล้ว' : 'ยังไม่เชื่อม LINE'}</span>`,
+    `<span class="wc-chip">${nEv} เรื่อง</span>`,
+  ].join('');
+  $('line-token-st').textContent = v.tokenSet ? `✓ ตั้งแล้ว (${v.tokenHint})` : 'ยังไม่ได้ใส่ token';
+  if (document.activeElement !== $('line-user')) $('line-user').value = v.userId || '';
+  $('line-events').innerHTML = Object.entries(v.events).map(([k, e]) => `<label><input type="checkbox" data-line-ev="${esc(k)}"${e.on ? ' checked' : ''} />${esc(e.label)}</label>`).join('');
+}
+if ($('line-card') && !window.GS_WEB) {
+  const LINE_HIDE = 'gs.line.hidden';
+  const setLineHidden = (h) => { $('line-body').hidden = h; $('line-toggle').textContent = h ? 'แสดง ▾' : 'ซ่อน ▴'; $('line-toggle').setAttribute('aria-expanded', String(!h)); try { localStorage.setItem(LINE_HIDE, h ? '1' : '0'); } catch { void 0; } };
+  let lineHidden = true;
+  try { lineHidden = localStorage.getItem(LINE_HIDE) !== '0'; } catch { void 0; }
+  setLineHidden(lineHidden);
+  $('line-toggle').addEventListener('click', () => setLineHidden($('line-body').hidden));
+  const run = (fn) => async () => { try { await fn(); } catch (err) { toast('✗ ' + err.message, 'err'); } renderLine(); };
+  $('line-token-save').addEventListener('click', run(async () => {
+    const t = $('line-token').value.trim();
+    if (!t) throw new Error('วาง token ก่อน');
+    await window.api.lineSet({ token: t });
+    $('line-token').value = '';
+    toast('🔑 บันทึก token แล้ว', 'ok');
+  }));
+  $('line-user-save').addEventListener('click', run(async () => { await window.api.lineSet({ userId: $('line-user').value.trim() }); toast('บันทึก userId แล้ว', 'ok'); }));
+  $('line-on').addEventListener('change', run(async () => {
+    const on = $('line-on').checked;
+    try { await window.api.lineSet({ enabled: on }); } catch (e) { $('line-on').checked = false; throw e; }
+    toast(on ? '🔔 เปิดแจ้งเตือน LINE แล้ว' : 'ปิดแจ้งเตือน LINE แล้ว', 'ok');
+  }));
+  $('line-events').addEventListener('change', run(async (e) => {
+    const ev = Object.fromEntries([...document.querySelectorAll('[data-line-ev]')].map((x) => [x.dataset.lineEv, x.checked]));
+    await window.api.lineSet({ events: ev });
+  }));
+  $('line-test').addEventListener('click', run(async () => { await window.api.lineTest(); toast('📨 ส่งข้อความทดสอบแล้ว — ดูใน LINE', 'ok'); }));
+  renderLine();
+}
+
 /* ---------- ช่องกรอกราคา: ทศนิยมตาม digits ของโบรกเกอร์ + ปรับละเอียดด้วยลูกศร ----------
    ออกจากช่อง = จัดรูปเป็นทศนิยม 2 ตำแหน่ง (เช่น 3930 → 3930.00)
    ↑/↓ = ±0.01 • Shift+↑/↓ = ±0.10 • Alt/Option+↑/↓ = ±1.00 • ช่องราคาเข้าว่าง + กด ↑/↓ = เริ่มจากราคาตลาด */
