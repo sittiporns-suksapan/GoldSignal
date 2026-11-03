@@ -34,9 +34,14 @@ function createTelegram({ file, logger = () => {}, fetchImpl = (...a) => fetch(.
   const ready = () => cfg.enabled === true && TOKEN_RE.test(cfg.token || '') && String(cfg.chatId || '').length > 0;
 
   async function api(method, body, token = cfg.token) {
-    const res = await fetchImpl(`${API}/bot${token}/${method}`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}),
-    });
+    let res;
+    try {
+      res = await fetchImpl(`${API}/bot${token}/${method}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}), signal: AbortSignal.timeout(15_000),
+      });
+    } catch (e) {
+      throw new Error(`ติดต่อ Telegram ไม่ได้ (${(e.cause && (e.cause.code || e.cause.message)) || e.message}) — ตรวจอินเทอร์เน็ต`);
+    }
     let j = null;
     try { j = await res.json(); } catch { void 0; }
     if (!j || !j.ok) {

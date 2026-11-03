@@ -4,6 +4,8 @@ const { app, BrowserWindow, ipcMain, shell, dialog, Notification, powerSaveBlock
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+// เน็ตบางบ้าน IPv6 ไปไม่ถึงปลายทาง (เช่น api.telegram.org = EHOSTUNREACH) แต่ fetch เลือก IPv6 ก่อนแล้วค้างจน timeout → ใช้ IPv4 ก่อนเสมอ
+require('dns').setDefaultResultOrder('ipv4first');
 
 const { AnalysisEngine } = require('../engine/engine');
 const { PluginLoader } = require('../engine/plugins');
