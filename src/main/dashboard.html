@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GoldSignal — แดชบอร์ด (ดูเท่านั้น)</title>
+<style>
+  :root { --bg:#0b111c; --bg2:#111a2b; --line:#232f47; --text:#dfe7f5; --muted:#8ea0c0; --gold:#f0b429; }
+  * { box-sizing:border-box } body { margin:0 auto; background:var(--bg); color:var(--text); font:14px/1.55 'Sukhumvit Set','Thonburi',system-ui,sans-serif; padding:14px; max-width:760px; }
+  h1 { font-size:18px; margin:0 0 2px } .gold { color:var(--gold) }
+  .sub { color:var(--muted); font-size:12px; margin-bottom:10px }
+  .card { background:var(--bg2); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:10px }
+  .card h3 { font-size:13px; margin:0 0 8px; color:var(--muted); font-weight:600; letter-spacing:.3px }
+  .row { display:flex; justify-content:space-between; gap:8px; padding:3px 0; font-variant-numeric:tabular-nums; align-items:baseline }
+  .up { color:#7ee2ab } .down { color:#ff8896 } .muted { color:var(--muted) }
+  .price { font-size:26px; font-weight:700 }
+  .chip { padding:2px 10px; border-radius:999px; font-size:11px; border:1px solid var(--line); color:var(--muted) }
+  .chip.armed { color:#f0b429; border-color:#f0b429; font-weight:700 }
+  .vote { display:flex; align-items:center; gap:8px; padding:3px 0; font-size:13px }
+  .vbar { flex:1; height:8px; background:#0b111c; border:1px solid var(--line); border-radius:99px; overflow:hidden }
+  .vbar > i { display:block; height:100%; background:#37476b }
+  .vbar .buy > span, .vbar i.buy { background:#22c07a } .vbar i.sell { background:#ef5b6b }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; font-size:12.5px }
+  th { color:var(--muted); font-weight:500; text-align:left; border-bottom:1px solid var(--line); padding:4px 6px }
+  td { padding:4px 6px; border-bottom:1px dashed var(--line) }
+  .banner { background:#17203a; color:var(--muted); border-radius:10px; padding:8px 12px; font-size:12px; margin-bottom:10px }
+  .comm div { padding:2px 0; border-bottom:1px dashed var(--line); font-size:13px }
+</style></head><body>
+<h1><span class="gold">GoldSignal</span> — แดชบอร์ด</h1>
+<div class="sub">ข้อมูลชุดเดียวกับแอปในเครื่องนี้ • รีเฟรชทุก 2 วิ</div>
+<div class="banner">👁 โหมดดูเท่านั้น — ส่งคำสั่งจริง/สวิตช์ต่าง ๆ ทำได้เฉพาะในแอป GoldSignal เท่านั้น</div>
+<div class="card"><h3>ราคาสด</h3>
+  <div class="row"><span class="price" id="price">—</span><span class="muted" id="source"></span></div>
+  <div class="row"><span>BID / ASK</span><b id="ba">—</b></div>
+  <div class="row"><span>เซสชัน</span><b id="sess">—</b></div>
+</div>
+<div class="card"><h3>บัญชีจริง (MT5)</h3><div id="acct" class="muted">ยังรอข้อมูล...</div></div>
+<div class="card"><h3>สภาเอเจนต์ 7 คน</h3><div id="council" class="muted">ยังรอข้อมูล...</div></div>
+<div class="card"><h3>จุดรอเข้า</h3><div id="zones" class="muted">ยังรอข้อมูล...</div></div>
+<div class="card"><h3>สัญญาณพร้อม</h3><div id="signals" class="muted">ยังรอข้อมูล...</div></div>
+<div class="card"><h3>ไม้ที่เปิดอยู่</h3><div id="positions" class="muted">ยังรอข้อมูล...</div></div>
+<div class="card"><h3>ไม้จริง — สรุปรายวัน + ล่าสุด 5 ไม้</h3><div id="realhist" class="muted">ยังรอข้อมูล...</div></div>
+<div class="card"><h3>ผู้ช่วยบรรยาย</h3><div class="comm" id="comm" class="muted">ยังรอข้อมูล...</div></div>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+const f = (n, d = 2) => Number.isFinite(n) ? n.toFixed(d) : '—';
+const mon = (v, cur, signed = false) => !Number.isFinite(v) ? '—' : (cur === 'USD' ? (signed && v > 0 ? '+' : '') + '$' + Math.abs(v).toFixed(2) : ((signed && v > 0 ? '+' : '') + Math.abs(v).toFixed(2) + ' ' + cur));
+let cur = 'USD';
+const chipOf = (s) => `<span class="chip ${s.status || ''}">${{ armed: 'HIT!', waiting: 'WAIT', blocked: 'CANCELLED', danger: 'NO ENTRY' }[s.status] || '-'}</span>`;
+async function tick() {
+  let j;
+  try { j = await (await fetch('/api/snapshot.json')).json(); } catch { return; }
+  if (!j || j.ok === false) return;
+  const meta = j.meta || {}, a = meta.account || {}, sess = j.session || {}, c = j.council || {}, g = j.guard || {};
+  cur = a.currency || 'USD';
+  $('price').textContent = Number.isFinite(j.price) ? j.price.toFixed(meta.digits || 2) : '—';
+  $('source').textContent = j.source || '';
+  $('ba').textContent = f(meta.bid, meta.digits || 2) + ' / ' + f(meta.ask, meta.digits || 2);
+  $('sess').textContent = (sess.label || '—') + ' (' + (sess.quality || '-') + ')';
+  if (a && Number.isFinite(a.balance)) {
+    const fl = a.equity - a.balance;
+    const usd = a.currency !== 'USD' && Number.isFinite(a.equityUSD) ? ' ≈ $' + f(a.equityUSD, 0) : '';
+    $('acct').innerHTML =
+      '<div class="row"><span>' + esc(a.name || '') + ' #' + esc(a.login || '') + ' @ ' + esc(a.server || '') + '</span></div>' +
+      '<div class="row"><span>ทุน</span><b>' + mon(a.balance, cur) + usd + '</b></div>' +
+      '<div class="row"><span>สุทธิ</span><b class="' + (fl >= 0 ? 'up' : 'down') + '">' + mon(a.equity, cur) + '</b></div>' +
+      '<div class="row"><span>ลอยตัว</span><b class="' + (fl >= 0 ? 'up' : 'down') + '">' + mon(fl, cur, true) + '</b></div>' +
+      '<div class="row"><span>เกตคำสั่ง</span><b>' + (a.ordersAllowed ? 'AllowOrders ✓' : '✗') + ' • ' + (a.algoTrading ? 'AutoTrading ✓' : '✗') + ' • โควตา ' + (g.dailyCount || 0) + '+' + (g.manualCount || 0) + '/' + (g.maxPerDay || '-') + (g.newsStop ? ' • หยุดข่าว ⚠' : '') + '</b></div>';
+  }
+  if (c.votes) {
+    const head = '<div class="row"><span>มติรวม</span><b class="' + (c.side === 'buy' ? 'up' : c.side === 'sell' ? 'down' : 'muted') + '">' + (c.side === 'none' ? 'ไม่มีมติ' : (c.side === 'buy' ? 'ซื้อ ' : 'ขาย ') + c.confidence + '%') + '</b><span class="muted">' + esc(c.agree != null ? 'เห็นพ้อง ' + c.agree + '/' + c.quorumNeed : '') + ' • เกณฑ์ 70% ' + (c.confidence >= 70 ? '✓ ผ่าน' : '— ยังไม่ถึง') + '</span></div>';
+    $('council').innerHTML = head + c.votes.map((x) => {
+      const w = Math.max(0, Math.min(100, x.conf || 0));
+      return '<div class="vote"><span style="min-width:120px">' + esc(x.name || x.agent || '') + '</span><span style="min-width:64px;color:' + (x.side === 'buy' ? '#7ee2ab' : x.side === 'sell' ? '#ff8896' : 'var(--muted)') + '">' + (x.side || '-') + ' ' + (x.conf || 0) + '%</span><span class="vbar"><i class="' + (x.side || '') + '" style="width:' + w + '%"></i></span></div>';
+    }).join('');
+  }
+  const p = j.entryPlan || {};
+  $('zones').innerHTML = ['buy', 'sell'].map((s) => {
+    const z = p[s]; if (!z) return '';
+    const dist = s === 'buy' ? (j.price > z.top ? j.price - z.top : (j.price < z.bottom ? z.bottom - j.price : 0)) : (j.price < z.bottom ? z.bottom - j.price : (j.price > z.top ? j.price - z.top : 0));
+    return '<div class="row"><span>' + (s === 'buy' ? 'BUY ZONE' : 'SELL ZONE') + ' ' + f(z.bottom) + '–' + f(z.top) + '</span>' + chipOf(z) + '<span class="muted">' + (z.status === 'armed' ? 'ราคาในโซน' : 'ห่าง $' + f(Math.max(0, dist))) + '</span></div>';
+  }).join('') || '<span class="muted">ยังไม่มีโซนใกล้</span>';
+  const sigs = (j.signals || []).filter((x) => !x.held);
+  $('signals').innerHTML = sigs.length ? sigs.map((x) =>
+    '<div class="row"><span class="' + (x.side === 'buy' ? 'up' : 'down') + '"><b>' + (x.side === 'buy' ? 'BUY' : 'SELL') + '</b> ' + x.confidence + '% @ ' + f(x.entry) + '</span><span>SL ' + f(x.sl) + ' • TP ' + f(x.tp) + ' • ล็อต ' + (x.metrics && x.metrics.lot ? f(x.metrics.lot, 2) : '—') + (x.riskScore != null ? ' • เสี่ยง ' + x.riskScore : '') + '</span></div>'
+  ).join('') : '<span class="muted">ยังไม่มี — มติสภายังไม่ถึงเกณฑ์</span>';
+  const ps = meta.positions || [];
+  $('positions').innerHTML = ps.length
+    ? '<table><tr><th>ฝั่ง</th><th>ล็อต</th><th>เข้า</th><th>SL</th><th>TP</th><th>ลอยตัว</th></tr>' + ps.map((x) =>
+        '<tr><td class="' + (x.type === 'buy' ? 'up' : 'down') + '">' + (x.type === 'buy' ? 'BUY' : 'SELL') + '</td><td>' + f(x.volume, 2) + '</td><td>' + f(x.open) + '</td><td>' + f(x.sl) + '</td><td>' + f(x.tp) + '</td><td class="' + (x.profit >= 0 ? 'up' : 'down') + '">' + mon(x.profit, cur, true) + '</td></tr>').join('') + '</table>'
+    : '<span class="muted">ไม่มี</span>';
+  const h = Array.isArray(meta.history) ? meta.history : null;
+  if (h) {
+    const by = {};
+    for (const t of h) {
+      if (!Number.isFinite(t.time)) continue;
+      const d = new Date(t.time);
+      const k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const g = by[k] || (by[k] = { n: 0, w: 0, l: 0, s: 0 });
+      g.n++; if (t.profit > 0) g.w++; else if (t.profit < 0) g.l++; g.s += t.profit;
+    }
+    const days = Object.entries(by).sort((x, y) => (x[0] < y[0] ? 1 : -1)).slice(0, 3);
+    $('realhist').innerHTML = days.map(([k, gg]) => '<div class="row"><span>' + k + '</span><b><span class="muted">' + gg.n + ' ไม้ • ชนะ ' + gg.w + ' • แพ้ ' + gg.l + ' •</span> <span class="' + (gg.s >= 0 ? 'up' : 'down') + '">' + mon(gg.s, cur, true) + '</span></b></div>').join('')
+      + h.slice(0, 5).map((t) => '<div class="row"><span class="muted">' + new Date(t.time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' ' + (t.type === 'buy' ? 'BUY' : 'SELL') + '</span><span>' + f(t.volume, 2) + ' ล็อต • ' + f(t.open) + ' → ' + f(t.close) + '</span><b class="' + (t.profit >= 0 ? 'up' : 'down') + '">' + mon(t.profit, cur, true) + ' (' + esc(t.reason) + ')</b></div>').join('');
+  }
+  const cm = j.commentary && j.commentary.lines;
+  if (cm) {
+    const feed = (j.commentaryFeed || []).slice(-5).reverse().slice(1).map((e) => e && e.lines && e.lines[0] ? '<div class="muted" style="font-size:11px">' + new Date(e.ts).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' — ' + esc(e.lines[0]) + '</div>' : '').join('');
+    $('comm').innerHTML = cm.map((l) => '<div>' + esc(l) + '</div>').join('') + feed;
+  }
+}
+tick();
+setInterval(tick, 2000);
+</script></body></html>

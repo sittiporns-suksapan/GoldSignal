@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>GoldSignal — วิเคราะห์ทองความเสี่ยงต่ำ</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ชุดไอคอนเส้น (ใช้ซ้ำผ่าน <use>) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="g-gold" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#f7e6b0" /><stop offset=".5" stop-color="#d9b46a" /><stop offset="1" stop-color="#9f7b3b" />
+      </linearGradient>
+    </defs>
+    <symbol id="i-logo" viewBox="0 0 32 32"><path d="M16 2.5 29.5 16 16 29.5 2.5 16Z" fill="none" stroke="url(#g-gold)" stroke-width="1.6" /><path d="M16 8.5 23.5 16 16 23.5 8.5 16Z" fill="url(#g-gold)" /></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 13h4v8H3zM10 8h4v13h-4zM17 3h4v18h-4z" /></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6Z" /><path d="m9 12 2.2 2.2L15.5 10" /></symbol>
+    <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M10 4a2 2 0 1 1 4 0v2h4v4h-2a2 2 0 1 0 0 4h2v4h-4v-2a2 2 0 1 0-4 0v2H6v-4h2a2 2 0 1 0 0-4H6V6h4Z" /></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0ZM12 17v4" /></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" /></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" /></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M7 4v16M7 8h-2v6h2M7 8h2v6H7M17 6v14M17 10h-2v5h2M17 10h2v5h-2M12 3v18M12 7h-2v8h2M12 7h2v8h-2" /></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r=".6" /></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6" /></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7Z" /></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z" /><circle cx="12" cy="10" r="2.3" /></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14a6.5 6.5 0 0 1 3.5 6" /></symbol>
+    <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4" /></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4 7h15a1 1 0 0 1 1 1v11H5a1 1 0 0 1-1-1V6a2 2 0 0 1 2-2h11v3" /><path d="M16 13h.01" /></symbol>
+    <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="m15.5 8.5-2 5-5 2 2-5Z" /></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" /></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 2.5 20h19Z" /><path d="M12 10v4.5M12 17.5h.01" /></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5ZM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5" /></symbol>
+  </svg>
+
+  <header id="topbar">
+    <div class="brand">
+      <svg class="logo" aria-hidden="true"><use href="#i-logo" /></svg>
+      <div class="brand-txt">
+        <h1>Gold<span>Signal</span></h1>
+        <small>XAU/USD Intelligence • ความเสี่ยงล็อคในโค้ด</small>
+      </div>
+    </div>
+
+    <nav id="tabs" role="tablist" aria-label="เมนูหลัก">
+      <button data-tab="home" class="active" role="tab"><svg class="ic"><use href="#i-home" /></svg><span>ภาพรวม</span></button>
+      <button data-tab="risk" role="tab" title="ความเสี่ยง &amp; ตั้งค่า"><svg class="ic"><use href="#i-shield" /></svg><span>ความเสี่ยง</span></button>
+      <button data-tab="plugins" role="tab"><svg class="ic"><use href="#i-puzzle" /></svg><span>กลยุทธ์</span></button>
+      <button data-tab="mt5" role="tab"><svg class="ic"><use href="#i-plug" /></svg><span>MT5</span></button>
+      <button data-tab="logs" role="tab"><svg class="ic"><use href="#i-list" /></svg><span>บันทึก</span></button>
+    </nav>
+
+    <div class="topright">
+      <div class="ticker" aria-live="polite">
+        <span class="ticker-label">XAUUSD</span>
+        <span id="price">—</span>
+        <span id="price-delta" class="delta"></span>
+      </div>
+      <div class="conn">
+        <span id="conn-badge" class="badge">กำลังเชื่อมต่อ...</span>
+        <select id="source-sel" title="แหล่งข้อมูล" aria-label="แหล่งข้อมูลราคา">
+          <option value="auto">อัตโนมัติ (MT5 → ฟรี)</option>
+          <option value="mt5">MT5 เท่านั้น</option>
+          <option value="yahoo">ข้อมูลฟรีเท่านั้น</option>
+        </select>
+        <button id="btn-refresh" class="icon-btn" title="อัปเดตทันที" aria-label="อัปเดตทันที"><svg class="ic"><use href="#i-refresh" /></svg></button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- แถบสถานะรวม (โชว์ทุกแท็บ): สถานะระบบ + ตัวเลขหลักที่ต้องรู้ในแวบเดียว -->
+    <section class="hero" aria-live="polite">
+      <div class="standby" id="standby">
+        <span id="sb-chip" class="sb-chip">—</span>
+        <div class="sb-body">
+          <span id="sb-session" class="sb-session"></span>
+          <span id="sb-notes" class="sb-notes"></span>
+        </div>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><svg class="ic"><use href="#i-compass" /></svg><div><small>แนวโน้มรวม</small><b id="kpi-bias">—</b></div></div>
+        <div class="kpi"><svg class="ic"><use href="#i-users" /></svg><div><small>มติทีมเอเจนต์</small><b id="kpi-council">—</b></div></div>
+        <div class="kpi"><svg class="ic"><use href="#i-target" /></svg><div><small>โควตาวันนี้</small><b id="kpi-quota">—</b></div></div>
+        <div class="kpi"><svg class="ic"><use href="#i-wallet" /></svg><div><small>ทุนสุทธิ</small><b id="kpi-equity">—</b></div></div>
+      </div>
+    </section>
+
+    <!-- ============ HOME ============ -->
+    <section id="tab-home" class="tab active">
+      <div class="grid-main">
+        <div class="col-left">
+          <div class="card card-chart" id="chart-card">
+            <div class="card-head chart-head">
+              <h2 class="ct"><svg class="ic"><use href="#i-chart" /></svg>ชาร์ต XAUUSD</h2>
+              <span id="tf-buttons" class="seg-ctl" role="group" aria-label="ไทม์เฟรม">
+                <button data-tf="M1">M1</button><button data-tf="M5" class="active">M5</button><button data-tf="M15">M15</button><button data-tf="M30">M30</button><button data-tf="H1">H1</button><button data-tf="H4">H4</button><button data-tf="D1">D1</button>
+              </span>
+              <span id="chart-sub" class="muted small"></span>
+              <span class="seg-ctl push-right" role="group" aria-label="ซูม">
+                <button id="z-in" title="ซูมเข้า" aria-label="ซูมเข้า">＋</button>
+                <button id="z-out" title="ซูมออก" aria-label="ซูมออก">－</button>
+                <button id="z-fit" title="พอดีจอ" aria-label="พอดีจอ">⤢</button>
+                <button id="z-live" title="ไปแท่งล่าสุด">ล่าสุด ▸</button>
+                <button id="z-lines" title="แสดง/ซ่อนเส้นแนวรับ-ต้านและโซนบนชาร์ต">เส้น</button>
+                <button id="z-ladder" title="แสดง/ซ่อนแผงระดับราคาด้านขวา (ซ่อน = ชาร์ตกว้างขึ้น)">แผง</button>
+              </span>
+            </div>
+            <div id="data-alert" class="data-alert" style="display:none"></div>
+            <!-- ชาร์ตสะอาด (เส้นบาง ไม่มีป้ายบนแกน) + บันไดราคาด้านข้างบอกทุกระดับพร้อมระยะห่างสด -->
+            <div class="chart-body" id="chart-body">
+              <div id="chart"></div>
+              <aside id="ladder" class="ladder" aria-label="ระดับราคาสำคัญ"></aside>
+            </div>
+            <div class="zone-legend">
+              <span><i class="lg lg-res"></i>แนวต้าน</span>
+              <span><i class="lg lg-danger"></i>ใกล้ต้าน — ห้ามไล่</span>
+              <span><i class="lg lg-zsell"></i>โซนขาย</span>
+              <span><i class="lg lg-zbuy"></i>โซนซื้อ</span>
+              <span><i class="lg lg-sup"></i>แนวรับ</span>
+              <span><i class="lg lg-ema20"></i>EMA20</span>
+              <span><i class="lg lg-ema50"></i>EMA50</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-spark" /></svg>โอกาสที่ผ่านกฎความเสี่ยง</h2><span id="signals-count" class="pill"></span></div>
+            <div id="signals" class="signals"><div class="empty">ยังไม่มีสัญญาณ — ระบบจะแจ้งเมื่อเงื่อนไขกลยุทธ์และกฎความเสี่ยงตรงกัน</div></div>
+          </div>
+
+          <div class="card" id="history-card">
+            <div class="card-head">
+              <h2 class="ct"><svg class="ic"><use href="#i-list" /></svg>ประวัติการเทรด</h2>
+              <span id="hist-tabs" class="seg-ctl hist-tabs" role="tablist" aria-label="ประเภทประวัติ">
+                <button data-h="real" class="active" role="tab">ไม้จริง (MT5)<span id="hist-real-n" class="seg-n"></span></button>
+                <button data-h="sim" role="tab">ไม้จำลอง<span id="hist-sim-n" class="seg-n"></span></button>
+              </span>
+            </div>
+            <div id="hist-real" class="hist-pane">
+              <p class="hist-note">ไม้ที่เข้าบัญชี MT5 จริงและปิดแล้ว (TP / SL / ปิดเอง) — เงินจริง</p>
+              <div id="realhist" class="realhist"></div>
+            </div>
+            <div id="hist-sim" class="hist-pane" hidden>
+              <p class="hist-note">ไม้จำลอง = ระบบเปิดสมมติเมื่อราคาแตะจุดรอเข้า (ฝั่งละ 1 ไม้) เพื่อวัดผลกลยุทธ์ — <b>ไม่ใช้เงินจริง</b></p>
+              <div id="zonehist" class="zh"></div>
+            </div>
+          </div>
+
+          <div class="card" id="commentary-card">
+            <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-book" /></svg>ผู้ช่วยเทรด</h2><span id="commentary-ts" class="muted small"></span></div>
+            <div id="commentary" class="commentary"></div>
+            <details class="more" id="commentary-more">
+              <summary>ประวัติบรรยาย</summary>
+              <div id="commentary-feed" class="comm-feed"></div>
+            </details>
+          </div>
+        </div>
+
+        <div class="col-right">
+          <div class="card trade-card">
+            <div class="card-head">
+              <h2 class="ct"><svg class="ic"><use href="#i-bolt" /></svg>ส่งคำสั่ง <span class="ct-sub">ราคาสด MT5</span></h2>
+              <div class="switches">
+                <label class="switch-row" title="เปิด = ระบบเข้าไม้เองทันทีเมื่อไม้ผ่านทุกเกต (มติสภา 70% + เสี่ยงน้อยสุด + โควตา 3 ไม้/วัน + เพดาน 2% ทุนจริง + SL บังคับ) • ปิด = ระบบเด้งหน้ายืนยันรอคุณกด (รอสุด 15 นาที ถ้าเงื่อนไขเปลี่ยนจะยกเลิกให้เอง)">
+                  <span class="small">เข้าอัตโนมัติ</span>
+                  <span class="switch"><input type="checkbox" id="t-auto" /><span></span></span>
+                </label>
+                <label class="switch-row real" title="ต้องเปิดก่อนจึงส่งไม้จริงได้ + ยืนยัน 2 ชั้นทุกไม้">
+                  <span class="small">ส่งออร์เดอร์จริง</span>
+                  <span class="switch"><input type="checkbox" id="t-real" /><span></span></span>
+                </label>
+              </div>
+            </div>
+            <div id="trade-live" class="trade">
+              <div class="traderow">
+                <button class="tside sell" id="t-sell"><small>SELL</small><span id="t-bid">—</span></button>
+                <div class="tmid">
+                  <label>ล็อต <input type="number" id="t-lot" min="0.01" step="0.01" value="0.01" /></label>
+                  <label>SL <input type="number" id="t-sl" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = คิดจาก ATR ตามฝั่งที่กด" /></label>
+                  <label>TP <input type="number" id="t-tp" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = คิดจาก ATR ตามฝั่งที่กด (ใส่ 0 = ไม่ตั้ง TP)" /></label>
+                </div>
+                <button class="tside buy" id="t-buy"><small>BUY</small><span id="t-ask">—</span></button>
+              </div>
+              <div class="tradeinfo" id="t-info">—</div>
+            </div>
+            <div id="acct-line" class="acctline">—</div>
+            <div id="positions" class="positions"></div>
+            <div id="closeall-row" class="closeall-row" hidden>
+              <span id="closeall-hint" class="closeall-hint"></span>
+              <button id="btn-close-all" class="danger" title="ปิดทุกไม้ XAUUSD ที่เปิดอยู่ ณ ราคาตลาด (มีหน้ายืนยันก่อนส่ง)">ปิดทุกไม้</button>
+            </div>
+            <div id="autoclose-box" class="autoclose">
+              <div class="ac-head">ปิดอัตโนมัติเพื่อเซฟกำไร <span class="small muted">— ดูราคาสดทุกทิค ส่งปิดทันทีเมื่อถึงเป้า</span></div>
+              <div class="ac-row">
+                <label class="switch-row" title="กำไรลอยตัวรวมทุกไม้ XAUUSD ถึงเป้า = ปิดทุกไม้ทันที (ไม้ที่ติดลบอยู่ก็ปิดด้วย)">
+                  <span class="switch"><input type="checkbox" id="ac-all" /><span></span></span>
+                  <span class="small">ปิดรวบทุกไม้ เมื่อกำไรรวม ≥</span>
+                </label>
+                <input type="number" id="ac-all-v" min="0.01" step="1" />
+                <span id="ac-cur" class="small">—</span>
+              </div>
+              <div class="ac-row">
+                <label class="switch-row loss" title="ขาดทุนลอยตัวรวมทุกไม้ XAUUSD ถึงจำนวนนี้ = ปิดทุกไม้ทันที (ตัดขาดทุนก่อนลึกกว่านี้)">
+                  <span class="switch"><input type="checkbox" id="ac-loss" /><span></span></span>
+                  <span class="small">ตัดขาดทุนรวบทุกไม้ เมื่อขาดทุนรวม ≥</span>
+                </label>
+                <input type="number" id="ac-loss-v" min="0.01" step="1" />
+                <span id="ac-loss-cur" class="small">—</span>
+              </div>
+              <div class="ac-row">
+                <label class="switch-row" title="เอาจุดบวก/ลบของทุกไม้มารวมกัน (เช่น +200 กับ +100 = 300 จุด) ถึงเป้า = ปิดทุกไม้ทันที">
+                  <span class="switch"><input type="checkbox" id="ac-allpts" /><span></span></span>
+                  <span class="small">ปิดรวบทุกไม้ เมื่อจุดรวมทุกไม้ ≥</span>
+                </label>
+                <input type="number" id="ac-allpts-v" min="1" step="10" />
+                <span class="small">จุด <span id="ac-allpts-px" class="muted"></span></span>
+              </div>
+              <div class="ac-row">
+                <label class="switch-row" title="ไม้ใดบวกถึงจำนวนจุดนี้ = ปิดไม้นั้นทันที (XAUUSD 1 จุด = 0.01 → 100 จุด = $1.00)">
+                  <span class="switch"><input type="checkbox" id="ac-pts" /><span></span></span>
+                  <span class="small">ปิดรายไม้ เมื่อแต่ละไม้บวก ≥</span>
+                </label>
+                <input type="number" id="ac-pts-v" min="1" step="10" />
+                <span class="small">จุด <span id="ac-pts-px" class="muted"></span></span>
+              </div>
+              <div id="ac-status" class="ac-status"></div>
+            </div>
+            <div id="pend-card" class="pend">
+              <div class="pend-head"><h5>คำสั่งรอล่วงหน้า (เตรียมไม้รอราคา)</h5><button id="pend-max" class="pmax" title="ขยายให้เต็มจอ / ย่อกลับ">⛶</button></div>
+              <div class="prow">
+                <label>ประเภท
+                  <select id="p-kind">
+                    <option value="buy-limit">BUY LIMIT — ซื้อถูกกว่าตลาด (รอย่อมาถึง)</option>
+                    <option value="sell-limit">SELL LIMIT — ขายแพงกว่าตลาด (รอเดินขึ้นมา)</option>
+                    <option value="buy-stop">BUY STOP — ซื้อเมื่อทะลุขึ้น (ตามแรงขาขึ้น)</option>
+                    <option value="sell-stop">SELL STOP — ขายเมื่อหลุดลง (ตามแรงขาลง)</option>
+                  </select>
+                </label>
+                <label>ล็อต <input type="number" id="p-lot" min="0.01" step="0.01" value="0.01" /></label>
+              </div>
+              <div class="prow">
+                <label>ราคาเข้า <input type="number" id="p-entry" step="0.01" placeholder="ราคาที่จะรอ" /></label>
+                <label>SL <input type="number" id="p-sl" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า ∓ ATR×1.8 ตามฝั่ง" /></label>
+                <label>TP <input type="number" id="p-tp" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า ± ATR×4.5 ตามฝั่ง (ใส่ 0 = ไม่ตั้ง TP)" /></label>
+                <button class="pgo" id="p-go">วางคำสั่งรอ</button>
+              </div>
+              <div id="pend-hint" class="pend-hint"></div>
+              <div id="pend-list" class="pend-list"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-pin" /></svg>จุดรอเข้า</h2><span id="ep-atr" class="muted small"></span></div>
+            <div id="entryplan" class="entryplan"><div class="empty">รอข้อมูล...</div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-users" /></svg>ทีมเอเจนต์</h2><span id="council-verdict" class="badge">—</span></div>
+            <div id="council-agents" class="council-agents"><div class="empty">รอข้อมูล...</div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-pulse" /></svg>ภาพตลาดตอนนี้</h2></div>
+            <div id="market" class="market"><div class="empty">รอข้อมูล...</div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-clock" /></svg>ช่วงเวลาที่แนะนำ <span class="ct-sub">เวลาไทย</span></h2><span id="sess-count" class="muted small"></span></div>
+            <div id="session-timeline" class="sess-tl"></div>
+            <div id="session-now" class="sess-now">—</div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-shield" /></svg>เกตความเสี่ยง</h2></div>
+            <div id="guards" class="guards">—</div>
+            <details class="more">
+              <summary>สัญญาณที่ถูกกรองออก (และเหตุผล)</summary>
+              <div id="filtered" class="filtered"><div class="empty">ไม่มี</div></div>
+            </details>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ RISK SETTINGS ============ -->
+    <section id="tab-risk" class="tab">
+      <div class="grid-settings">
+        <div class="card">
+          <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-shield" /></svg>เงินทุนและความเสี่ยง</h2></div>
+          <form id="form-risk">
+            <label>ทุนที่ใช้คำนวณ (USD)
+              <input type="number" id="s-equity" min="0" step="10" />
+            </label>
+            <label>ความเสี่ยงต่อไม้ % (เพดานบังคับ 2%)
+              <input type="number" id="s-riskpct" min="0.05" max="2" step="0.05" />
+              <small id="risk-note" class="muted">ล็อตจะถูกคำนวณให้ขาดทุนไม่เกิน % นี้แม้ราคาแตะ SL</small>
+            </label>
+            <div class="row2">
+              <label>RR ขั้นต่ำ (TP/SL)
+                <input type="number" id="s-minrr" min="1" max="10" step="0.1" />
+              </label>
+              <label>ความมั่นใจขั้นต่ำ %
+                <input type="number" id="s-minconf" min="0" max="95" step="1" />
+              </label>
+            </div>
+            <div class="row2">
+              <label>จำนวนไม้สูงสุด/วัน
+                <input type="number" id="s-maxday" min="1" max="50" step="1" />
+              </label>
+              <label>คูลดาวน์สัญญาณเดิม (นาที)
+                <input type="number" id="s-cooldown" min="0" max="240" step="5" />
+              </label>
+            </div>
+            <label>ความถี่วิเคราะห์ (วินาที, 5–60)
+              <input type="number" id="s-poll" min="5" max="60" step="5" />
+            </label>
+            <h4>โหมดการทำงาน</h4>
+            <label class="toggle">
+              <input type="checkbox" id="s-newsstop" />
+              <span>โหมดหยุดข่าว — วิเคราะห์ต่อ แต่ไม่ส่งสัญญาณใหม่ให้ผม</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="s-leastrisk" />
+              <span>โหมดเสี่ยงน้อยที่สุด — รอบที่มีหลายโอกาส เลือกเข้าเฉพาะไม้ที่วิเคราะห์แล้วเสี่ยงต่ำสุด (SL แน่น/RR ดี/มั่นใจสูง)</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="s-notify" />
+              <span>แจ้งเตือน macOS เมื่อโอกาส/จุดรอเข้าพร้อม (แม้หน้าจอซ่อนอยู่)</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="s-autostart" />
+              <span>เปิดวิเคราะห์อัตโนมัติเมื่อเปิดเครื่อง (Login item — ตัวช่วยทำงานตลอดเวลา)</span>
+            </label>
+            <h4>ทีมเอเจนต์ (Council)</h4>
+            <label class="toggle">
+              <input type="checkbox" id="s-councilon" />
+              <span>เปิดทีมเอเจนต์ตรวจสัญญาณทุกไม้</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="s-councilstrict" />
+              <span>โหมดเข้ม — ต้องมีมติสภาสนับสนุนทุกไม้ (แนะนำ: แม่นขึ้น สัญญาณน้อยลง)</span>
+            </label>
+            <div class="row2">
+              <label>เอเจนต์เห็นพ้องขั้นต่ำ (2–6)
+                <input type="number" id="s-quorum" min="2" max="6" step="1" />
+              </label>
+              <label>มั่นใจรวมขั้นต่ำออกไม้ % (50–95)
+                <input type="number" id="s-councilmin" min="50" max="95" step="1" />
+              </label>
+            </div>
+            <button type="submit" class="primary">บันทึกการตั้งค่า</button>
+            <p class="note">กฎที่ล็อคถาวรในโค้ด: ทุกสัญญาณต้องมี SL • ล็อตคิดจาก % ความเสี่ยง (ไม่เกิน 2% ต่อไม้) • ล็อตต่ำกว่า 0.01 = ปฏิเสธ • RR ต่ำกว่าพื้น 1.0 = ปฏิเสธ — แก้ไม่ได้แม้แต่ plugin</p>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-wallet" /></svg>ตัวคำนวณเงินเสี่ยง</h2></div>
+          <div id="calc-example" class="calc">ใส่ทุนแล้วดูตัวเลขจริงที่แท็บหน้าจอหลัก ในแต่ละบัตรสัญญาณ</div>
+          <div class="card-head spaced"><h2 class="ct"><svg class="ic"><use href="#i-alert" /></svg>ข้อควรระวัง</h2></div>
+          <ul class="warn-list">
+            <li>แอปนี้เป็น<b>ผู้ช่วยวิเคราะห์</b> — ไม่ยิงออร์เดอร์เองอัตโนมัติ ส่งไม้จริงได้เฉพาะเมื่อคุณเปิดสวิตช์ + ยืนยัน 2 ชั้นเท่านั้น</li>
+            <li>อ่านข่าวเศรษฐกิจ (Fed, NFP, CPI) ก่อนเทรดสาย (session) สำคัญเป็นอย่างยิ่ง</li>
+            <li>XAUUSD เคลื่อนแรง — SL ที่ระบบให้คือเส้นตาย อย่าขยับออกไป</li>
+            <li>ล็อตแนะนำคำนวณจากสัญญาณ 100 ออนซ์/ล็อต ตรวจ spec โบรกเกอร์ของคุณด้วย</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PLUGINS ============ -->
+    <section id="tab-plugins" class="tab">
+      <div class="card">
+        <div class="card-head">
+          <h2 class="ct"><svg class="ic"><use href="#i-puzzle" /></svg>กลยุทธ์ <span class="ct-sub">แก้/เพิ่มได้</span></h2>
+          <span class="btns">
+            <button id="btn-open-user-plugins" class="ghost">เปิดโฟลเดอร์ plugins ของผม</button>
+            <button id="btn-open-builtin-plugins" class="ghost">เปิดโฟลเดอร์ในตัว</button>
+            <button id="btn-reload-plugins" class="ghost">↻ โหลดใหม่</button>
+          </span>
+        </div>
+        <div id="plugins-list" class="plugins"></div>
+        <div class="plugin-guide">
+          <h4>วิธีเพิ่ม plugin กลยุทธ์ของคุณเอง</h4>
+          <ol>
+            <li>กด "เปิดโฟลเดอร์ plugins ของผม" → สร้างไฟล์ <code>my-strategy.js</code></li>
+            <li>วางโครงตามด้านล่าง แล้วกด "โหลดใหม่"</li>
+          </ol>
+          <pre>module.exports = {
+  id: 'my-strategy',
+  name: 'กลยุทธ์ของผม',
+  description: 'อธิบายสั้น ๆ',
+  strategy({ analysis, candles, price, ind }) {
+    // analysis.bias = 'bull'|'bear'|'neutral'
+    // candles.M5 / M15 / H1 / M1 = แท่งเทียน {t,o,h,l,c,v}
+    // ind = ตัวชี้วัด (ema/rsi/atr/bollinger/swings...)
+    // return { side:'buy', sl: ต้องมี, tp, confidence: 0-100, reason:'' }
+    return null; // ไม่มีโอกาส
+  }
+};</pre>
+          <p class="muted">กฎความเสี่ยงจะกรองสัญญาณจากทุก plugin เสมอ — ใส่ SL ไม่ถูก = ถูกทิ้งทันที ระบบไม่ล้มแม้ plugin ผิดพลาด</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ MT5 ============ -->
+    <section id="tab-mt5" class="tab">
+      <div class="grid-settings">
+        <div class="card">
+          <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-plug" /></svg>สถานะการเชื่อม MT5</h2></div>
+          <div id="mt5-status" class="mt5status">—</div>
+          <div class="row">
+            <button id="btn-pick-bridge" class="ghost">เลือกไฟล์ goldsignal_bridge.json เอง</button>
+            <span id="bridge-path" class="muted small"></span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-gear" /></svg>ติดตั้ง EA Bridge อัตโนมัติ</h2></div>
+          <div class="row spaced-b">
+            <button id="btn-install-ea" class="primary">ติดตั้ง EA ให้ฉันเอง (คลิกเดียว)</button>
+            <button id="btn-check-ea" class="ghost">✓ ตรวจสอบสถานะ</button>
+          </div>
+          <div id="ea-checklist" class="eachecklist"></div>
+          <span id="ea-install-result" class="muted small"></span>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-book" /></svg>คู่มือติดตั้ง EA Bridge <span class="ct-sub">หลังติดตั้งไฟล์แล้ว</span></h2></div>
+          <ol class="steps">
+            <li>เปิด MetaTrader 5 → กด <b>F4</b> เปิด MetaEditor → ใน Navigator คลิกขวา <b>Experts → Refresh</b> เพื่อให้ไฟล์โผล่ (อยู่แถว <b>GoldSignal → JsonBridgeEA.mq5</b>)</li>
+            <li>ดับเบิลคลิกไฟล์ → กด <b>Compile (F7)</b> → ต้องขึ้น "0 errors, 0 warnings"</li>
+            <li>กลับ MT5 → ลาก EA <code>JsonBridgeEA</code> ไปวางบนชาร์ตทอง (XAUUSD/GOLD สัญลักษณ์ไหนก็ได้) — ถ้าแค่ดูสัญญาณ <b>ไม่ต้องเปิด AutoTrading</b> (จำเป็นเฉพาะเมื่อจะส่งไม้จริงจากแอป + ตั้ง AllowOrders = true)</li>
+            <li>รอ 5–10 วินาที กลับมาแท็บนี้ สถานะจะเปลี่ยนเป็นเขียว "เชื่อมต่อ MT5 แล้ว"</li>
+          </ol>
+          <p class="note">หาก MetaEditor ไม่เห็นไฟล์ก็ชี้ไฟล์ที่ ~/Downloads/JsonBridgeEA.mq5 (กดปุ่มติดตั้งอัตโนมัติจะสำรองให้ที่นี่เสมอ) หรือกด "เลือกไฟล์ goldsignal_bridge.json เอง" ภายหลัง</p>
+          <p class="note">แอปจะหาไฟล์ bridge ในโฟลเดอร์ MT5 ของคุณเองอัตโนมัติ ถ้าหาไม่เจอปุ่ม "เลือกไฟล์เอง" จะช่วยได้ทันที</p>
+          <p class="note">เว็บบนเครื่องนี้ (ล็อกอินด้วยรหัสเว็บ): <b><a id="web-url" href="#">…กำลังเปิด…</a></b></p>
+          <div class="row2">
+            <label>เว็บระยะไกล (push) — เช่น http://IP-เซิร์ฟเวอร์:7779/push
+              <input type="text" id="s-webpush-url" placeholder="ว่าง = ไม่ส่งขึ้น server" />
+            </label>
+            <label>รหัสเชื่อมเว็บระยะไกล (GS_TOKEN)
+              <input type="text" id="s-webpush-token" placeholder="จากสคริปต์ install.sh" />
+            </label>
+          </div>
+          <p class="note">ถ้ายังไม่เชื่อม MT5 ระบบใช้ข้อมูลฟรี COMEX (GC=F) อัตโนมัติ — วิเคราะห์ไม่หยุด</p>
+        </div>
+        <div class="card" id="webctl-card">
+          <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-bolt" /></svg>แผงระยะไกล — เว็บควบคุมเต็ม <span class="ct-sub">หน้าตาและปุ่มเหมือนแอปทุกอย่าง • ใช้รหัสเดียวกันทุกช่องทาง</span></h2></div>
+          <p class="note warnline">⚠ เว็บนี้กดซื้อ/ขาย/ปิดไม้จริงได้ — ตั้งรหัสยาว เดายาก และอย่าบอกใคร • รหัสผิด 5 ครั้ง = ล็อก 15 นาที</p>
+          <div class="wc-row">
+            <span class="wc-k">รหัสผ่านเว็บ</span>
+            <input type="password" id="wc-pw" autocomplete="new-password" placeholder="อย่างน้อย 8 ตัวอักษร" />
+            <button id="wc-pw-save">บันทึกรหัส</button>
+            <span id="wc-pw-st" class="small muted"></span>
+          </div>
+          <div class="wc-row">
+            <label class="switch-row"><span class="switch"><input type="checkbox" id="wc-remote" /><span></span></span><span class="small">เปิดให้เข้าจากนอกเครื่องนี้ (Wi-Fi / Tailscale / tunnel)</span></label>
+          </div>
+          <div id="wc-addrs" class="wc-list"></div>
+          <div class="wc-row">
+            <span class="wc-k">Tunnel → 8008</span>
+            <select id="wc-prov">
+              <option value="cloudflared">cloudflared (ฟรี ไม่ต้องสมัคร — ลิงก์เปลี่ยนทุกครั้ง)</option>
+              <option value="ngrok">ngrok (ต้องตั้ง authtoken)</option>
+              <option value="tailscale">Tailscale Funnel (ลิงก์ถาวร *.ts.net)</option>
+            </select>
+            <button id="wc-tun-on">เปิด tunnel</button>
+            <button id="wc-tun-off">ปิด</button>
+          </div>
+          <div id="wc-tun-st" class="wc-list"></div>
+          <div class="wc-row">
+            <span class="wc-k">ลิงก์ถาวร (GitHub Pages)</span>
+            <input type="text" id="wc-repo" placeholder="owner/repo เช่น ProgramZa2560/goldsignal" />
+            <button id="wc-pages">ตั้งลิงก์ถาวร</button>
+          </div>
+          <div id="wc-pages-st" class="wc-list"></div>
+          <div class="wc-row">
+            <span id="wc-sess" class="small muted"></span>
+            <button id="wc-logout-all">ออกจากระบบทุกเครื่อง</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ LOGS ============ -->
+    <section id="tab-logs" class="tab">
+      <div class="card">
+        <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-list" /></svg>บันทึกเหตุการณ์ล่าสุด</h2></div>
+        <div id="logs" class="logs"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <svg class="ic"><use href="#i-alert" /></svg>
+    <span>สัญญาณทั้งหมดเพื่อการศึกษาและช่วยตัดสินใจ — <b>ไม่ใช่คำแนะนำการลงทุน</b> การเทรด CFD/ทองคำมีความเสี่ยงสูง ใช้เท่าที่พร้อมเสียได้</span>
+  </footer>
+
+  <div id="modal" role="dialog" aria-modal="true"><div class="mbox" id="mbox"></div></div>
+  <div id="toasts" aria-live="polite"></div>
+
+  <script src="vendor/lightweight-charts.standalone.production.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/icon.iconset/
+.backtest-cache.json
+backtest-report.json
+paper-session.json
+*.log
+.DS_Store
+.claude/
+.smoke-*
+*.tmp

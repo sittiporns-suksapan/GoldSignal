@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>GoldSignal — ประวัติรอบทั้งหมด</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    body.hist { padding: 18px 22px; overflow: auto; height: 100vh; box-sizing: border-box; }
+    .hh { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    .hh h1 { font-size: 17px; margin: 0; color: var(--gold); }
+    .hh .grow { flex: 1; }
+    .hh input, .hh select { background: var(--inset); border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--text); padding: 6px 10px; font-size: 12.5px; }
+    .hh input:focus, .hh select:focus { outline: none; border-color: var(--gold); }
+    .hh button { background: var(--surface-2); border: 1px solid var(--line); color: var(--text-2); border-radius: var(--radius-sm); padding: 6px 12px; cursor: pointer; font-size: 12.5px; }
+    .hcount { font-size: 12px; color: var(--muted); }
+    .hday { margin: 16px 0 6px; font-size: 12.5px; font-weight: 700; color: var(--text-2); border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+    .hrow { display: grid; grid-template-columns: 80px 1fr; gap: 2px 12px; padding: 7px 4px; border-bottom: 1px dashed var(--line-soft); font-size: 12.5px; }
+    .hrow .t { color: var(--faint); font-variant-numeric: tabular-nums; }
+    .hrow .a { color: var(--text); }
+    .hrow .d { grid-column: 2; color: var(--muted); font-size: 11.5px; }
+    .hrow.k-open .a { color: var(--gold); font-weight: 600; }
+    .hrow.k-close .a { font-weight: 600; }
+    .hrow.k-close.win .a { color: var(--up-text); } .hrow.k-close.loss .a { color: var(--down-text); }
+    .hrow.k-signal .a { color: var(--up-text); }
+    .empty { color: var(--muted); padding: 30px 0; text-align: center; }
+  </style>
+</head>
+<body class="hist">
+  <div class="hh">
+    <h1>ประวัติรอบทั้งหมด — ลงไม้ไหน</h1>
+    <span class="grow"></span>
+    <select id="h-kind">
+      <option value="all">ทุกรายการ</option>
+      <option value="trade">เฉพาะลง/ปิดไม้ + สัญญาณ</option>
+      <option value="wait">เฉพาะเฝ้ารอ</option>
+    </select>
+    <input id="h-q" type="search" placeholder="ค้นหา เช่น BUY, TP, SL, มติ..." />
+    <button id="h-refresh">รีเฟรช</button>
+  </div>
+  <div id="h-count" class="hcount">กำลังโหลด…</div>
+  <div id="h-list"></div>
+  <script src="history.js"></script>
+</body>
+</html>

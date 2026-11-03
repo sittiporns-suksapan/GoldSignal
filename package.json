@@ -1,0 +1,54 @@
+{
+  "name": "goldsignal",
+  "productName": "GoldSignal",
+  "version": "1.5.0",
+  "description": "ระบบวิเคราะห์และหาโอกาสเทรดทอง (XAU/USD) ความเสี่ยงถูกควบคุม — โหมดสัญญาณเท่านั้น",
+  "main": "src/main/main.js",
+  "author": "Trader",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "node scripts/smoke.js",
+    "dist": "electron-builder --mac dmg --publish never"
+  },
+  "build": {
+    "appId": "com.trader.goldsignal",
+    "productName": "GoldSignal",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "renderer/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "plugins",
+        "to": "plugins"
+      },
+      {
+        "from": "mt5-ea",
+        "to": "mt5-ea"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.finance",
+      "identity": null,
+      "target": [
+        "dmg"
+      ]
+    },
+    "dmg": {
+      "title": "GoldSignal v${version}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0"
+  },
+  "dependencies": {
+    "lightweight-charts": "^5.2.1"
+  }
+}

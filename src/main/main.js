@@ -1,0 +1,780 @@
+'use strict';
+
+const { app, BrowserWindow, ipcMain, shell, dialog, Notification, powerSaveBlocker } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+
+const { AnalysisEngine } = require('../engine/engine');
+const { PluginLoader } = require('../engine/plugins');
+const { MT5Connector, findMql5ExpertsDir, compileEA } = require('../engine/connectors/mt5');
+const { YahooConnector } = require('../engine/connectors/yahoo');
+const { gateSignal } = require('../engine/council');
+const risk = require('../engine/risk');
+const autoclose = require('../engine/autoclose');
+const { startWebServer, startRemotePush } = require('./webserver');
+const { createWebAuth } = require('./webauth');
+const { createTunnel } = require('./tunnel');
+const pages = require('./pages');
+
+// คำสั่งทุกตัวลงทะเบียนที่เดียว: หน้าต่างแอปเรียกผ่าน IPC • หน้าเว็บเรียกผ่าน HTTP (ชุดเดียวกัน ตรวจเกตเดียวกัน)
+const handlers = new Map();
+const handle = (channel, fn) => { handlers.set(channel, fn); ipcMain.handle(channel, fn); };
+// คำสั่งที่ห้ามเรียกจากเว็บ: เปิดหน้าต่าง/กล่องเลือกไฟล์บนเครื่อง + จัดการรหัสเว็บ (ต้องทำที่เครื่องเท่านั้น)
+const WEB_BLOCKED = new Set(['pick-bridge-file', 'open-plugins-dir', 'open-history-window', 'web-access-get', 'web-access-set', 'web-access-logout-all', 'tunnel-start', 'tunnel-stop', 'pages-setup']);
+
+// ---------- paths ----------
+const isDev = !app.isPackaged;
+const root = isDev ? path.join(__dirname, '..', '..') : process.resourcesPath;
+const builtInPluginsDir = isDev ? path.join(root, 'plugins') : path.join(root, 'plugins');
+const userPluginsDir = path.join(app.getPath('userData'), 'plugins');
+const settingsFile = path.join(app.getPath('userData'), 'settings.json');
+fs.mkdirSync(userPluginsDir, { recursive: true });
+
+// ---------- settings ----------
+const DEFAULT_SETTINGS = {
+  symbol: 'XAUUSD',
+  yahooSymbol: 'GC=F',
+  source: 'auto',            // auto | mt5 | yahoo
+  mt5BridgePath: '',
+  pollSec: 10,
+  equity: 1000,
+  riskPct: 1,                // เปอร์เซ็นต์ต่อไม้ — ถูกบีบด้วย HARD_MAX_RISK_PCT เสมอ
+  minRR: 1.5,                // HARD_MIN_RR คือพื้น 1.0
+  minConfidence: 60,
+  maxSignalsPerDay: 3,   // โควตาไม้ต่อวัน (สัญญาณ + ปุ่มคำสั่งจริงนับรวม) — ผู้ใช้เลือกได้ในแท็บตั้งค่า
+  leastRisk: true,       // เข้าเฉพาะไม้ที่วิเคราะห์แล้วเสี่ยงน้อยที่สุดของรอบ
+  notifySignal: true,       // แจ้งเตือน macOS เมื่อโอกาสพร้อม
+  autoStart: false,         // เปิดวิเคราะห์เองตอนเปิดเครื่อง
+  cooldownMin: 15,
+  newsStop: false,
+  realOrdersEnabled: false, // สวิตช์ใหญ่: ปิดอยู่เริ่มต้น — ปุ่มซื้อขายทำงานเรียลมื่อเปิด + ยืนยัน 2 ชั้น
+  autoEnter: false,         // เปิด = ระบบเข้าไม้เองทันทีเมื่อผ่านทุกเกต (ไม่รอกด) • ปิด = ระบบเด้งหน้ายืนยันรอกด
+  councilEnabled: true,   // ทีมเอเจนต์วิเคราะห์ก่อนทุกไม้
+  councilStrict: true,    // โหมดเข้ม: ต้องมีมติสภาสนับสนุนถึงแสดงสัญญาณ (หลักฐานจาก backtest 60 วัน)
+  councilQuorum: 3,       // จำนวนเอเจนต์เห็นพ้องขั้นต่ำให้สภาออกมติ
+  autoCloseAll: false,        // ปิดรวบอัตโนมัติเมื่อกำไรลอยตัวรวม ≥ autoCloseAllProfit (สกุลเงินบัญชี)
+  autoCloseAllProfit: 100,
+  autoCloseLoss: false,       // ตัดขาดทุนรวบอัตโนมัติเมื่อขาดทุนลอยตัวรวม ≥ autoCloseLossValue (สกุลเงินบัญชี)
+  autoCloseLossValue: 100,
+  autoCloseAllPts: false,     // ปิดรวบอัตโนมัติเมื่อจุดของทุกไม้รวมกัน ≥ autoCloseAllPtsValue
+  autoCloseAllPtsValue: 300,
+  autoClosePoints: false,     // ปิดรายไม้อัตโนมัติเมื่อไม้บวก ≥ autoClosePointsValue จุด
+  autoClosePointsValue: 300,
+  councilMin: 70,         // ความมั่นใจรวมขั้นต่ำปล่อยสัญญาณมติสภา (แตะแล้ววัด: 75=+0.7R, 70=+19.9R, 65=+18.4R)
+};
+
+function loadSettings() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+    return { ...DEFAULT_SETTINGS, ...raw };
+  } catch { return { ...DEFAULT_SETTINGS }; }
+}
+
+// เขียนแบบ atomic (tmp → rename) กันไฟล์ตั้งค่าพังถ้าแอปปิดกลางทาง
+function writeSettings(clean) {
+  const tmp = settingsFile + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(clean, null, 2), 'utf8');
+  fs.renameSync(tmp, settingsFile);
+}
+
+function sanitizeSettings(input) {
+  const s = { ...loadSettings(), ...(input || {}) };
+  const num = (v, def, min, max) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? risk.clamp(n, min, max) : def;
+  };
+  return {
+    symbol: String(s.symbol || DEFAULT_SETTINGS.symbol).slice(0, 24),
+    yahooSymbol: String(s.yahooSymbol || DEFAULT_SETTINGS.yahooSymbol).slice(0, 16),
+    source: ['auto', 'mt5', 'yahoo'].includes(s.source) ? s.source : 'auto',
+    mt5BridgePath: typeof s.mt5BridgePath === 'string' ? s.mt5BridgePath.slice(0, 500) : '',
+    pollSec: num(s.pollSec, 10, 5, 60),
+    equity: num(s.equity, 1000, 0, 100_000_000),
+    riskPct: num(s.riskPct, 1, 0.05, risk.HARD_MAX_RISK_PCT),   // บีบเพดานกลางหลังที่นี่เลย
+    minRR: num(s.minRR, 1.5, risk.HARD_MIN_RR, 10),
+    minConfidence: num(s.minConfidence, 60, 0, 95),
+    maxSignalsPerDay: Math.round(num(s.maxSignalsPerDay, 3, 1, 50)),
+    leastRisk: s.leastRisk === false ? false : true,
+    cooldownMin: num(s.cooldownMin, 15, 0, 240),
+    newsStop: !!s.newsStop,
+    notifySignal: s.notifySignal === false ? false : true,
+    autoStart: !!s.autoStart,
+    realOrdersEnabled: !!s.realOrdersEnabled,
+    // ย้ายชื่อ: autoArm (เดิม = เด้งรอกด) → autoEnter (เปิด = เข้าเอง, ปิด = เด้งรอกด) — อ่านค่าเดิมให้ผู้ใช้ไม่ตื่น
+    autoEnter: (s.autoEnter === undefined ? s.autoArm : s.autoEnter) === true,
+    remoteDashboardUrl: String(s.remoteDashboardUrl || '').trim().slice(0, 300),
+    remoteDashboardToken: String(s.remoteDashboardToken || '').trim().slice(0, 200),
+    councilEnabled: s.councilEnabled === false ? false : true,
+    councilStrict: s.councilStrict === false ? false : true,
+    councilQuorum: Math.round(num(s.councilQuorum, 3, 2, 6)),
+    councilMin: num(s.councilMin, 70, 50, 95),
+    autoCloseAll: s.autoCloseAll === true,
+    autoCloseAllProfit: num(s.autoCloseAllProfit, 100, 0.01, 1e9),
+    autoCloseLoss: s.autoCloseLoss === true,
+    autoCloseLossValue: num(s.autoCloseLossValue, 100, 0.01, 1e9),
+    autoCloseAllPts: s.autoCloseAllPts === true,
+    autoCloseAllPtsValue: Math.round(num(s.autoCloseAllPtsValue, 300, 1, 1e6)),
+    autoClosePoints: s.autoClosePoints === true,
+    autoClosePointsValue: Math.round(num(s.autoClosePointsValue, 300, 1, 1e6)),
+  };
+}
+
+// ---------- window ----------
+let win = null;
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1320, height: 860, minWidth: 1080, minHeight: 700,
+    title: 'GoldSignal — วิเคราะห์ทองความเสี่ยงต่ำ',
+    backgroundColor: '#07080b',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  win.loadFile(path.join(__dirname, '..', '..', 'renderer', 'index.html'));
+  // เปิดลิงก์ภายนอกเฉพาะ https ในเบราว์เซอร์ระบบ • ห้ามหน้าต่างหลักถูกพาไปหน้าอื่น
+  win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//i.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+  win.webContents.on('will-navigate', (e) => e.preventDefault());
+  win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+    try { fs.appendFileSync(path.join(app.getPath('userData'), 'app.log'), `${new Date().toISOString()} [console:${level}] ${String(message).slice(0, 300)} (${String(sourceId).split('/').pop()}:${line})\n`); } catch { void 0; }
+  });
+}
+
+// บันทึกเหตุการณ์ลงไฟล์เพื่อให้ตรวจสอบระบบเชิงพิสูจน์ได้หลังเปิดแอป
+function fileLogger() {
+  const logFile = path.join(app.getPath('userData'), 'app.log');
+  return (tag, msg, lvl = 'info') => {
+    try {
+      fs.appendFileSync(logFile, `${new Date().toISOString()} [${lvl}] [${tag}] ${String(msg).slice(0, 300)}\n`);
+      // กันไฟล์บวม: หมุนเก็บไว้ 1 ชุด (app.log.1) แทนการลบทิ้ง — ยังย้อนดูเหตุการณ์ได้
+      if (fs.statSync(logFile).size > 600 * 1024) fs.renameSync(logFile, logFile + '.1');
+    } catch { /* log พังไม่ให้ระบบล้ม */ }
+  };
+}
+
+// ---------- engine wiring ----------
+function boot() {
+  const fileLog = fileLogger();
+  const engine = new AnalysisEngine({
+    settings: sanitizeSettings(), // ค่าจากไฟล์ผ่านการบีบกรอบเสมอ (ไฟล์ถูกแก้มือ/เสีย = ค่า NaN ห้ามหลุดเข้าคิดล็อต)
+    connectors: { mt5: new MT5Connector({ logger: fileLog }), yahoo: new YahooConnector({ logger: fileLog }) },
+    pluginLoader: null,      // ตั้งด้านล่าง
+    logger: fileLog,
+    skillsPath: path.join(app.getPath('userData'), 'agent-skills.json'),
+    roundStorePath: path.join(app.getPath('userData'), 'round-history.jsonl'),
+    zoneStorePath: path.join(app.getPath('userData'), 'zone-history.json'), // เดิมไม่ส่ง → ประวัติไม้เสมือนหายทุกครั้งที่ปิดแอป
+    appVersion: app.getVersion(),
+  });
+  engine.pushLog('app', `GoldSignal เริ่มทำงาน (mode: ${isDev ? 'dev' : 'app'}, version ${app.getVersion()})`);
+  // คงการตั้งค่า "เปิดเองตอนเปิดเครื่อง" ตามที่เคยเลือกไว้
+  try { app.setLoginItemSettings({ openAtLogin: !!engine.settings.autoStart, openAsHidden: true }); } catch { void 0; }
+
+  const plugins = new PluginLoader({
+    builtInDir: builtInPluginsDir,
+    userDir: userPluginsDir,
+    logger: engine.pushLog,
+    // จาก backtest 60 วัน (scripts/backtest.js): สองกลยุทธ์นี้แพ้ทั้งโหมดเข้ม/ธรรมดา
+    // ปิดเป็นค่าตั้งต้น — เปิดกลับได้ในแท็บ PLUGINS
+    defaultOff: ['bb-squeeze-breakout', 'momentum-ignition'],
+  });
+  plugins.reload();
+  engine.plugins = plugins;
+
+  engine.connectors.mt5.logger = engine.pushLog;
+  engine.connectors.yahoo.logger = engine.pushLog;
+  engine.connectors.mt5.setBridgePath(loadSettings().mt5BridgePath);
+  engine.connectors.mt5.start();
+
+  // แดชบอร์ดเว็บ (โหมดดูเท่านั้น — localhost เครื่องนี้เท่านั้น): ข้อมูลชุดเดียวกับหน้าจอแอป
+  // เว็บ GoldSignal: ใช้งานได้เหมือนแอปทั้งหมด (ล็อกอินด้วยรหัสที่ตั้งในแอป)
+  const webAuth = createWebAuth(path.join(app.getPath('userData'), 'web-auth.json'));
+  let webUrl = null, web = null;
+  startWebServer({
+    getSnapshot: () => engine.lastSnap, logger: engine.pushLog,
+    handlers, auth: webAuth, rendererDir: path.join(__dirname, '..', '..', 'renderer'), blocked: WEB_BLOCKED,
+  }).then((w) => {
+    web = w; webUrl = w ? w.url : null;
+    // เปิด tunnel ต่อเองตอนเปิดแอป ถ้าครั้งก่อนเปิดค้างไว้
+    const o = webAuth.opts();
+    if (w && o.tunnelOn && o.tunnelProvider && webAuth.isRemote()) tunnel.start(o.tunnelProvider, w.port);
+  });
+  // tunnel ได้ URL ใหม่ → อัปเดตลิงก์ถาวรบน GitHub Pages (ถ้าตั้ง repo ไว้)
+  const publish = (u, prov) => {
+    const repo = webAuth.opts().pagesRepo;
+    if (!repo) return;
+    pages.publishLink(repo, u, prov)
+      .then(() => engine.pushLog('pages', u ? `อัปเดตลิงก์ถาวร → ${u}` : 'ลิงก์ถาวร: แจ้งว่าแผงปิด'))
+      .catch((err) => engine.pushLog('pages', err.message, 'warn'));
+  };
+  const tunnel = createTunnel({ logger: engine.pushLog, onUrl: publish });
+  app.on('before-quit', () => { tunnel.stop(); });
+  handle('tunnel-start', async (_e, req) => {
+    const provider = String((req && req.provider) || '');
+    if (!['cloudflared', 'ngrok', 'tailscale'].includes(provider)) throw new Error('เลือก cloudflared / ngrok / tailscale');
+    if (!webAuth.hasPassword()) throw new Error('ตั้งรหัสผ่านเว็บก่อนเปิด tunnel');
+    if (!web) throw new Error('เว็บยังไม่พร้อม');
+    if (!webAuth.isRemote()) { webAuth.setRemote(true); await web.setRemote(true); }
+    webAuth.setOpts({ tunnelOn: true, tunnelProvider: provider });
+    return tunnel.start(provider, web.port);
+  });
+  handle('tunnel-stop', async () => {
+    webAuth.setOpts({ tunnelOn: false });
+    const st = await tunnel.stop();
+    publish(null, null);
+    return st;
+  });
+  handle('pages-setup', async (_e, req) => {
+    const repo = String((req && req.repo) || '').trim();
+    const url = await pages.setup(repo, tunnel.status().url, tunnel.status().provider);
+    webAuth.setOpts({ pagesRepo: repo });
+    engine.pushLog('pages', `ตั้งลิงก์ถาวรแล้ว: ${url}`);
+    return { url };
+  });
+  handle('get-web-url', () => webUrl);
+  // ที่อยู่ที่เครื่องอื่นใช้เข้า: Tailscale (100.64.0.0/10) มาก่อน แล้วตามด้วย Wi-Fi/LAN
+  const webAddresses = () => {
+    if (!web) return [];
+    const out = [];
+    for (const [name, list] of Object.entries(os.networkInterfaces())) {
+      for (const a of list || []) {
+        if (a.family !== 'IPv4' || a.internal) continue;
+        const [x, y] = a.address.split('.').map(Number);
+        const tailscale = x === 100 && y >= 64 && y <= 127;
+        out.push({ url: `http://${a.address}:${web.port}`, kind: tailscale ? 'Tailscale (เข้าจากที่ไหนก็ได้)' : `เครือข่าย ${name} (Wi-Fi/LAN เดียวกัน)`, tailscale });
+      }
+    }
+    return out.sort((a, b) => Number(b.tailscale) - Number(a.tailscale));
+  };
+  handle('web-access-get', () => ({
+    hasPassword: webAuth.hasPassword(), remote: webAuth.isRemote(), minLength: webAuth.MIN_PASSWORD,
+    sessions: webAuth.sessionCount(), localUrl: webUrl, addresses: webAuth.isRemote() ? webAddresses() : [],
+    tunnel: tunnel.status(), tunnelAvailable: tunnel.available(), ghAvailable: !!pages.ghBin(),
+    pagesRepo: webAuth.opts().pagesRepo || '', pagesUrl: webAuth.opts().pagesRepo ? pages.pagesUrl(webAuth.opts().pagesRepo) : null,
+  }));
+  handle('web-access-set', async (_e, req) => {
+    const r = req || {};
+    if (typeof r.password === 'string' && r.password) { webAuth.setPassword(r.password); engine.pushLog('web', 'ตั้งรหัสผ่านเว็บใหม่แล้ว (ทุกเครื่องที่ล็อกอินอยู่ถูกออกจากระบบ)'); }
+    if (typeof r.remote === 'boolean') {
+      if (r.remote && !webAuth.hasPassword()) throw new Error('ตั้งรหัสผ่านก่อนเปิดให้เครื่องอื่นเข้า');
+      webAuth.setRemote(r.remote);
+      if (web) await web.setRemote(webAuth.isRemote());
+      if (!r.remote && tunnel.status().state !== 'off') { webAuth.setOpts({ tunnelOn: false }); await tunnel.stop(); publish(null, null); }
+      engine.pushLog('web', r.remote ? 'เปิดให้เครื่องอื่นเข้าเว็บควบคุมเต็ม' : 'ปิดการเข้าเว็บจากเครื่องอื่น (เหลือเฉพาะเครื่องนี้)', r.remote ? 'warn' : 'info');
+    }
+    return { ok: true };
+  });
+  handle('web-access-logout-all', () => { webAuth.logoutAll(); engine.pushLog('web', 'ออกจากระบบเว็บทุกเครื่องแล้ว'); return { ok: true }; });
+  // เว็บระยะไกล (แบบ A): push ข้อมูลขึ้น server คุณเมื่อตั้ง URL + รหัส (ตั้งในแท็บ ตั้งค่า)
+  startRemotePush({
+    getUrl: () => engine.settings.remoteDashboardUrl,
+    getToken: () => engine.settings.remoteDashboardToken,
+    getSnapshot: () => engine.lastSnap,
+    logger: engine.pushLog,
+  });
+
+  const send = (channel, payload) => {
+    if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+    if (web) web.broadcast(channel, payload); // เบราว์เซอร์ที่ล็อกอินอยู่ได้ข้อมูลชุดเดียวกัน
+  };
+  const notifiedSet = new Set();
+  // แจ้งเตือน macOS ครั้งเดียวต่อ key (กัน spam) — คลิกแล้วเปิดหน้าต่าง
+  const notifyOnce = (key, title, body) => {
+    if (notifiedSet.has(key)) return;
+    if (notifiedSet.size > 64) notifiedSet.clear();
+    notifiedSet.add(key);
+    if (engine.settings.notifySignal === false) return;
+    try {
+      const n = new Notification({ title, body });
+      n.on('click', () => { if (win && !win.isDestroyed()) { win.show(); win.focus(); } });
+      n.show();
+    } catch (err) { engine.pushLog('notify', `แจ้งเตือนไม่สำเร็จ: ${err.message}`, 'warn'); }
+  };
+
+  engine.on('snapshot', (snap) => {
+    send('snapshot', snap);
+    autoEnterMain(snap); // เข้าไม้อัตโนมัติฝั่ง main — ทำงานต่อแม้ปิดหน้าต่าง
+    // ระบบรอเข้า: แจ้งเตือนทันทีที่โอกาสผ่านทุกเกต (ครั้งเดียวต่อสัญญาณ)
+    const approved = (snap.signals || []).filter((x) => !x.held);
+    for (const s of approved) {
+      notifyOnce(`${s.plugin}|${s.side}|${Math.round(s.entry)}`,
+        `GoldSignal — ${s.side === 'buy' ? 'BUY' : 'SELL'} SIGNAL ${s.confidence}% พร้อมแล้ว!`,
+        `${s.pluginName}: เข้า ${s.entry} • SL ${s.sl} • TP ${s.tp} • ล็อต ${(s.metrics && s.metrics.lot) || '-'} • (สภา: ${snap.council ? snap.council.confidence + '%' : '-'})`);
+    }
+    // จุดรอเข้า: ราคาแตะโซนซื้อ/ขาย → แจ้งหนึ่งครั้งต่อการเข้าโซน
+    for (const ev of (snap.entryZoneEvents || [])) {
+      if (ev.event !== 'entered') continue;
+      notifyOnce(`zone|${ev.side}|${ev.center}|${ev.ts}`,
+        ev.side === 'buy' ? 'GoldSignal — BUY ZONE HIT!' : 'GoldSignal — SELL ZONE HIT!',
+        `โซน ${ev.side === 'buy' ? 'ซื้อ' : 'ขาย'}: ${ev.bottom}–${ev.top} (${ev.levelType}) • ราคาขณะนี้ ${snap.price} — ตรวจมติสภาและกดปุ่มในแอป`);
+      engine.pushLog('zone', `ราคาถึงจุดเข้า${ev.side === 'buy' ? 'ซื้อ' : 'ขาย'}: โซน ${ev.bottom}–${ev.top} ณ ราคา ${snap.price}`);
+    }
+    // มติเกินเกณฑ์แต่ยังไม่มีสัญญาณ → แจ้ง "ใกล้แล้ว" ครั้งเดียวต่อช่วงมติ
+    const c = snap.council;
+    if (c && c.side !== 'none' && c.confidence >= (engine.settings.councilMin || 70) && !approved.length) {
+      notifyOnce(`near|${c.side}|${Math.floor(c.confidence / 5)}`,
+        `GoldSignal — มติสภา ${c.side === 'buy' ? 'ซื้อ' : 'ขาย'} ${c.confidence}%`,
+        'ระบบกำลังรอจังหวะเข้า: จะแจ้งอีกครั้งเมื่อสัญญาณสมบูรณ์');
+    }
+  });
+
+  engine.start();
+
+  // ---------- IPC ----------
+  // หน้าต่างเปิดใหม่/รีโหลด: ส่งแท่งเทียนครบทุกไทม์เฟรม (snapshot ปกติส่งเฉพาะส่วนที่เปลี่ยน)
+  handle('get-state', () => (engine.lastSnap ? { ...engine.lastSnap, candles: engine.fullCandles() || engine.lastSnap.candles } : null));
+  handle('get-settings', () => engine.settings);
+  handle('save-settings', (_e, partial) => {
+    const oldPoll = engine.settings.pollSec;
+    const clean = sanitizeSettings(partial);
+    engine.settings = clean;
+    writeSettings(clean);
+    engine.connectors.mt5.setBridgePath(clean.mt5BridgePath);
+    if (oldPoll !== clean.pollSec) { engine.stop(); engine.start(); } // ปรับความถี่ตามการตั้งค่าใหม่ทันที
+    engine.pushLog('settings', 'บันทึกการตั้งค่าแล้ว');
+    syncKeepAwake();
+    // "ตัวช่วยทำงานตลอดเวลา": ตั้งให้แอปวิ่งเองตอนเปิดเครื่อง
+    try { app.setLoginItemSettings({ openAtLogin: !!clean.autoStart, openAsHidden: true }); } catch (err) { engine.pushLog('settings', `ตั้ง login item ไม่สำเร็จ: ${err.message}`, 'warn'); }
+    return clean;
+  });
+  handle('list-plugins', () => plugins.list());
+  // ประวัติรอบทั้งหมดจากไฟล์ (ใหม่สุดก่อน) — สูงสุด 20,000 รายการต่อครั้ง
+  handle('get-round-history', () => {
+    try {
+      const f = engine.roundStorePath;
+      if (!f || !fs.existsSync(f)) return [];
+      const out = [];
+      for (const line of fs.readFileSync(f, 'utf8').split('\n')) {
+        if (!line) continue;
+        try { const e = JSON.parse(line); if (Number.isFinite(e.ts)) out.push({ ts: e.ts, action: String(e.action || ''), detail: String(e.detail || '') }); } catch { void 0; }
+      }
+      return out.slice(-20000).reverse();
+    } catch (err) { engine.pushLog('app', `อ่านประวัติรอบไม่ได้: ${err.message}`, 'warn'); return []; }
+  });
+  // หน้าต่างใหม่ "ประวัติรอบทั้งหมด" (เปิดซ้ำ = โฟกัสหน้าต่างเดิม)
+  let historyWin = null;
+  handle('open-history-window', () => {
+    if (historyWin && !historyWin.isDestroyed()) { historyWin.show(); historyWin.focus(); return true; }
+    historyWin = new BrowserWindow({
+      width: 980, height: 760, minWidth: 640, minHeight: 420,
+      title: 'GoldSignal — ประวัติรอบทั้งหมด', backgroundColor: '#07080b',
+      webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    historyWin.loadFile(path.join(__dirname, '..', '..', 'renderer', 'history.html'));
+    historyWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    historyWin.on('closed', () => { historyWin = null; });
+    return true;
+  });
+  handle('toggle-plugin', (_e, { id, enabled }) => { plugins.setEnabled(id, enabled); return plugins.list(); });
+  handle('reload-plugins', () => { plugins.reload(); return plugins.list(); });
+  handle('refresh-now', async () => { await engine.tick(); return null; }); // snapshot ไปทาง event อยู่แล้ว — ไม่ต้องส่งซ้ำ
+  handle('open-plugins-dir', async (_e, which) => {
+    const dir = which === 'builtin' ? builtInPluginsDir : userPluginsDir;
+    if (which !== 'builtin') fs.mkdirSync(dir, { recursive: true });
+    await shell.openPath(dir);
+  });
+  // คัดลอก JsonBridgeEA.mq5 เข้าโฟลเดอร์ Experts ของ MetaTrader ในเครื่องโดยอัตโนมัติ
+  handle('install-ea', async () => {
+    const eaSrc = path.join(root, 'mt5-ea', 'JsonBridgeEA.mq5');
+    if (!fs.existsSync(eaSrc)) return { ok: false, msg: 'ไม่พบไฟล์ EA ในแพ็กเกจแอป' };
+    const experts = findMql5ExpertsDir();
+    if (!experts) return { ok: false, msg: 'ไม่พบโฟลเดอร์ MetaTrader 5 / MQL5 / Experts — ติดตั้ง MT5 แล้วเปิดครั้งแรกก่อน' };
+    const dest = path.join(experts, 'GoldSignal');
+    fs.mkdirSync(dest, { recursive: true });
+    fs.copyFileSync(eaSrc, path.join(dest, 'JsonBridgeEA.mq5'));
+    // สำรองที่ Downloads ให้ผู้ใช้เห็นด้วยตาเสมอ
+    const dl = path.join(os.homedir(), 'Downloads', 'JsonBridgeEA.mq5');
+    try { fs.copyFileSync(eaSrc, dl); } catch { /* Downloads อาจถูกจำกัด */ }
+    // คอมไพล์แทนผู้ใช้ด้วย wine (ไม่ต้องเปิด MetaEditor ก็ได้)
+    const compiled = await compileEA(dest, engine.pushLog);
+    return {
+      ok: true,
+      msg: `คัดลอก EA ไปที่ ${dest} ✓ • ${compiled.msg}`,
+      compiled: compiled.ok,
+    };
+  });
+  // ตรวจสถานะ 3 ชั้น: วางไฟล์ / คอมไพล์ / EA ทำงาน (มี bridge JSON สด)
+  handle('ea-status', () => {
+    const experts = findMql5ExpertsDir();
+    const out = { experts: experts || null, mq5: false, ex5: false, bridge: false, bridgePath: null };
+    if (experts) {
+      const gs = path.join(experts, 'GoldSignal');
+      out.mq5 = fs.existsSync(path.join(gs, 'JsonBridgeEA.mq5'));
+      out.ex5 = fs.existsSync(path.join(gs, 'JsonBridgeEA.ex5'));
+    }
+    const conn = engine.connectors.mt5;
+    conn._lastWalk = 0; // ผู้ใช้กดตรวจเอง = ค้นหาใหม่ทันที (ไม่รอรอบ 30 วิ)
+    conn._scan();
+    out.bridge = !!conn.bridgePath;
+    out.bridgePath = conn.bridgePath;
+    return out;
+  });
+  // จับผิดพลาดฝั่งหน้าจอ (renderer) ให้ลง log จริง — ห้าม error เงียบอีก
+  handle('client-error', (_e, { msg, stack }) => {
+    engine.pushLog('renderer', `ผิดพลาด: ${msg}${stack ? ' | ' + stack.split('\n').slice(0, 3).join(' ← ') : ''}`, 'err');
+    return true;
+  });
+  // สกิลเอเจนต์: บันทึกผลงานลงดิสก์ทุก 2 นาที + ตอนออกจากโปรแกรม
+  setInterval(() => engine.skills.save(), 120_000);
+  app.on('before-quit', () => { try { engine.skills.save(); } catch { void 0; } });
+  // ---------- คำสั่งซื้อ/ขายจริง (ผ่าน EA bridge) ----------
+  // เกตร่วมของทุกคำสั่ง (ตลาดสด + คำสั่งรอ): บัญชี/EA พร้อม • ข้อมูลสด • สเปก • ทุนเป็น USD — คืนตัวเริ่มส่ง
+  const orderGatePre = (side) => {
+    const snap = engine.lastSnap || {};
+    // เกตระดับ EA/เทอร์มินัล (มีข้อมูลจาก bridge ครั้งที่ EA ใหม่รายงาน)
+    const acct = snap.meta && snap.meta.account;
+    if (acct && acct.ordersAllowed === false) {
+      engine.pushLog('order', 'ปฏิเสธ: EA ตั้ง AllowOrders = false — แก้ที่ Expert List → Properties → Inputs', 'warn');
+      return { ok: false, reason: 'EA ยังตั้ง AllowOrders = false — คลิกขวาชาร์ต → Expert List → JsonBridgeEA → Properties → Inputs → AllowOrders = true' };
+    }
+    if (acct && acct.algoTrading === false) {
+      engine.pushLog('order', 'ปฏิเสธ: ปุ่ม AutoTrading ใน MT5 ยังปิด', 'warn');
+      return { ok: false, reason: 'เปิดปุ่ม AutoTrading ใน MetaTrader 5 ก่อน (แถบเครื่องมือด้านบน ให้เป็นสีเขียว)' };
+    }
+    // ข้อมูลต้องสด: bridge อ่านได้ล่าสุด ≤15 วิ และราคาสด ≤5 วิ — ไม่ส่งไม้จากราคา/บัญชีค้าง
+    const mt5 = engine.connectors.mt5;
+    if (!mt5.isLive()) return { ok: false, reason: `MT5 ไม่ได้อัปเดตข้อมูล (${mt5.status.msg}) — ตรวจว่า MT5 เปิดอยู่และ EA อยู่บนชาร์ต` };
+    // มติสภา/บัญชี/สเปกมาจาก snapshot ล่าสุด — ต้องสดและไม่ใช่รอบที่ผิดพลาด (เดิมรอบวิเคราะห์พังแล้ว snapshot ค้างได้ไม่จำกัด)
+    if (!snap.ts || Date.now() - snap.ts > 20_000 || snap.error || snap.dataSource !== 'mt5') return { ok: false, reason: 'ข้อมูลวิเคราะห์ล่าสุดไม่สด/ไม่ได้มาจาก MT5 — รอรอบวิเคราะห์ถัดไปแล้วลองใหม่ (ดูแท็บบันทึกถ้ายังไม่หาย)' };
+    // EA รุ่นก่อน v1.4 อ่านคำสั่งไม่ออก (บั๊ก StringTrim) และไม่มีวันหมดอายุคำสั่ง → ต้องอัปเดตก่อนส่งไม้จริง
+    if (!(snap.meta && snap.meta.spec)) return { ok: false, reason: EA_OUTDATED };
+    const quote = quoteFor(side);
+    if (!quote) return { ok: false, reason: 'ราคาสดจาก MT5 หยุดเกิน 5 วินาที — รอให้ราคาวิ่งก่อน (ตลาดปิด/เน็ตหลุด?)' };
+    // ทุนจริงจาก MT5 แปลงเป็น USD ก่อนคิดเพดาน 2% (บัญชี THB/JPY/… ห้ามนับเป็นดอลลาร์)
+    if (acct && !(acct.usdRate > 0)) return { ok: false, reason: `ยังไม่รู้อัตราแลกเปลี่ยน ${acct.currency} → USD จึงคิดเพดานความเสี่ยงไม่ได้ — รอสักครู่ (ต้องต่อเน็ต) หรืออัปเดต EA เป็นเวอร์ชันล่าสุด` };
+    const tickEqUSD = acct && Number.isFinite(lastQ.equity) && lastQ.equity > 0 ? lastQ.equity / acct.usdRate : null;
+    const liveEquity = tickEqUSD || (acct && acct.equityUSD > 0 ? acct.equityUSD : null);
+    const spec = snap.meta && snap.meta.spec;
+    const effSettings = {
+      ...engine.settings,
+      ...(liveEquity ? { equity: liveEquity } : {}),
+      ...(spec ? { ozPerLot: spec.contractSize, volMin: spec.volMin } : {}),
+    };
+    return { ok: true, quote, effSettings, snap, acct, liveEquity };
+  };
+
+  handle('send-order', (_e, req) => sendOrderReq(req));
+  function sendOrderReq(req) {
+    const side = req.side === 'buy' ? 'buy' : 'sell';
+    const g = orderGatePre(side);
+    if (!g.ok) return g;
+    const v = risk.validateManualOrder({
+      side, lot: Number(req.lot), entry: g.quote, sl: Number(req.sl), tp: Number(req.tp) || 0,
+      settings: g.effSettings,
+      manualToday: engine.manualToday,
+      signalsToday: engine.dailyCount,
+    });
+    if (!v.pass) { engine.pushLog('order', `ปฏิเสธคำสั่ง ${side}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, warn: v.warn, metrics: v.metrics }; }
+    // มติสภาบังคับเหมือนสัญญาณ (สวนมติ/ไร้มติ = กรอง ตามโหมดเข้ม)
+    const councilVerdict = g.snap.council || null;
+    const gate = gateSignal({ side }, councilVerdict, engine.settings);
+    if (!gate.ok) { engine.pushLog('order', `ปฏิเสธคำสั่ง ${side}: ${gate.reason}`, 'warn'); return { ok: false, reason: gate.reason, metrics: v.metrics }; }
+    try {
+      const { id } = engine.connectors.mt5.sendOrder({ side, lot: v.metrics.lot, sl: Number(req.sl), tp: Number(req.tp) || 0 });
+      engine.manualToday++;
+      engine.pushLog('order', `ส่งคำสั่งจริง id=${id} ${side.toUpperCase()} ล็อต ${v.metrics.lot} @ ${side === 'buy' ? 'ASK' : 'BID'} ${fmtPrice(g.quote)} SL ${req.sl} TP ${req.tp || '-'} เสี่ยง $${v.metrics.riskUSD} (ทุนที่ใช้คิด: ${g.liveEquity ? `จาก MT5 ≈ $${Math.round(g.liveEquity)}${g.acct && g.acct.currency !== 'USD' ? ` (${g.acct.currency})` : ''}` : 'ตั้งเอง $' + engine.settings.equity})${v.warn ? ' • ⚠ ' + v.warn : ''}`);
+      return { ok: true, id, metrics: v.metrics, warn: v.warn };
+    } catch (err) {
+      engine.pushLog('order', `ส่งคำสั่งไม่ได้: ${err.message}`, 'err');
+      return { ok: false, reason: err.message };
+    }
+  }
+  const EA_PENDINGS = 'คำสั่งรอล่วงหน้าต้องมี EA รุ่น 1.7 บนชาร์ต — แท็บ "MT5" → กด "ติดตั้ง EA ให้ฉันเอง" แล้วลาก JsonBridgeEA ลงชาร์ตใหม่ 1 ครั้ง';
+  // คำสั่งรอล่วงหน้า: วาง limit/stop รอราคา + SL/TP คุมตั้งแต่วาง (นับโควตาเหมือนไม้จริง)
+  handle('send-pending', (_e, req) => {
+    const side = req.side === 'buy' ? 'buy' : 'sell';
+    const ptype = req.ptype === 'stop' ? 'stop' : 'limit';
+    const g = orderGatePre(side);
+    if (!g.ok) return g;
+    // EA ต้องรุ่นใหม่พอ: pendings มาตั้งแต่ v1.7 (ป้าย "ea" ใน bridge — ป้ายไม่มี/ต่ำกว่า = ปฏิเสธ)
+    if (String(g.snap.meta.ea || '') < '1.7') return { ok: false, reason: EA_PENDINGS };
+    const entry = Number(req.entry);
+    if (!Number.isFinite(entry) || entry <= 0) return { ok: false, reason: 'ใส่ราคาเข้า (ราคาที่จะรอ) ก่อน — จะวาง limit/stop นี้ไว้รอเช่นไหน' };
+    // ทิศราคาต้องถูกตามชนิด: BUY LIMIT ต่ำกว่าตลาด / BUY STOP สูงกว่าตลาด / SELL LIMIT สูงกว่าตลาด / SELL STOP ต่ำกว่าตลาด
+    const ask = g.acct ? Number(g.snap.meta.ask) : null;
+    const bid = g.acct ? Number(g.snap.meta.bid) : null;
+    const market = side === 'sell' ? bid : ask;
+    if (!Number.isFinite(market)) return { ok: false, reason: 'ราคาสดไม่พร้อม — รอบริดจ์ใหม่' };
+    let bad = null;
+    if (ptype === 'limit' && side === 'buy' && !(entry < market)) bad = `BUY LIMIT ต้องตั้งราคาต่ำกว่าตลาดปัจจุบัน (ตอนนี้ ${fmtPrice(market)})`;
+    if (ptype === 'limit' && side === 'sell' && !(entry > market)) bad = `SELL LIMIT ต้องตั้งราคาสูงกว่าตลาดปัจจุบัน (ตอนนี้ ${fmtPrice(market)})`;
+    if (ptype === 'stop' && side === 'buy' && !(entry > market)) bad = `BUY STOP ต้องตั้งราคาสูงกว่าตลาดปัจจุบัน (ตอนนี้ ${fmtPrice(market)})`;
+    if (ptype === 'stop' && side === 'sell' && !(entry < market)) bad = `SELL STOP ต้องตั้งราคาต่ำกว่าตลาดปัจจุบัน (ตอนนี้ ${fmtPrice(market)})`;
+    if (bad) { engine.pushLog('order', `ปฏิเสธคำสั่งรอ: ${bad}`, 'warn'); return { ok: false, reason: bad }; }
+    const v = risk.validateManualOrder({
+      side, lot: Number(req.lot), entry, sl: Number(req.sl), tp: Number(req.tp) || 0,
+      settings: g.effSettings,
+      manualToday: engine.manualToday,
+      signalsToday: engine.dailyCount,
+    });
+    if (!v.pass) { engine.pushLog('order', `ปฏิเสธคำสั่งรอ ${side}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, warn: v.warn, metrics: v.metrics }; }
+    try {
+      const { id } = engine.connectors.mt5.sendPending({ side, ptype, lot: v.metrics.lot, entry: Number(entry), sl: Number(req.sl), tp: Number(req.tp) || 0 });
+      engine.manualToday++;
+      engine.pushLog('order', `วางคำสั่งรอ id=${id} ${side.toUpperCase()} ${ptype.toUpperCase()} @ ${fmtPrice(entry)} • SL ${req.sl} • TP ${req.tp || '-'} • ล็อต ${v.metrics.lot} — รอ trigger โบรเกอร์`);
+      return { ok: true, id, metrics: v.metrics, warn: v.warn };
+    } catch (err) {
+      engine.pushLog('order', `วางคำสั่งรอไม่ได้: ${err.message}`, 'err');
+      return { ok: false, reason: err.message };
+    }
+  });
+  // แก้คำสั่งรอ (ราคาเข้า/SL/TP) — เกตเดียวกับวางคำสั่งรอ แต่ไม่นับโควตา (ไม่ใช่ไม้ใหม่)
+  const EA_PMODIFY = 'แก้คำสั่งรอต้องมี EA รุ่น 1.8 บนชาร์ต — แท็บ "MT5" → กด "ติดตั้ง EA ให้ฉันเอง" แล้วลาก JsonBridgeEA ลงชาร์ตใหม่ 1 ครั้ง';
+  handle('modify-pending', (_e, req) => {
+    const ticket = Number(req && req.ticket);
+    const mt5 = engine.connectors.mt5;
+    const pendings = (mt5.latest && mt5.latest.meta && mt5.latest.meta.pendings) || [];
+    const po = Number.isSafeInteger(ticket) && ticket > 0 ? pendings.find((p) => Number(p.ticket) === ticket) : null;
+    if (!po) return { ok: false, reason: `ไม่พบคำสั่งรอ ticket ${req && req.ticket}` };
+    const m = /^(buy|sell)(limit|stop)$/.exec(String(po.type));
+    if (!m) return { ok: false, reason: `คำสั่งชนิด ${po.type} แก้จากแอปไม่ได้ — แก้ใน MT5` };
+    const [, side, ptype] = m;
+    const g = orderGatePre(side);
+    if (!g.ok) return g;
+    if (String(g.snap.meta.ea || '') < '1.8') return { ok: false, reason: EA_PMODIFY };
+    if ([...mt5.pending.values()].some((c) => Number(c.ticket) === ticket)) return { ok: false, reason: `คำสั่งรอ #${ticket} มีคำสั่งค้างอยู่ — รอผลจาก MT5` };
+    const entry = Number(req.entry), sl = Number(req.sl), tp = Number(req.tp) || 0;
+    const v = risk.validatePendingModify({ side, ptype, volume: Number(po.volume), entry, sl, tp, curEntry: Number(po.open), curSl: Number(po.sl), market: g.quote, settings: g.effSettings });
+    if (!v.pass) { engine.pushLog('order', `ปฏิเสธแก้คำสั่งรอ #${ticket}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, metrics: v.metrics }; }
+    try {
+      const { id } = mt5.requestModifyPending(ticket, entry, sl, tp);
+      engine.pushLog('order', `แก้คำสั่งรอ #${ticket} id=${id}: ราคา ${fmtPrice(Number(po.open))} → ${fmtPrice(entry)} • SL ${fmtPrice(Number(po.sl))} → ${fmtPrice(sl)} • TP ${Number(po.tp) ? fmtPrice(Number(po.tp)) : '-'} → ${tp ? fmtPrice(tp) : '-'} • เสี่ยง $${v.metrics.riskUSD}`);
+      return { ok: true, id, metrics: v.metrics };
+    } catch (err) {
+      engine.pushLog('order', `แก้คำสั่งรอไม่ได้: ${err.message}`, 'err');
+      return { ok: false, reason: err.message };
+    }
+  });
+  handle('cancel-pending', (_e, ticket) => {
+    const mt5 = engine.connectors.mt5;
+    if (engine.settings.realOrdersEnabled !== true) return { ok: false, reason: 'สวิตช์ "อนุญาตส่งออร์เดอร์จริง" ยังปิดอยู่' };
+    try {
+      const r = mt5.requestCancelPending(Number(ticket));
+      engine.pushLog('order', `ส่งคำสั่งยกเลิกไม้รอ ticket=${ticket}`);
+      return { ok: true, ...r };
+    } catch (err) { return { ok: false, reason: err.message }; }
+  });
+  const EA_OUTDATED = 'EA ใน MT5 เป็นรุ่นเก่า (ส่งคำสั่งไม่ได้) — แท็บ "MT5" → กด "ติดตั้ง EA ให้ฉันเอง" แล้วลาก JsonBridgeEA ลงชาร์ตทองใหม่ 1 ครั้ง';
+  const fmtPrice = (n) => Number.isFinite(n) ? n.toFixed(2) : '—';
+  // ปิดไม้รายตัว: กดครั้งเดียวส่งทันที (ไม่ผูกสวิตช์ส่งออร์เดอร์จริง — การปิดลดความเสี่ยง ต้องเร็ว)
+  handle('close-position', (_e, rawTicket) => {
+    const mt5 = engine.connectors.mt5;
+    // ticket ต้องเป็นเลขจำนวนเต็มของไม้ที่เปิดอยู่จริง (กันข้อความแปลกปลอมถูกเขียนต่อท้ายบรรทัด CMD)
+    const ticket = Number(rawTicket);
+    const liveMeta = mt5.latest && mt5.latest.meta;
+    const positions = (liveMeta && liveMeta.positions) || [];
+    if (!Number.isSafeInteger(ticket) || ticket <= 0 || !positions.some((p) => Number(p.ticket) === ticket)) return { ok: false, reason: `ไม่พบไม้ ticket ${rawTicket} ที่เปิดอยู่` };
+    if (!mt5.isLive()) return { ok: false, reason: 'MT5 ไม่ได้อัปเดตข้อมูล — ตรวจว่า MT5 เปิดอยู่และ EA อยู่บนชาร์ต' };
+    if (!(liveMeta && liveMeta.spec)) return { ok: false, reason: EA_OUTDATED };
+    if ([...mt5.pending.values()].some((c) => c.action === 'close' && Number(c.ticket) === ticket)) return { ok: false, reason: `กำลังปิดไม้ #${ticket} อยู่แล้ว — รอผลจาก MT5` };
+    try { const r = mt5.requestClose(ticket); engine.pushLog('order', `ส่งคำสั่งปิดไม้ ticket=${ticket}`); return { ok: true, ...r }; }
+    catch (err) { return { ok: false, reason: err.message }; }
+  });
+  // แก้ SL/TP ไม้ที่เปิดอยู่ — ผ่านเกตเดียวกับการส่งไม้ (สวิตช์จริง/ข้อมูลสด/EA) แต่ไม่นับโควตา
+  handle('modify-position', (_e, req) => {
+    const ticket = Number(req && req.ticket);
+    const mt5 = engine.connectors.mt5;
+    const positions = (mt5.latest && mt5.latest.meta && mt5.latest.meta.positions) || [];
+    const pos = Number.isSafeInteger(ticket) && ticket > 0 ? positions.find((p) => Number(p.ticket) === ticket) : null;
+    if (!pos) return { ok: false, reason: `ไม่พบไม้ ticket ${req && req.ticket} ที่เปิดอยู่` };
+    const side = pos.type === 'buy' ? 'buy' : 'sell';
+    // ราคาปิดของไม้: ซื้อปิดที่ BID / ขายปิดที่ ASK
+    const g = orderGatePre(side === 'buy' ? 'sell' : 'buy');
+    if (!g.ok) return g;
+    if ([...mt5.pending.values()].some((c) => Number(c.ticket) === ticket)) return { ok: false, reason: `ไม้ #${ticket} มีคำสั่งค้างอยู่ — รอผลจาก MT5` };
+    const sl = Number(req.sl), tp = Number(req.tp) || 0;
+    const v = risk.validateModify({ side, open: Number(pos.open), volume: Number(pos.volume), curSl: Number(pos.sl), sl, tp, market: g.quote, settings: g.effSettings });
+    if (!v.pass) { engine.pushLog('order', `ปฏิเสธแก้ไม้ #${ticket}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, metrics: v.metrics }; }
+    try {
+      const { id } = mt5.requestModify(ticket, sl, tp);
+      engine.pushLog('order', `แก้ไม้ #${ticket} id=${id}: SL ${fmtPrice(Number(pos.sl))} → ${fmtPrice(sl)} • TP ${Number(pos.tp) ? fmtPrice(Number(pos.tp)) : '-'} → ${tp ? fmtPrice(tp) : '-'} • เสี่ยง $${v.metrics.riskUSD}`);
+      return { ok: true, id, metrics: v.metrics };
+    } catch (err) {
+      engine.pushLog('order', `แก้ไม้ไม่ได้: ${err.message}`, 'err');
+      return { ok: false, reason: err.message };
+    }
+  });
+  // ปุ่มฉุกเฉิน "ปิดทุกไม้": ปิดทุกไม้ XAUUSD ที่ EA รายงานว่าเปิดอยู่ ณ ราคาตลาด
+  // ไม่ผูกกับสวิตช์ส่งออร์เดอร์จริง และไม่มีหน้ายืนยัน (การปิดลดความเสี่ยง ต้องทันตลาด)
+  handle('close-all', () => {
+    const mt5 = engine.connectors.mt5;
+    const meta = mt5.latest && mt5.latest.meta; // รายการไม้จากไฟล์ bridge ล่าสุด (ไม่พึ่งรอบวิเคราะห์ — ใช้ได้แม้ engine มีปัญหา)
+    if (!mt5.isLive()) return { ok: false, reason: 'MT5 ไม่ได้อัปเดตข้อมูล — ตรวจว่า MT5 เปิดอยู่และ EA อยู่บนชาร์ต (ปิดไม้เองใน MT5 ได้ทันที)' };
+    if (!(meta && meta.spec)) return { ok: false, reason: EA_OUTDATED };
+    const tickets = (meta.positions || []).map((p) => Number(p.ticket)).filter((t) => Number.isSafeInteger(t) && t > 0);
+    // ticket ที่มีคำสั่งปิดค้างอยู่แล้ว ไม่ส่งซ้ำ
+    const closing = new Set([...mt5.pending.values()].filter((c) => c.action === 'close').map((c) => Number(c.ticket)));
+    const todo = tickets.filter((t) => !closing.has(t));
+    if (!todo.length) return { ok: false, reason: tickets.length ? 'กำลังปิดทุกไม้อยู่แล้ว — รอผลจาก MT5' : 'ไม่มีไม้ที่เปิดอยู่' };
+    try {
+      const { ids } = mt5.requestCloseAll(todo);
+      engine.pushLog('order', `ปิดทุกไม้: ส่งคำสั่งปิด ${ids.length} ไม้ (tickets ${todo.join(', ')})`, 'warn');
+      return { ok: true, count: ids.length, ids };
+    } catch (err) {
+      engine.pushLog('order', `ปิดทุกไม้ไม่สำเร็จ: ${err.message}`, 'err');
+      return { ok: false, reason: err.message };
+    }
+  });
+  // เลนราคาเร็ว: เหตุการณ์ไฟล์ (fs.watch) = รู้ทันทึงราคาเปลี่ยน — โพลเป็นแผนสำรอง
+  // ---------- เข้าไม้อัตโนมัติ (autoEnter) — ย้ายจากหน้าต่างมา main: ปิดหน้าต่างแล้วยังทำงาน ----------
+  // ผ่าน sendOrderReq เดิม (เกตความเสี่ยง/มติสภา/โควตา/ข้อมูลสดครบทุกชั้นเหมือนกดมือ)
+  const autoEntered = new Set();      // สัญญาณที่ส่งแล้ว (กันซ้ำ)
+  const autoRejectedAt = new Map();   // สัญญาณที่เกตปฏิเสธ → ลองใหม่ได้หลัง 60 วิ (กัน log/แจ้งเตือนรัว)
+  const sigKey = (x) => `${x.plugin || '?'}|${x.side}|${x.ts || ''}`;
+  function autoEnterMain(snap) {
+    const s = engine.settings;
+    if (s.realOrdersEnabled !== true || s.autoEnter !== true) return;
+    const now = Date.now();
+    const sig = (snap.signals || []).find((x) => !x.held && !autoEntered.has(sigKey(x)) && !(now - (autoRejectedAt.get(sigKey(x)) || 0) < 60_000));
+    if (!sig || !Number.isFinite(sig.sl) || sig.sl <= 0) return;
+    const key = sigKey(sig);
+    const lot = Math.max(0.01, Number(sig.metrics && sig.metrics.lot) || 0.01);
+    autoEntered.add(key);
+    if (autoEntered.size > 200) autoEntered.clear();
+    let r;
+    try { r = sendOrderReq({ side: sig.side, lot, sl: sig.sl, tp: sig.tp || 0 }); }
+    catch (err) { r = { ok: false, reason: err.message }; }
+    const c = snap.council && snap.council.confidence != null ? `มติสภา ${snap.council.confidence}%` : '-';
+    if (r && r.ok) {
+      const msg = `เข้าไม้เองอัตโนมัติ: ${sig.side === 'buy' ? 'BUY' : 'SELL'} ล็อต ${r.metrics ? r.metrics.lot : lot} • SL ${sig.sl} • TP ${sig.tp || '-'} (${c}) — รอผลจาก MT5`;
+      send('auto-enter', { ok: true, msg });
+      notifyOnce('autoenter-' + key, 'GoldSignal: เข้าไม้อัตโนมัติ', msg);
+    } else {
+      autoEntered.delete(key);
+      autoRejectedAt.set(key, now);
+      if (autoRejectedAt.size > 200) autoRejectedAt.clear();
+      send('auto-enter', { ok: false, msg: `ระบบขอเข้าไม้อัตโนมัติแต่ถูกกันเหนียวปฏิเสธ — ${(r && r.reason) || 'เกตไม่ผ่าน'}` });
+    }
+  }
+
+  // ---------- กันเครื่องหลับ: เปิดเมื่อระบบอัตโนมัติใดทำงาน (เข้าไม้เอง / ปิดอัตโนมัติ) ----------
+  let keepAwakeId = null;
+  function syncKeepAwake() {
+    const s = engine.settings;
+    const need = (s.realOrdersEnabled === true && s.autoEnter === true) || s.autoCloseAll === true || s.autoCloseLoss === true || s.autoCloseAllPts === true || s.autoClosePoints === true;
+    const on = keepAwakeId != null && powerSaveBlocker.isStarted(keepAwakeId);
+    if (need && !on) { keepAwakeId = powerSaveBlocker.start('prevent-app-suspension'); engine.pushLog('app', 'กันเครื่องหลับ: เปิด (ระบบอัตโนมัติทำงานอยู่ — จอดับได้ แต่เครื่องไม่หลับ)'); }
+    else if (!need && on) { powerSaveBlocker.stop(keepAwakeId); keepAwakeId = null; engine.pushLog('app', 'กันเครื่องหลับ: ปิด (ไม่มีระบบอัตโนมัติเปิดอยู่)'); }
+  }
+  syncKeepAwake();
+
+  // ---------- ปิดอัตโนมัติเพื่อเซฟกำไร (ปิดรวบ / ปิดรายไม้ตามจุด) ----------
+  // ใช้ราคาสดทุกทิค • ไม่ผูกสวิตช์ส่งออร์เดอร์จริง (การปิดลดความเสี่ยง เหมือนปุ่มปิด) • ไม้ที่สั่งปิดแล้วรอ 20 วิ ไม่ส่งซ้ำ
+  const autoCloseBusy = new Map(); // ticket → เวลาที่ส่งคำสั่งปิด
+  function autoCloseCheck() {
+    const s = engine.settings;
+    if (s.autoCloseAll !== true && s.autoCloseLoss !== true && s.autoCloseAllPts !== true && s.autoClosePoints !== true) return;
+    const mt5 = engine.connectors.mt5;
+    const meta = mt5.latest && mt5.latest.meta;
+    if (!meta || !meta.spec || !(meta.positions || []).length || !mt5.isLive()) return;
+    if (!lastQ || !lastQ.fresh || Date.now() - lastQ.t > 5000) return;
+    const now = Date.now();
+    for (const [t, at] of autoCloseBusy) if (now - at > 20_000) autoCloseBusy.delete(t);
+    const skip = new Set([...autoCloseBusy.keys(), ...[...mt5.pending.values()].filter((c) => c.action === 'close').map((c) => Number(c.ticket))]);
+    const p = autoclose.plan({ positions: meta.positions, bid: lastQ.bid, ask: lastQ.ask, spec: meta.spec, digits: meta.digits, settings: s, skip });
+    const cur = (meta.account && meta.account.currency) || '';
+    try {
+      if (p.closeAll.length) {
+        mt5.requestCloseAll(p.closeAll);
+        p.closeAll.forEach((t) => autoCloseBusy.set(t, now));
+        const why = p.trigger === 'loss'
+          ? `ขาดทุนรวม ≈ ${p.total.toFixed(2)} ${cur} ถึงจุดตัด -${s.autoCloseLossValue} ${cur}`
+          : p.trigger === 'points'
+          ? `จุดรวม ${Math.round(p.totalPts)} จุด ถึงเป้า ${s.autoCloseAllPtsValue} จุด (≈ ${p.total.toFixed(2)} ${cur})`
+          : `กำไรรวม ≈ ${p.total.toFixed(2)} ${cur} ถึงเป้า ${s.autoCloseAllProfit} ${cur}`;
+        const msg = `${p.trigger === 'loss' ? 'ตัดขาดทุนรวบอัตโนมัติ' : 'ปิดรวบอัตโนมัติ'}: ${why} — สั่งปิด ${p.closeAll.length} ไม้`;
+        engine.pushLog('order', '🔒 ' + msg, 'warn');
+        send('auto-close', { kind: 'all', msg, tickets: p.closeAll });
+        notifyOnce('autoclose-all-' + p.closeAll.join('-'), p.trigger === 'loss' ? 'GoldSignal: ตัดขาดทุนรวบ' : 'GoldSignal: ปิดรวบเซฟกำไร', msg);
+        return;
+      }
+      for (const x of p.singles) {
+        mt5.requestClose(x.ticket);
+        autoCloseBusy.set(x.ticket, now);
+        const msg = `ปิดไม้ #${x.ticket} อัตโนมัติ: บวก ${Math.round(x.pts)} จุด ถึงเป้า ${s.autoClosePointsValue} จุด (≈ ${x.profit.toFixed(2)} ${cur})`;
+        engine.pushLog('order', '🔒 ' + msg, 'warn');
+        send('auto-close', { kind: 'one', msg, tickets: [x.ticket] });
+        notifyOnce('autoclose-' + x.ticket, 'GoldSignal: ปิดไม้เซฟกำไร', msg);
+      }
+    } catch (err) {
+      engine.pushLog('order', `ปิดอัตโนมัติไม่สำเร็จ: ${err.message}`, 'err');
+    }
+  }
+  let lastQ = null;
+  const pushTick = () => {
+    try {
+      const q = engine.connectors.mt5.pollQuotes();
+      if (!q || !q.fresh) { lastQ = null; return; } // ราคาหยุด/MT5 หลุดเซิร์ฟเวอร์ = ห้ามใช้ราคาเก่าส่งไม้
+      const changed = !lastQ || lastQ.bid !== q.bid || lastQ.ask !== q.ask;
+      lastQ = q; // อายุไฟล์ราคา (t) + ทุนสด อัปเดตทุกครั้ง แม้ราคานิ่ง (เดิมราคานิ่ง 5 วิ = ถูกปฏิเสธว่าราคาหยุด)
+      autoCloseCheck(); // ตรวจเป้าเซฟกำไรทุกทิค
+      if (changed) send('tick', q);
+    } catch { void 0; }
+  };
+  engine.connectors.mt5.watch((ev) => {
+    if (ev === 'quotes') pushTick();                                  // ราคาสด → ส่งทันที (EA v1.6 เขียนทุกทิค สูงสุด ~10 ครั้ง/วิ)
+    else if (ev === 'bridge') scheduleFastTick();                     // แท่งใหม่ → วิเคราะห์เลย ไม่รอรอบโพล
+    else if (ev === 'results') drainResults();                        // ผลออร์เดอร์มาแล้ว → แจ้งทันที
+  });
+  let fastTickTimer = null;
+  function scheduleFastTick() {
+    if (fastTickTimer) return;
+    fastTickTimer = setTimeout(() => { fastTickTimer = null; engine.tick().catch(() => {}); }, 900); // รวมเหตุการณ์หนึ่งครั้ง/วิ
+  }
+  // อ่านผลจาก EA (pollResults ดึงแล้วลบออกจากคิว — เรียกซ้ำได้ปลอดภัย)
+  function drainResults() {
+    let results = [];
+    try { results = engine.connectors.mt5.pollResults(); } catch (err) { engine.pushLog('order', `อ่านผลจาก MT5 ไม่ได้: ${err.message}`, 'warn'); }
+    for (const r of results) {
+      // ไม้เปิดที่ไม่สำเร็จ (โบรกปฏิเสธ/หมดอายุ) ไม่ได้เข้าตลาด → คืนโควตาวันนี้
+      if (r.status !== 'ok' && r.cmd && r.cmd.action === 'open') engine.manualToday = Math.max(0, engine.manualToday - 1);
+      engine.pushLog('order', `ผล id=${r.id}: ${r.status === 'ok' ? '✅ ทำสำเร็จ' : '❌ ล้มเหลว — ' + r.msg} (retcode ${r.retcode}, ticket ${r.ticket || '-'})`, r.status === 'ok' ? 'info' : 'err');
+      send('order-result', r);
+    }
+  }
+  // โพล fallback ทุก 250ms — เร็วเท่าจังหวะที่ EA เขียนราคา (ครอบคลุมถ้า watch ใช้ไม่ได้บนเครื่องนั้น)
+  // (pushTick กรองซ้ำเอง: ส่งต่อ renderer เฉพาะเมื่อ bid/ask เปลี่ยน)
+  const quoteLane = setInterval(pushTick, 250);
+  // ราคาสดต้องมาไม่เกิน 5 วิ (t = เวลาไฟล์ราคาจริง)
+  const quoteFor = (side) => (lastQ && lastQ.fresh && Date.now() - lastQ.t < 5000 ? (side === 'buy' ? lastQ.ask : lastQ.bid) : null);
+  // วงจรอ่านผลจาก EA ทุก 2 วินาที + ถอนคำสั่งที่ EA ไม่หยิบภายใน 15 วิ
+  // (เดิมค้างในไฟล์ไม่มีกำหนด → MT5 เปิดใหม่เมื่อไรก็ยิงไม้ที่ราคาตอนนั้น ไม่ใช่ราคาที่ผู้ใช้ยืนยัน)
+  setInterval(() => {
+    drainResults();
+    for (const c of engine.connectors.mt5.expirePending()) {
+      if (c.action === 'open') engine.manualToday = Math.max(0, engine.manualToday - 1);
+      const msg = `คำสั่ง id=${c.id} (${c.action}) หมดอายุ — MT5 ไม่ได้หยิบภายใน 15 วิ จึงยกเลิกแล้ว ไม่มีไม้เข้า • สาเหตุที่พบบ่อย: (1) EA ตั้ง AllowOrders = false (2) ปุ่ม AutoTrading ใน MT5 ยังไม่เขียว (3) MT5/ตลาดปิดอยู่`;
+      engine.pushLog('order', msg, 'warn');
+      send('order-result', { id: c.id, status: 'stale', msg, cmd: c });
+    }
+  }, 2000);
+  handle('pick-bridge-file', async () => {
+    const r = await dialog.showOpenDialog(win, {
+      title: 'เลือกไฟล์ goldsignal_bridge.json',
+      properties: ['openFile'],
+      filters: [{ name: 'Bridge JSON', extensions: ['json'] }],
+    });
+    if (r.canceled || !r.filePaths[0]) return null;
+    engine.connectors.mt5.setBridgePath(r.filePaths[0]);
+    engine.settings.mt5BridgePath = r.filePaths[0];
+    writeSettings(sanitizeSettings(engine.settings));
+    return r.filePaths[0];
+  });
+}
+
+// กันแอปล้มจาก error ที่ไม่ได้ดักไว้ (เช่น ไฟล์ bridge ถูกลบกลางการอ่าน) — บันทึกแล้วทำงานต่อ
+process.on('uncaughtException', (err) => { try { fileLogger()('process', `uncaught: ${err && err.stack || err}`, 'err'); } catch { void 0; } });
+process.on('unhandledRejection', (err) => { try { fileLogger()('process', `unhandled rejection: ${err && err.stack || err}`, 'err'); } catch { void 0; } });
+
+app.whenReady().then(() => {
+  createWindow();
+  boot();
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+});
+
+app.on('window-all-closed', () => {
+  // macOS: ปิดหน้าต่าง = แอปยัอยู่ใน dock และวิเคราะห์ต่อเนื่อง (คลิก dock จะเปิดหน้าต่างใหม่)
+  if (process.platform !== 'darwin') app.quit();
+});

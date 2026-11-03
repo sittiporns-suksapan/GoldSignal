@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>GoldSignal — แผงระยะไกล</title>
+<style>
+:root{color-scheme:dark}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#07080b;color:#f2f0ea;font-family:-apple-system,"Sukhumvit Set","Noto Sans Thai",sans-serif}
+.box{width:min(380px,calc(100vw - 32px));background:#14171f;border:1px solid #2a2f3a;border-radius:14px;padding:24px;text-align:center}
+h1{font-size:19px;margin:0 0 6px;color:#e8c46a}
+p{color:#9aa0ab;font-size:13px;margin:6px 0}
+.st{font-size:14px;margin:14px 0;min-height:20px}
+.ok{color:#4fd18b}.bad{color:#ff8896}
+a.btn{display:block;margin-top:14px;padding:11px;border-radius:9px;background:#e8c46a;color:#1a1406;font-weight:700;font-size:15px;text-decoration:none}
+a.btn[hidden]{display:none}
+small{color:#6b717c;font-size:11.5px;display:block;margin-top:14px;word-break:break-all}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>GoldSignal</h1>
+  <p>ลิงก์ถาวรไปแผงควบคุมบนเครื่องหลัก</p>
+  <div class="st" id="st">กำลังหาที่อยู่แผงล่าสุด…</div>
+  <a class="btn" id="go" hidden>เปิดแผง</a>
+  <small id="meta"></small>
+</div>
+<script>
+(async () => {
+  const st = document.getElementById('st'), go = document.getElementById('go'), meta = document.getElementById('meta');
+  let link;
+  try { link = await (await fetch('gs-link.json?t=' + Date.now(), { cache: 'no-store' })).json(); }
+  catch { st.textContent = 'ยังไม่มีที่อยู่แผง — เปิด tunnel ในแอปก่อน'; st.className = 'st bad'; return; }
+  if (!link || !/^https:\/\//.test(link.url || '')) { st.textContent = 'แผงปิดอยู่ (ยังไม่ได้เปิด tunnel ในแอป)'; st.className = 'st bad'; return; }
+  meta.textContent = `อัปเดตที่อยู่ล่าสุด ${new Date(link.updatedAt).toLocaleString('th-TH')} • ${link.provider || ''}`;
+  go.href = link.url; go.hidden = false;
+  // ตรวจว่าเครื่องหลักตอบไหม (no-cors: ได้คำตอบใดๆ = ออนไลน์)
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 8000);
+  try {
+    await fetch(link.url.replace(/\/$/, '') + '/login', { mode: 'no-cors', signal: ctl.signal, cache: 'no-store' });
+    st.textContent = 'แผงออนไลน์ — กำลังพาไป…'; st.className = 'st ok';
+    setTimeout(() => { location.href = link.url; }, 1200);
+  } catch {
+    st.textContent = 'ติดต่อแผงไม่ได้ — แอปบนเครื่องหลักหรือ tunnel อาจปิดอยู่'; st.className = 'st bad';
+  } finally { clearTimeout(t); }
+})();
+</script>
+</body>
+</html>
