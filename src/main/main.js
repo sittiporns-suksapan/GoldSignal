@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, dialog, Notification, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Notification, powerSaveBlocker, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -197,7 +197,8 @@ function boot() {
   // เว็บ GoldSignal: ใช้งานได้เหมือนแอปทั้งหมด (ล็อกอินด้วยรหัสที่ตั้งในแอป)
   const webAuth = createWebAuth(path.join(app.getPath('userData'), 'web-auth.json'));
   // แจ้งเตือน Telegram (token อยู่ไฟล์แยก — หน้าเว็บอ่าน/แก้ไม่ได้)
-  const tg = createTelegram({ file: path.join(app.getPath('userData'), 'telegram.json'), logger: engine.pushLog });
+  // ใช้ net.fetch (ระบบเครือข่ายของ Chromium เหมือนเบราว์เซอร์) — fetch ของ Node ใน Electron ต่อ api.telegram.org ไม่ได้ในบางเน็ต (ETIMEDOUT)
+  const tg = createTelegram({ file: path.join(app.getPath('userData'), 'telegram.json'), logger: engine.pushLog, fetchImpl: (u, o) => net.fetch(u, o) });
   handle('tg-get', () => tg.view());
   handle('tg-set', (_e, p) => tg.set(p || {}));
   handle('tg-detect', (_e, token) => tg.detectChat(token));
