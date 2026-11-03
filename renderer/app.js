@@ -1305,8 +1305,11 @@ function renderCommentaryFeed(snap) {
 
 /* ---------- ประวัติจุดรอเข้า: กระดานซื้อ/ขายแยกกัน ---------- */
 function renderZoneHistory(snap) {
-  const box = $('zonehist');
-  if (!box) return;
+  for (const box of [$('zonehist'), $('zonehist-mini')]) {
+    if (box) box.innerHTML = zoneHistoryHtml(snap);
+  }
+}
+function zoneHistoryHtml(snap) {
   const s = snap.zoneSummary || { buy: {}, sell: {} };
   const renderSide = (side) => {
     const rows = (snap.zoneHistory || []).filter((t) => t.side === side).slice(-12).reverse();
@@ -1337,7 +1340,7 @@ function renderZoneHistory(snap) {
   };
   const rounds = (snap.roundLog || []).slice(-12).reverse().map((r) =>
     `<div class="zh-line"><span class="t">${fmtTs(r.ts)}</span><span class="zact">${esc(r.action)}</span></div><div class="zdetail">${esc(r.detail)}</div>`).join('');
-  box.innerHTML = renderSide('sell') + renderSide('buy') +
+  return renderSide('sell') + renderSide('buy') +
     `<div class="zh-side zh-rounds"><h5>ประวัติรอบ — ลงไม้ไหน <button class="zh-all" data-open-history title="เปิดหน้าต่างใหม่ ดูประวัติรอบทั้งหมด">ดูทั้งหมด ↗</button></h5><div class="zh-rows roundlines">${rounds || '<div class="empty sm">ยังไม่มีรอบที่เปลี่ยนสถานะ</div>'}</div></div>`;
 }
 
@@ -1645,6 +1648,29 @@ function renderHistory(snap) {
 }
 showHist(histTab);
 
+/* ---------- แท็บแยกในการ์ดโอกาส: โอกาส (ผ่านกฎ) / ไม้จำลอง (สภา ณ เปิดไม้) ---------- */
+// (แยกแผงไม้จำลองออกมาอ่านเฉพาะ — แท็บกลุ่มนี้เป็นสำเนาย่อของแท็บประวัติใหญ่)
+const oppTabsCtl = document.getElementById('o-tabs');
+if (oppTabsCtl) {
+  const showOpp = (name) => {
+    const tab = name === 'sim' ? 'sim' : 'opps';
+    store.set('gsOppTab', tab);
+    document.querySelectorAll('#o-tabs button').forEach((b) => b.classList.toggle('active', b.dataset.o === tab));
+    $('o-pane-opps').hidden = tab !== 'opps';
+    $('o-pane-sim').hidden = tab !== 'sim';
+    if (lastSnap) renderZoneHistory(lastSnap);
+  };
+  oppTabsCtl.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => showOpp(b.dataset.o)));
+  showOpp(store.get('gsOppTab', 'opps'));
+}
+function renderOppCounts(snap) {
+  const nSig = (snap.signals || []).length;
+  const nSim = (snap.zoneHistory || []).length + (snap.zoneOpen || []).length;
+  const a = $('o-sig-n'), b = $('o-sim-n');
+  if (a) a.textContent = nSig ? String(nSig) : '';
+  if (b) b.textContent = nSim ? String(nSim) : '';
+}
+
 /* ---------- แถบตัวเลขหลัก (KPI) — สรุปสิ่งที่ต้องรู้ในแวบเดียว ---------- */
 function setKpi(id, text, cls = '') { const el = $(id); el.textContent = text; el.className = cls; }
 function renderKpis(snap) {
@@ -1694,6 +1720,8 @@ function applySnapshot(snap, first) {
     renderMarket(snap.analysis);
     renderGuards(snap.guard, snap.risk || {});
     renderSignals(snap);
+    renderOppCounts(snap);
+    renderZoneHistory(snap);
     renderCouncil(snap.council, snap.error, snap.councilStats);
     renderKpis(snap);
     renderLadder(snap);

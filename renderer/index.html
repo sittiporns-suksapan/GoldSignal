@@ -130,8 +130,21 @@
           </div>
 
           <div class="card">
-            <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-spark" /></svg>โอกาสที่ผ่านกฎความเสี่ยง</h2><span id="signals-count" class="pill"></span></div>
-            <div id="signals" class="signals"><div class="empty">ยังไม่มีสัญญาณ — ระบบจะแจ้งเมื่อเงื่อนไขกลยุทธ์และกฎความเสี่ยงตรงกัน</div></div>
+            <div class="card-head">
+              <h2 class="ct"><svg class="ic"><use href="#i-spark" /></svg>โอกาสที่ผ่านกฎความเสี่ยง</h2>
+              <span id="o-tabs" class="seg-ctl hist-tabs" role="tablist" aria-label="แยกการ์ดโอกาส / ไม้จำลอง">
+                <button data-o="opps" class="active" role="tab">โอกาส<span id="o-sig-n" class="seg-n"></span></button>
+                <button data-o="sim" role="tab">ไม้จำลอง • สภา<span id="o-sim-n" class="seg-n"></span></button>
+              </span>
+              <span id="signals-count" class="pill"></span>
+            </div>
+            <div id="o-pane-opps" class="o-pane">
+              <div id="signals" class="signals"><div class="empty">ยังไม่มีสัญญาณ — ระบบจะแจ้งเมื่อเงื่อนไขกลยุทธ์และกฎความเสี่ยงตรงกัน</div></div>
+            </div>
+            <div id="o-pane-sim" class="o-pane" hidden>
+              <p class="hist-note">ไม้จำลอง: ราคาแตะจุดรอเข้า (ฝั่งละ 1 ไม้) วัดความแม่นของโซน — แนบ <b>มติสภา ณ จังหวะเปิดไม้</b> ให้เห็นกันตลอด • ไม่ใช้เงินจริง</p>
+              <div id="zonehist-mini" class="zh"></div>
+            </div>
           </div>
 
           <div class="card" id="history-card">
