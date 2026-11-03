@@ -1200,36 +1200,74 @@ function renderZoneHistory(snap) {
 document.addEventListener('click', (e) => { if (e.target.closest('[data-open-history]')) window.api.openHistoryWindow(); });
 
 /* ---------- แผงระยะไกล (เว็บควบคุมเต็ม) — ตั้งค่าได้เฉพาะในแอปบนเครื่อง ---------- */
-const openOrCopy = (u) => {
-  if (/^https:\/\//.test(u)) { window.open(u, '_blank'); return; }
-  try { navigator.clipboard.writeText(u); toast('คัดลอกแล้ว: ' + u, 'ok'); } catch { toast(u); }
-};
-const linkHtml = (u) => `<a data-wc-link="${esc(u)}">${esc(u)}</a>`;
+async function copyText(u) {
+  try { await navigator.clipboard.writeText(u); }
+  catch {
+    const t = document.createElement('textarea');
+    t.value = u; t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();
+  }
+  toast('📋 คัดลอกลิงก์แล้ว: ' + u, 'ok');
+}
+// แถวลิงก์: ชื่อช่องทาง + ที่อยู่ + ปุ่มคัดลอก/เปิด
+const linkRow = (kind, u, main = false) => `<div class="wc-link${main ? ' main' : ''}">
+  <span class="k">${esc(kind)}</span><span class="u" title="${esc(u)}">${esc(u)}</span>
+  <button class="wc-btn sm" data-wc-copy="${esc(u)}">คัดลอก</button><button class="wc-btn sm" data-wc-open="${esc(u)}">เปิด</button></div>`;
+const WC_HIDE_KEY = 'gs.webctl.hidden';
+function setWcHidden(hide) {
+  $('wc-body').hidden = hide;
+  $('wc-toggle').textContent = hide ? 'แสดง ▾' : 'ซ่อน ▴';
+  $('wc-toggle').setAttribute('aria-expanded', String(!hide));
+  try { localStorage.setItem(WC_HIDE_KEY, hide ? '1' : '0'); } catch { void 0; }
+}
 async function renderWebCtl() {
   const card = $('webctl-card');
   if (!card) return;
   if (window.GS_WEB) { card.hidden = true; return; }
   let w;
   try { w = await window.api.webAccessGet(); } catch { return; }
-  $('wc-pw-st').textContent = w.hasPassword ? '✓ ตั้งรหัสแล้ว (เปลี่ยนได้ — ทุกเครื่องจะถูกออกจากระบบ)' : 'ยังไม่ได้ตั้งรหัส — เว็บยังเข้าไม่ได้';
+  const t = w.tunnel || {};
+  // สรุปย่อบนหัวการ์ด (เห็นแม้ซ่อนแผง)
+  const chips = [];
+  chips.push(`<span class="wc-chip ${w.hasPassword ? 'on' : 'err'}">${w.hasPassword ? '🔑 ตั้งรหัสแล้ว' : '🔑 ยังไม่ตั้งรหัส'}</span>`);
+  chips.push(`<span class="wc-chip ${w.remote ? 'on' : ''}">${w.remote ? 'เข้าจากนอกเครื่องได้' : 'เฉพาะเครื่องนี้'}</span>`);
+  chips.push(`<span class="wc-chip ${t.state === 'on' ? 'on' : t.state === 'error' ? 'err' : ''}">${t.state === 'on' ? '🟢 tunnel ' + esc(t.provider) : t.state === 'starting' ? '⏳ tunnel' : t.state === 'error' ? '🔴 tunnel' : 'tunnel ปิด'}</span>`);
+  if (w.pagesUrl) chips.push(`<button class="wc-btn sm" data-wc-copy="${esc(w.pagesUrl)}" title="${esc(w.pagesUrl)}">📋 ลิงก์ถาวร</button>`);
+  $('wc-summary').innerHTML = chips.join('');
+
+  $('wc-pw-st').textContent = w.hasPassword ? '✓ ตั้งรหัสแล้ว — เปลี่ยนได้ (ทุกเครื่องจะถูกออกจากระบบ)' : 'ยังไม่ได้ตั้งรหัส — หน้าเว็บยังเข้าไม่ได้';
   $('wc-remote').checked = !!w.remote;
-  $('wc-addrs').innerHTML = w.remote
-    ? (w.addresses.length ? w.addresses.map((a) => `${esc(a.kind)}: ${linkHtml(a.url)}`).join('<br>') : 'ไม่พบเครือข่าย (ต่อ Wi-Fi หรือเปิด Tailscale)')
-    : 'ตอนนี้เข้าได้เฉพาะเครื่องนี้';
+  const addrs = [];
+  if (w.localUrl) addrs.push(linkRow('เครื่องนี้', w.localUrl));
+  for (const a of w.addresses || []) addrs.push(linkRow(a.kind, a.url));
+  if (!w.remote) addrs.push('<div class="wc-empty">เปิดสวิตช์ด้านบนเพื่อให้มือถือ/เครื่องอื่นเข้าได้</div>');
+  else if (!(w.addresses || []).length) addrs.push('<div class="wc-empty">ไม่พบเครือข่าย — ต่อ Wi-Fi หรือเปิด Tailscale</div>');
+  $('wc-addrs').innerHTML = addrs.join('');
+
   const av = w.tunnelAvailable || {};
   for (const o of $('wc-prov').options) o.disabled = !av[o.value];
-  const t = w.tunnel || {};
   if (t.provider && document.activeElement !== $('wc-prov')) $('wc-prov').value = t.provider;
-  $('wc-tun-st').innerHTML = t.state === 'on' ? `🟢 ${esc(t.provider)}: ${linkHtml(t.url)}`
-    : t.state === 'starting' ? `⏳ กำลังเปิด ${esc(t.provider)}…`
-    : t.state === 'error' ? `🔴 ${esc(t.msg || 'เปิดไม่ได้')}` : 'ปิดอยู่';
+  $('wc-tun-st').innerHTML = t.state === 'on' ? linkRow(`🟢 tunnel ${t.provider} (เปลี่ยนเมื่อเปิดใหม่ — ใช้ลิงก์ถาวรด้านล่างแทนได้)`, t.url)
+    : t.state === 'starting' ? `<div class="wc-empty">⏳ กำลังเปิด ${esc(t.provider)}…</div>`
+    : t.state === 'error' ? `<div class="wc-empty err">🔴 ${esc(t.msg || 'เปิดไม่ได้')}</div>` : '<div class="wc-empty">tunnel ปิดอยู่</div>';
+
   if (document.activeElement !== $('wc-repo') && w.pagesRepo) $('wc-repo').value = w.pagesRepo;
-  $('wc-pages-st').innerHTML = !w.ghAvailable ? 'ต้องติดตั้ง GitHub CLI ก่อน: brew install gh แล้ว gh auth login'
-    : w.pagesUrl ? `ลิงก์ถาวร: ${linkHtml(w.pagesUrl)} (อัปเดตที่อยู่ให้เองทุกครั้งที่ tunnel เปลี่ยน — GitHub ใช้เวลา ~1 นาที)` : 'ยังไม่ได้ตั้ง';
+  $('wc-pages-st').innerHTML = !w.ghAvailable ? '<div class="wc-empty err">ต้องติดตั้ง GitHub CLI ก่อน: brew install gh แล้ว gh auth login</div>'
+    : w.pagesUrl ? linkRow('⭐ ลิงก์ถาวร — ส่งลิงก์นี้ไว้ในมือถือ (อัปเดตที่อยู่ tunnel ให้เอง ~1 นาที)', w.pagesUrl, true)
+    : '<div class="wc-empty">ยังไม่ได้ตั้ง</div>';
   $('wc-sess').textContent = `เครื่องที่ล็อกอินเว็บอยู่: ${w.sessions}`;
 }
-document.addEventListener('click', (e) => { const a = e.target.closest('[data-wc-link]'); if (a) openOrCopy(a.dataset.wcLink); });
-if ($('webctl-card')) {
+document.addEventListener('click', (e) => {
+  const c = e.target.closest('[data-wc-copy]');
+  if (c) { copyText(c.dataset.wcCopy); return; }
+  const o = e.target.closest('[data-wc-open]');
+  if (o) window.open(o.dataset.wcOpen, '_blank');
+});
+if ($('webctl-card') && !window.GS_WEB) {
+  let hidden = false;
+  try { hidden = localStorage.getItem(WC_HIDE_KEY) === '1'; } catch { void 0; }
+  setWcHidden(hidden);
+  $('wc-toggle').addEventListener('click', () => setWcHidden(!$('wc-body').hidden));
   const wrap = (fn) => async () => { try { await fn(); } catch (err) { toast('✗ ' + err.message, 'err'); } renderWebCtl(); };
   $('wc-pw-save').addEventListener('click', wrap(async () => {
     const pw = $('wc-pw').value;
@@ -1238,6 +1276,7 @@ if ($('webctl-card')) {
     $('wc-pw').value = '';
     toast('🔑 บันทึกรหัสเว็บแล้ว', 'ok');
   }));
+  $('wc-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('wc-pw-save').click(); });
   $('wc-remote').addEventListener('change', wrap(async () => {
     const on = $('wc-remote').checked;
     if (on && !confirm('เปิดให้เข้าเว็บควบคุมเต็มจากนอกเครื่องนี้?\n\nใครรู้ที่อยู่ + รหัส จะกดซื้อ/ขาย/ปิดไม้จริงได้')) { $('wc-remote').checked = false; return; }
@@ -1404,13 +1443,6 @@ async function loadSettingsToForm() {
   $('bridge-path').textContent = s.mt5BridgePath ? 'ไฟล์: ' + s.mt5BridgePath : '';
   updateCalcExample(s);
   appSettings = s;
-  // ช่อง "ดูผ่านเว็บเบราว์เซอร์" — คลิกแล้วเปิดใน browser จริง
-  try {
-    const wu = await window.api.getWebUrl();
-    const a = $('web-url');
-    if (wu) { a.textContent = wu; a.onclick = (e) => { e.preventDefault(); openOrCopy(wu); }; }
-    else a.textContent = 'เปิดไม่ได้ (ดู log แท็บ บันทึก)';
-  } catch { void 0; }
   return s;
 }
 

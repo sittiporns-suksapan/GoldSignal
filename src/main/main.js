@@ -136,7 +136,9 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, '..', '..', 'renderer', 'index.html'));
   // เปิดลิงก์ภายนอกเฉพาะ https ในเบราว์เซอร์ระบบ • ห้ามหน้าต่างหลักถูกพาไปหน้าอื่น
-  win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//i.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+  // http อนุญาตเฉพาะที่อยู่แผงของเราเอง (เครื่องนี้ / LAN / Tailscale 100.64.0.0/10)
+  const ownHttp = /^http:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+)(:\d+)?(\/|$)/i;
+  win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//i.test(url) || ownHttp.test(url)) shell.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
     try { fs.appendFileSync(path.join(app.getPath('userData'), 'app.log'), `${new Date().toISOString()} [console:${level}] ${String(message).slice(0, 300)} (${String(sourceId).split('/').pop()}:${line})\n`); } catch { void 0; }

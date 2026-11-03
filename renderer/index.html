@@ -435,7 +435,6 @@
           </ol>
           <p class="note">หาก MetaEditor ไม่เห็นไฟล์ก็ชี้ไฟล์ที่ ~/Downloads/JsonBridgeEA.mq5 (กดปุ่มติดตั้งอัตโนมัติจะสำรองให้ที่นี่เสมอ) หรือกด "เลือกไฟล์ goldsignal_bridge.json เอง" ภายหลัง</p>
           <p class="note">แอปจะหาไฟล์ bridge ในโฟลเดอร์ MT5 ของคุณเองอัตโนมัติ ถ้าหาไม่เจอปุ่ม "เลือกไฟล์เอง" จะช่วยได้ทันที</p>
-          <p class="note">เว็บบนเครื่องนี้ (ล็อกอินด้วยรหัสเว็บ): <b><a id="web-url" href="#">…กำลังเปิด…</a></b></p>
           <div class="row2">
             <label>เว็บระยะไกล (push) — เช่น http://IP-เซิร์ฟเวอร์:7779/push
               <input type="text" id="s-webpush-url" placeholder="ว่าง = ไม่ส่งขึ้น server" />
@@ -446,39 +445,53 @@
           </div>
           <p class="note">ถ้ายังไม่เชื่อม MT5 ระบบใช้ข้อมูลฟรี COMEX (GC=F) อัตโนมัติ — วิเคราะห์ไม่หยุด</p>
         </div>
-        <div class="card" id="webctl-card">
-          <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-bolt" /></svg>แผงระยะไกล — เว็บควบคุมเต็ม <span class="ct-sub">หน้าตาและปุ่มเหมือนแอปทุกอย่าง • ใช้รหัสเดียวกันทุกช่องทาง</span></h2></div>
-          <p class="note warnline">⚠ เว็บนี้กดซื้อ/ขาย/ปิดไม้จริงได้ — ตั้งรหัสยาว เดายาก และอย่าบอกใคร • รหัสผิด 5 ครั้ง = ล็อก 15 นาที</p>
-          <div class="wc-row">
-            <span class="wc-k">รหัสผ่านเว็บ</span>
-            <input type="password" id="wc-pw" autocomplete="new-password" placeholder="อย่างน้อย 8 ตัวอักษร" />
-            <button id="wc-pw-save">บันทึกรหัส</button>
-            <span id="wc-pw-st" class="small muted"></span>
+        <div class="card wc-card" id="webctl-card">
+          <div class="card-head">
+            <h2 class="ct"><svg class="ic"><use href="#i-bolt" /></svg>แผงระยะไกล <span class="ct-sub">เว็บควบคุมเต็ม — หน้าตาและปุ่มเหมือนแอป • รหัสเดียวกันทุกช่องทาง</span></h2>
+            <div class="wc-headr">
+              <span id="wc-summary" class="wc-summary"></span>
+              <button id="wc-toggle" class="wc-toggle" aria-expanded="true" title="ซ่อน/แสดงชุดแผงควบคุมระยะไกล">ซ่อน ▴</button>
+            </div>
           </div>
-          <div class="wc-row">
-            <label class="switch-row"><span class="switch"><input type="checkbox" id="wc-remote" /><span></span></span><span class="small">เปิดให้เข้าจากนอกเครื่องนี้ (Wi-Fi / Tailscale / tunnel)</span></label>
-          </div>
-          <div id="wc-addrs" class="wc-list"></div>
-          <div class="wc-row">
-            <span class="wc-k">Tunnel → 8008</span>
-            <select id="wc-prov">
-              <option value="cloudflared">cloudflared (ฟรี ไม่ต้องสมัคร — ลิงก์เปลี่ยนทุกครั้ง)</option>
-              <option value="ngrok">ngrok (ต้องตั้ง authtoken)</option>
-              <option value="tailscale">Tailscale Funnel (ลิงก์ถาวร *.ts.net)</option>
-            </select>
-            <button id="wc-tun-on">เปิด tunnel</button>
-            <button id="wc-tun-off">ปิด</button>
-          </div>
-          <div id="wc-tun-st" class="wc-list"></div>
-          <div class="wc-row">
-            <span class="wc-k">ลิงก์ถาวร (GitHub Pages)</span>
-            <input type="text" id="wc-repo" placeholder="owner/repo เช่น ProgramZa2560/goldsignal" />
-            <button id="wc-pages">ตั้งลิงก์ถาวร</button>
-          </div>
-          <div id="wc-pages-st" class="wc-list"></div>
-          <div class="wc-row">
-            <span id="wc-sess" class="small muted"></span>
-            <button id="wc-logout-all">ออกจากระบบทุกเครื่อง</button>
+          <div id="wc-body" class="wc-body">
+            <section class="wc-sec">
+              <h3 class="wc-h"><span class="wc-n">1</span>การเข้าถึง</h3>
+              <label class="wc-lbl" for="wc-pw">รหัสผ่านเว็บ</label>
+              <div class="wc-inline">
+                <input type="password" id="wc-pw" autocomplete="new-password" placeholder="อย่างน้อย 8 ตัวอักษร" />
+                <button id="wc-pw-save" class="wc-btn">บันทึกรหัส</button>
+              </div>
+              <div id="wc-pw-st" class="wc-hint"></div>
+              <label class="switch-row wc-switch"><span class="switch"><input type="checkbox" id="wc-remote" /><span></span></span><span>เปิดให้เข้าจากนอกเครื่องนี้ <span class="muted">(Wi-Fi / Tailscale / tunnel)</span></span></label>
+              <div class="wc-lbl">ที่อยู่เข้าใช้</div>
+              <div id="wc-addrs" class="wc-links"></div>
+            </section>
+            <section class="wc-sec">
+              <h3 class="wc-h"><span class="wc-n">2</span>ออกอินเทอร์เน็ต</h3>
+              <label class="wc-lbl" for="wc-prov">Tunnel → port 8008</label>
+              <div class="wc-inline">
+                <select id="wc-prov">
+                  <option value="cloudflared">cloudflared — ฟรี ไม่ต้องสมัคร (ลิงก์เปลี่ยนทุกครั้ง)</option>
+                  <option value="ngrok">ngrok — ต้องตั้ง authtoken</option>
+                  <option value="tailscale">Tailscale Funnel — ลิงก์ถาวร *.ts.net</option>
+                </select>
+                <button id="wc-tun-on" class="wc-btn primary">เปิด</button>
+                <button id="wc-tun-off" class="wc-btn">ปิด</button>
+              </div>
+              <div id="wc-tun-st" class="wc-links"></div>
+              <label class="wc-lbl" for="wc-repo">ลิงก์ถาวร (GitHub Pages)</label>
+              <div class="wc-inline">
+                <input type="text" id="wc-repo" placeholder="owner/repo เช่น ProgramZa2560/goldsignal-link" />
+                <button id="wc-pages" class="wc-btn">ตั้งลิงก์ถาวร</button>
+              </div>
+              <div id="wc-pages-st" class="wc-links"></div>
+            </section>
+            <div class="wc-foot">
+              <span class="wc-warn">⚠ เว็บนี้กดซื้อ/ขาย/ปิดไม้จริงได้ — ใช้รหัสยาว เดายาก ไม่บอกใคร • ผิด 5 ครั้ง = ล็อก 15 นาที</span>
+              <span class="wc-grow"></span>
+              <span id="wc-sess" class="muted small"></span>
+              <button id="wc-logout-all" class="wc-btn">ออกจากระบบทุกเครื่อง</button>
+            </div>
           </div>
         </div>
       </div>
