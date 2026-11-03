@@ -294,6 +294,7 @@ details.more[open] summary { margin-bottom: 10px; }
 .last-signal .sig-cell b { font-size: 12.5px; font-family: var(--font-num); font-variant-numeric: tabular-nums; }
 .last-signal .sig-cell b.up { color: var(--up-text); }
 .last-signal .sig-cell b.down { color: var(--down-text); }
+.last-signal.sim { border-color: var(--line); background: var(--surface-2); }
 @media (max-width: 760px) { .last-signal .sig-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 /* ---------- key-value rows (market / guards / filtered) ---------- */

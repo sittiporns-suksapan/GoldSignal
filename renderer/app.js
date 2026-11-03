@@ -398,7 +398,25 @@ function noSignalHtml(snap) {
          </div>
        </div>`
     : '';
-  return `${lastHtml}<div class="empty nosig"><b>ยังไม่มีสัญญาณที่เข้าได้</b><span>${esc(why)}</span></div>${small}`;
+  // จังหวะไม้จำลองล่าสุด + มติสภา ณ ไม้เปิด (แยกให้ดู: โซนแตะเมื่อไร สภาตัดสินกี่ %)
+  const vSim = [
+    ...(snap.zoneOpen || []),
+    ...(snap.zoneHistory || []),
+  ].filter((t) => t && t.councilAtOpen).sort((a, b) => (b.openedAt || 0) - (a.openedAt || 0))[0];
+  const simHtml = vSim
+    ? `<div class="last-signal sim">
+         <div class="ls-head">🧪 ไม้จำลองล่าสุด — มติสภา ณ ไม้เปิด <span class="muted small">${esc(vSim.levelType || '')} ${fmtD(vSim.zone, 2)}</span></div>
+         <div class="sig-grid">
+           <div class="sig-cell"><small>เปิดตอน</small><b>${fmtTs(vSim.openedAt)}</b></div>
+           <div class="sig-cell"><small>ฝั่ง</small><b class="${vSim.side === 'buy' ? 'up' : 'down'}">${vSim.side === 'buy' ? 'ซื้อ BUY' : 'ขาย SELL'}</b></div>
+           <div class="sig-cell"><small>ราคาเข้า</small><b>${fmtD(vSim.entry, 2)}</b></div>
+           <div class="sig-cell"><small>SL / TP</small><b>${fmtD(vSim.sl, 2)} / ${fmtD(vSim.tp, 2)}</b></div>
+           <div class="sig-cell"><small>สภา ณ เปิดไม้</small><b class="${vSim.councilAtOpen.side === 'none' ? '' : (vSim.councilAtOpen.side === 'buy' ? 'up' : 'down')}">${vSim.councilAtOpen.side === 'none' ? `ไม่มีมติ ${vSim.councilAtOpen.confidence}%` : `${vSim.councilAtOpen.side === 'buy' ? 'ซื้อ' : 'ขาย'} ${vSim.councilAtOpen.confidence}%`}</b></div>
+           <div class="sig-cell"><small>ผ่านไม้จริง</small><b>${vSim.councilAtOpen.side !== 'none' && Math.round(vSim.councilAtOpen.agree || 0) >= (vSim.councilAtOpen.quorumNeed || 3) && vSim.councilAtOpen.confidence >= 70 ? 'ผ่าน ✓' : 'ไม่ผ่าน ✗'}</b></div>
+         </div>
+       </div>`
+    : '';
+  return `${simHtml}${lastHtml}<div class="empty nosig"><b>ยังไม่มีสัญญาณที่เข้าได้</b><span>${esc(why)}</span></div>${small}`;
 }
 
 function renderSignals(snap) {
