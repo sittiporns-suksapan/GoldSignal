@@ -681,6 +681,39 @@ async function cancelPending(ticket) {
   setTimeout(() => { closingTicketsPending.delete(ticket); window.api.refreshNow(); }, 1500);
 }
 
+// ดับเบิลคลิกบนชาร์ต (รวมเส้นราคาด้านขวา) = เปิด "คำสั่งรอล่วงหน้า" + กรอกครบทุกช่องจากจุดที่คลิก
+// กติกา: จุดที่คลิกอยู่บนเส้นราคาตลาด = SELL LIMIT • ล่างเส้น = BUY LIMIT • SL/TP = ATR(M15) ×1.8 / ×4.5 ตามฝั่ง
+function chartPriceFromEvent(ev) {
+  if (!chartM || !candleSeries) return NaN;
+  const box = $('chart').getBoundingClientRect();
+  if (!box.width) return NaN;
+  try { const p = candleSeries.coordinateToPrice(ev.clientY - box.top); return Number.isFinite(Number(p)) ? Number(p) : NaN; } catch { return NaN; }
+}
+function openPendingAt(ev) {
+  const snap = lastSnap, meta = (snap && snap.meta) || {};
+  if (!Number.isFinite(Number(meta.bid))) { toast('ยังไม่มีราคาสด — รอบถัดไปแล้วลองใหม่', 'err'); return; }
+  const px = chartPriceFromEvent(ev);
+  if (!Number.isFinite(px)) return;
+  const d = meta.digits || 2;
+  const bid = Number(meta.bid), ask = Number(meta.ask), mid = (bid + ask) / 2;
+  const side = px >= mid ? 'sell' : 'buy';
+  const m15 = snap.analysis && snap.analysis.tf && snap.analysis.tf.M15;
+  const atr = (m15 && Number.isFinite(m15.atr) && m15.atr > 0) ? Number(m15.atr) : mid * 0.0008;
+  const entry = Number(px.toFixed(d));
+  const sl = side === 'buy' ? entry - atr * 1.8 : entry + atr * 1.8;
+  const tp = side === 'buy' ? entry + atr * 4.5 : entry - atr * 4.5;
+  $('p-kind').value = `${side}-limit`;
+  $('p-entry').value = entry;
+  $('p-sl').value = Number(sl.toFixed(d));
+  $('p-tp').value = Number(tp.toFixed(d));
+  const el = $('pend-card');
+  el.classList.add('max'); $('pend-max').textContent = '↘ ย่อ';
+  setupPendDrag();
+  try { el.scrollIntoView({ block: 'nearest' }); } catch { void 0; }
+  toast(`📋 ${side === 'buy' ? 'BUY LIMIT — ราคาอยู่ล่างเส้น' : 'SELL LIMIT — ราคาอยู่บนเส้น'} @ ${entry.toFixed(d)} • SL ${Number(sl.toFixed(d))} • TP ${Number(tp.toFixed(d))} — ตรวจแล้วกด "วางคำสั่งรอ"`, 'ok');
+}
+$('chart').addEventListener('dblclick', (e) => { e.preventDefault(); openPendingAt(e); });
+
 function renderLogs(snap) {
   $('logs').innerHTML = (snap.logs || []).slice().reverse().map((l) => `<div class="logline ${l.lvl}"><span class="t">${fmtTs(l.t)}</span><span class="tag">${esc(l.tag)}</span><span>${esc(l.msg)}</span></div>`).join('') || '<div class="empty">ยังไม่มีบันทึก</div>';
 }
