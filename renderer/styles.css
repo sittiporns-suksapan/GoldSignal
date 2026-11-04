@@ -123,6 +123,8 @@ button.ghost { background: transparent; color: var(--text-2); }
 .brand h1 { font: 650 17px/1.1 var(--font-num); letter-spacing: .3px; color: var(--text); }
 .brand h1 span { background: var(--gold-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .brand small { display: block; color: var(--faint); font-size: 10.5px; letter-spacing: .5px; margin-top: 2px; }
+.brand .brand-ver { color: var(--muted); font: 500 10px/1.2 var(--font-num); letter-spacing: .2px; }
+.brand .brand-ver:empty { display: none; }
 
 #tabs {
   grid-area: nav; justify-self: center;
@@ -736,7 +738,7 @@ footer b { color: var(--warn); font-weight: 600; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 1380px) {
-  .brand small { display: none; }
+  .brand .brand-tag { display: none; }
   .hero { grid-template-columns: 1fr; }
 }
 @media (max-width: 1240px) {
@@ -771,7 +773,7 @@ footer b { color: var(--warn); font-weight: 600; }
 
   /* แถบบน: แบรนด์ + ราคาพอดีจอ, เมนูแท็บเลื่อนนอยได้ */
   #topbar { padding: 8px 10px; }
-  .brand small { display: none; }
+  .brand .brand-tag { display: none; }
   .ticker { column-gap: 7px; }
   .ticker #price { font-size: 15px; }
   #tabs { overflow-x: auto; scrollbar-width: none; }

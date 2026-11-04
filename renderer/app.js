@@ -1809,6 +1809,10 @@ const rendererErrorCount = {};
 function applySnapshot(snap, first) {
   if (!snap) return;
   lastSnap = snap;
+  // เลขเวอร์ชันใต้ชื่อโปรแกรม (แบบ macOS: Version x (build))
+  const ver = snap.app && snap.app.version;
+  const verEl = $('app-ver');
+  if (ver && verEl && verEl._v !== ver) { verEl._v = ver; verEl.textContent = `Version ${ver} (${ver})`; }
   // กันเหนียว: แต่ละการ์ดแยกกัน — render เดียวพัง = จุดเดียวหยุด ที่เหลือวาดต่อ (หน้าจอไม่ตายทั้งใบ)
   const guard = (name, fn) => {
     try { fn(); }

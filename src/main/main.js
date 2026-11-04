@@ -237,12 +237,20 @@ function boot() {
       if (ad.state !== 'on') tunnel.start(o.tunnelProvider, w.port);
     }
   });
+  // แจ้ง Telegram/LINE ทุกครั้งที่ลิงก์ถาวรชี้ที่อยู่ใหม่ (เปิดแอป/อัปเดตโปรแกรม/tunnel ได้ URL ใหม่/กดตั้งเอง)
+  const notifyLink = (why, repo, u, prov) => notify('link',
+    `🔗 GoldSignal: ${why}\nลิงก์ถาวร: ${pages.pagesUrl(repo)}` +
+    (u ? `\nลิงก์ตรง (${prov || 'tunnel'}): ${u}` : '\nแผงระยะไกลปิดอยู่') +
+    `\nเวอร์ชัน ${app.getVersion()}`);
   // tunnel ได้ URL ใหม่ → อัปเดตลิงก์ถาวรบน GitHub Pages (ถ้าตั้ง repo ไว้)
   const publish = (u, prov) => {
     const repo = webAuth.opts().pagesRepo;
     if (!repo) return;
     pages.publishLink(repo, u, prov)
-      .then(() => engine.pushLog('pages', u ? `อัปเดตลิงก์ถาวร → ${u}` : 'ลิงก์ถาวร: แจ้งว่าแผงปิด'))
+      .then(() => {
+        engine.pushLog('pages', u ? `อัปเดตลิงก์ถาวร → ${u}` : 'ลิงก์ถาวร: แจ้งว่าแผงปิด');
+        notifyLink(u ? 'อัปเดตลิงก์ถาวรแล้ว' : 'ลิงก์ถาวร: แผงปิด', repo, u, prov);
+      })
       .catch((err) => engine.pushLog('pages', err.message, 'warn'));
   };
   const tunnel = createTunnel({ logger: engine.pushLog, onUrl: publish, stateFile: path.join(app.getPath('userData'), 'tunnel-state.json') });
@@ -268,6 +276,7 @@ function boot() {
     const url = await pages.setup(repo, tunnel.status().url, tunnel.status().provider);
     webAuth.setOpts({ pagesRepo: repo });
     engine.pushLog('pages', `ตั้งลิงก์ถาวรแล้ว: ${url}`);
+    notifyLink('ตั้งลิงก์ถาวรใหม่', repo, tunnel.status().url, tunnel.status().provider);
     return { url };
   });
   handle('get-web-url', () => webUrl);

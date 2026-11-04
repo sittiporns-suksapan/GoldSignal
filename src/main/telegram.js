@@ -18,6 +18,7 @@ const EVENTS = {
   signal: { label: 'สัญญาณผ่านทุกด่าน', def: true },
   virtual: { label: 'ไม้เสมือน เปิด/ปิด', def: false },
   system: { label: 'ระบบ: MT5 หลุด/กลับมา • tunnel ล่ม', def: true },
+  link: { label: 'ลิงก์ถาวร/ลิงก์แผงใหม่ (เปิดแอป/อัปเดต/tunnel ได้ URL ใหม่/กดตั้งเอง)', def: true },
 };
 const API = 'https://api.telegram.org';
 const TOKEN_RE = /^\d{5,15}:[A-Za-z0-9_-]{30,60}$/;
