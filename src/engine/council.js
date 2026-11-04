@@ -264,8 +264,13 @@ function runCouncil(ctx, settings = {}) {
   // สวิตช์เปิด/ปิดรายเอเจนต์: settings.councilAgents = { id: true|false } — ค่าที่ไม่ได้พูดถึง = เปิด
   const agentSwitch = settings.councilAgents && typeof settings.councilAgents === 'object' ? settings.councilAgents : {};
   const enabledCount = AGENTS.filter((a) => agentSwitch[a.id] !== false).length;
-  // คิวรัมยึดตามตั้งค่า — แต่ถ้าเปิดเอเจนต์น้อยกว่าโควตา ลดลงเท่าจำนวนที่เปิด (อย่างน้อย 1 คน จึงออกมติได้)
-  const quorumNeed = Math.max(1, Math.min(Math.max(2, Math.min(6, Number(settings.councilQuorum) || 3)), Math.max(1, enabledCount)));
+  // คิวรัม: โหมดอัตโนมัติ (councilQuorumAuto ไม่ปิด) = 60% ของเอเจนต์ที่เปิดอยู่ ปัดขึ้น (3→2 • 4→3 • 5→3 • 6→4 • 7→5)
+  //          หรือยึดค่าที่ผู้ใช้แก้มือ (councilQuorum) — และไม่เกินจำนวนที่เปิดจริงเสมอ
+  const autoOn = settings.councilQuorumAuto !== false;
+  // อัตโนมัติ: 60% ของที่เปิด ปัดขึ้น — 1 คน = 1 (ต้องมอบเท่าที่มี) • 2→2 • 3→2 • 4→3 • 5→3 • 6→4 • 7→5
+  const quorumNeed = autoOn
+    ? Math.max(1, Math.min(6, enabledCount > 0 ? Math.ceil(enabledCount * 0.6) : 2))
+    : Math.max(1, Math.min(Math.max(2, Math.min(6, Number(settings.councilQuorum) || 3)), Math.max(1, enabledCount)));
   const skills = ctx.skills || {};
   const votes = [];
   for (const agent of AGENTS) {
@@ -295,7 +300,7 @@ function runCouncil(ctx, settings = {}) {
   // น้ำหนักจริง = ฐาน × ผลงานตัวเอง (0.6-1.5) × ตัวปรับตามสนาม
   const effWeight = (v) => v.weight * (Number.isFinite(v.skillFactor) ? v.skillFactor : 1) * (adjust[v.id] || 1);
   const dir = votes.filter((v) => v.side === 'buy' || v.side === 'sell');
-  let verdict = { side: 'none', confidence: 0, net: 0, agree: 0, quorumNeed };
+  let verdict = { side: 'none', confidence: 0, net: 0, agree: 0, quorumNeed, quorumAuto: autoOn, quorumSrc: autoOn ? `อัตโนมัติ: ${quorumNeed} (60% จากทีม ${enabledCount} คน)` : `ตั้งมือ: ${Number(settings.councilQuorum) || 3}` };
   if (dir.length) {
     const wSum = dir.reduce((s, v) => s + effWeight(v), 0);
     const net = dir.reduce((s, v) => s + effWeight(v) * (v.side === 'buy' ? 1 : -1) * (v.conf || 0), 0) / wSum;

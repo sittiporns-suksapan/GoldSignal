@@ -1839,6 +1839,7 @@ async function loadSettingsToForm() {
   $('ac-pts-v').value = s.autoClosePointsValue;
   $('s-councilon').checked = s.councilEnabled !== false;
   $('s-councilstrict').checked = s.councilStrict !== false;
+  $('s-quorumauto').checked = s.councilQuorumAuto !== false;
   $('s-quorum').value = s.councilQuorum;
   $('s-councilmin').value = s.councilMin;
   $('source-sel').value = s.source;
@@ -1880,6 +1881,7 @@ $('form-risk').addEventListener('submit', async (e) => {
     councilEnabled: $('s-councilon').checked,
     councilStrict: $('s-councilstrict').checked,
     councilQuorum: Number($('s-quorum').value),
+    councilQuorumAuto: $('s-quorumauto').checked,
     councilMin: Number($('s-councilmin').value),
     source: $('source-sel').value,
   };
@@ -2080,6 +2082,15 @@ function renderCouncil(c, error, stats) {
     (stats ? councilStatsHtml(stats) : '');
   const ck = `${c.side}|${c.confidence}|${c.agree}|${(c.votes || []).map((v) => `${v.id}${v.side}${v.conf}${v.off ? '0' : '1'}`).join('')}|${stats ? `${stats.verdict && stats.verdict.n}|${stats.lean && stats.lean.n}` : ''}`;
   renderOnce('council', ck, $('council-agents'), rows + notesHtml);
+  // คิวรัมอัตโนมัติ: ช่องตั้งค่าโชว์ค่าล่าสุดตามทีม (ถ้าไม่ได้พิมพ์อยู่) — เปิด/ปิดสวิตช์เอเจนต์ = ตัวเลขปรับเองทุกรอบ
+  const qInput = $('s-quorum');
+  if (qInput && c.quorumAuto !== undefined && document.activeElement !== qInput) {
+    if ((appSettings && appSettings.councilQuorumAuto) !== false) {
+      qInput.value = c.quorumNeed;
+      const qn = $('quorum-note');
+      if (qn && qn.textContent !== c.quorumSrc) qn.textContent = `อัตโนมัติ: ${c.quorumSrc || ''} — พิมพ์เลขทับ = สลับตั้งมือ`;
+    }
+  }
 }
 
 // แถบผลงานจริงของสภา (สมุด council-stats): ตรวจมติย้อนหลัง 30 นาทีทุกใบ

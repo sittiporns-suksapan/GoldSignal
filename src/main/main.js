@@ -57,7 +57,8 @@ const DEFAULT_SETTINGS = {
   autoEnter: false,         // เปิด = ระบบเข้าไม้เองทันทีเมื่อผ่านทุกเกต (ไม่รอกด) • ปิด = ระบบเด้งหน้ายืนยันรอกด
   councilEnabled: true,   // ทีมเอเจนต์วิเคราะห์ก่อนทุกไม้
   councilStrict: true,    // โหมดเข้ม: ต้องมีมติสภาสนับสนุนถึงแสดงสัญญาณ (หลักฐานจาก backtest 60 วัน)
-  councilQuorum: 3,       // จำนวนเอเจนต์เห็นพ้องขั้นต่ำให้สภาออกมติ
+  councilQuorum: 3,       // จำนวนเอเจนต์เห็นพ้องขั้นต่ำให้สภาออกมติ (ใช้เมื่อปิดโหมดอัตโนมัติ)
+  councilQuorumAuto: true, // อัตโนมัติ: คิวรัม = 60% ขของเอเจนต์ที่เปิด (3→2 • 4→3 • 5→3 • 6→4 • 7→5)
   autoCloseAll: false,        // ปิดรวบอัตโนมัติเมื่อกำไรลอยตัวรวม ≥ autoCloseAllProfit (สกุลเงินบัญชี)
   autoCloseAllProfit: 100,
   autoCloseLoss: false,       // ตัดขาดทุนรวบอัตโนมัติเมื่อขาดทุนลอยตัวรวม ≥ autoCloseLossValue (สกุลเงินบัญชี)
@@ -115,6 +116,7 @@ function sanitizeSettings(input) {
     councilEnabled: s.councilEnabled === false ? false : true,
     councilStrict: s.councilStrict === false ? false : true,
     councilQuorum: Math.round(num(s.councilQuorum, 3, 2, 6)),
+    councilQuorumAuto: s.councilQuorumAuto !== false,
     councilMin: num(s.councilMin, 70, 50, 95),
     // สวิตช์เปิด/ปิดรายเอเจนต์ในสภา — เก็บเฉพาะ id ที่รู้จัก (id แปลก/เอเจนต์ที่ถอดออกจากโค้ด = ลบออก) ค่า default = เปิด
     councilAgents: (() => {

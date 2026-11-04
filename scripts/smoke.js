@@ -189,9 +189,9 @@ ok('เอเจนต์สภาพตลาด v2: ตลาดกำลั�
   const regime = v.votes.find((x) => x.id === 'regime');
   assert.ok(v.caps.length > 0, `ต้องมีหมายเหตุยับจากสภาพตลาด (reason: ${regime.reason})`);
 });
-ok('ผู้ใช้ขอ quorum สูง (6) → สภาถ่อมตัวไม่ออกมติง่าย ๆ', () => {
+ok('ผู้ใช้ขอ quorum สูง (6) → สภาถ่อมตัวไม่ออกมติง่าย ๆ (ตั้งมือ)', () => {
   const analysis = require(path.join(root, 'src', 'engine', 'analysis')).analyzeMarket(candles);
-  const v6 = council.runCouncil({ analysis, candles, price: candles.M5[candles.M5.length - 1].c, now: Date.now() }, { councilQuorum: 6 });
+  const v6 = council.runCouncil({ analysis, candles, price: candles.M5[candles.M5.length - 1].c, now: Date.now() }, { councilQuorum: 6, councilQuorumAuto: false });
   assert.equal(v6.quorumNeed, 6);
 });
 ok('สวิตช์รายเอเจนต์: ปิด 6 ตัว = ไม่ร่วมโหวต + คิวรัมหดเหลือเท่าที่เปิด (≥1)', () => {
@@ -201,12 +201,12 @@ ok('สวิตช์รายเอเจนต์: ปิด 6 ตัว = �
   const offs = v1.votes.filter((x) => x.off);
   assert.equal(offs.length, 6, `ต้องมี 6 เอเจนต์ปิดอยู่ (ได้ ${offs.length})`);
   assert.ok(v1.votes.every((x) => x.off || x.id === 'trend'), 'ต้องเหลือแต่ trend ร่วมโหวต');
-  assert.equal(v1.quorumNeed, 1, 'คิวรัมลดไม่เกินจำนวนคนที่เปิด');
+  assert.equal(v1.quorumNeed, 1, 'คิวรัมลดไม่เกินจำนวนคนที่เปิด (อัตโนมัติ: 1 คน = 1 เสียง)');
   const m = v1.votes.find((x) => x.id === 'momentum');
   assert.equal(m.side, 'none', 'เอเจนต์ที่ปิดต้องไม่มีทิศโหวต');
   const vDefault = council.runCouncil(ctx, { councilAgents: { trend: false } });
   assert.equal(vDefault.votes.filter((x) => x.off).length, 1, 'ปิดตัวเดียว = อีก 6 ตัวโหวตปกติ');
-  assert.equal(vDefault.quorumNeed, 3, 'คิวรัมคงเดิมเมื่อคนเปิดเหลือมากกว่าโควตา');
+  assert.equal(vDefault.quorumNeed, 4, 'คิวรัมอัตโนมัติ: เปิด 6 = 4 (60% ปัดขึ้น)');
 });
 ok('gateSignal: สวนมติที่มั่นใจ ≥55% = กรอง / โหมดปกติ สภาไม่มีมติ = ผ่าน', () => {
   const verdictBuy = { side: 'buy', confidence: 80, agree: 4, quorumNeed: 3 };
@@ -496,6 +496,28 @@ ok('เอเจนต์ v2: โครงสร้าง BOS/CHoCH ขารา
     assert.ok(a.skill && Number.isFinite(a.skill.n), `${a.id} มีข้อมูลผลงาน`);
     assert.ok(!/พัง/.test(a.reason), `${a.id}: ${a.reason}`);
   }
+});
+
+ok('สภา: คิวรัมอัตโนมัติตามจำนวนทีมที่เปิด (3→2 • 4→3 • 6→4) + แก้มือได้', () => {
+  const analysisTf = require(path.join(root, 'src', 'engine', 'analysis')).analyzeMarket(candles);
+  const ctx = { analysis: analysisTf, candles, price: candles.M5[candles.M5.length - 1].c, now: Date.now(), ind, skills: {} };
+  const allIds = council.AGENTS.map((a) => a.id);
+  const q = (openN, opts = {}) => {
+    const keep = allIds.slice(0, openN);
+    const sw = Object.fromEntries(allIds.map((id) => [id, keep.includes(id)]));
+    return council.runCouncil(ctx, { councilAgents: sw, councilQuorumAuto: true, ...opts });
+  };
+  // หมายเหตุ: ผลโหวตอาจ side none — ยึด quorumNeed ที่ประกาศใน verdict เสมอ
+  assert.equal(q(7).quorumNeed, 5, 'เปิด 7 = 5 (60% ปัดขึ้น)');
+  assert.equal(q(6).quorumNeed, 4, 'เปิด 6 = 4');
+  assert.equal(q(4).quorumNeed, 3, 'เปิด 4 = 3');
+  assert.equal(q(3).quorumNeed, 2, 'เปิด 3 = 2');
+  assert.ok(q(2).quorumNeed >= 2, 'เปิด 2 = อย่างน้อย 2 (ยิงสัญญาณต้อง 2 คนเท่านั้น)');
+  // ตั้งมือ: ยึดค่าที่ตั้ง — ครอบด้วยจำนวนเปิดจริง
+  const m3 = council.runCouncil(ctx, { councilQuorumAuto: false, councilQuorum: 4, councilAgents: Object.fromEntries(allIds.map((id, i) => [id, i < 3])) });
+  assert.equal(m3.quorumNeed, 3, 'ตั้งมือ 4 แต่ทีม 3 คน = ลดเหลือ 3');
+  const m4 = council.runCouncil(ctx, { councilQuorumAuto: false, councilQuorum: 4, councilAgents: Object.fromEntries(allIds.map((id, i) => [id, i < 5])) });
+  assert.equal(m4.quorumNeed, 4, 'ตั้งมือ 4 ทีม 5 = ใช้ 4');
 });
 
 console.log('\n[6.5] ระบบรอเข้า: ช่วงเวลา + ห้องรอ');
@@ -933,7 +955,7 @@ console.log('\n[7.5] ความปลอดภัยออร์เดอร�
       a.analyze = i === 0 ? () => ({ side: 'none', conf: 0, cap: 55, capSide: 'buy', capReason: 'ชนแนวต้าน' }) : () => ({ side: 'buy', conf: 90, reason: 'x' });
     });
     try {
-      const v = council.runCouncil({ analysis: {}, candles: {}, price: 1, now: Date.now(), ind, skills: {} }, { councilQuorum: 3 });
+      const v = council.runCouncil({ analysis: {}, candles: {}, price: 1, now: Date.now(), ind, skills: {} }, { councilQuorum: 3, councilQuorumAuto: false });
       assert.equal(v.side, 'buy');
       assert.ok(v.confidence <= 55, `ถูกบีบเหลือ ≤55 (ได้ ${v.confidence})`);
     } finally { council.AGENTS.forEach((a, i) => { a.analyze = orig[i]; }); }
@@ -950,7 +972,7 @@ console.log('\n[7.5] ความปลอดภัยออร์เดอร�
     ];
     council.AGENTS.forEach((a, i) => { a.analyze = fns[i]; });
     try {
-      const v = council.runCouncil({ analysis: {}, candles: {}, price: 1, now: Date.now(), ind, skills: {} }, { councilQuorum: 3 });
+      const v = council.runCouncil({ analysis: {}, candles: {}, price: 1, now: Date.now(), ind, skills: {} }, { councilQuorum: 3, councilQuorumAuto: false });
       assert.equal(v.side, 'buy', 'เสียงขายถูกลดน้ำหนักจนแพ้');
       assert.deepEqual(v.boosts, ['ชนแนว'], 'boost ใช้เฉพาะฝั่งมติ');
       assert.equal(v.votes[1].weightAdj, 0.1);

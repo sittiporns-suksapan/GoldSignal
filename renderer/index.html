@@ -404,11 +404,16 @@
             <div class="row2">
               <label>เอเจนต์เห็นพ้องขั้นต่ำ (2–6)
                 <input type="number" id="s-quorum" min="2" max="6" step="1" />
+                <small id="quorum-note" class="muted">อัตโนมัติ: จับค่าตามทีมที่เปิดอยู่ทุกรอบ</small>
               </label>
               <label>มั่นใจรวมขั้นต่ำออกไม้ % (50–95)
                 <input type="number" id="s-councilmin" min="50" max="95" step="1" />
               </label>
             </div>
+            <label class="toggle">
+              <input type="checkbox" id="s-quorumauto" />
+              <span>คิวรัมอัตโนมัติตามทีมที่เปิด — เปิด 3→2 • 4→3 • 5→3 • 6→4 • 7→5 (ปิดสวิตช์นี้ = ยึดตัวเลขที่พิมพ์เอง)</span>
+            </label>
           </div>
 
           <!-- แถบบันทึกลอยติดล่างสุด -->
