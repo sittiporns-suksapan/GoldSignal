@@ -780,6 +780,42 @@ console.log('\n[7] Engine end-to-end');
     assert.equal(tg.notify('realOpen', 'y'), false, 'สวิตช์ปิด = เงียบ');
   });
 
+  await ok('Telegram ปุ่มยืนยัน: inline keyboard + callback เฉพาะแชตที่ตั้งเท่านั้น', async () => {
+    const { createTelegram } = require(path.join(root, 'src', 'main', 'telegram'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gstgbtn-'));
+    const hits = [];
+    let cbPayload = null, replied = null;
+    const fakeFetch = async (url, o) => {
+      const method = url.split('/').pop();
+      if (method === 'sendMessage') hits.push(JSON.parse(o.body));
+      if (method === 'answerCallbackQuery') replied = JSON.parse(o.body);
+      const result = method === 'getMe' ? { username: 'gs_btn_bot' }
+        : method === 'getUpdates' ? [cbPayload].filter(Boolean) : true;
+      return { status: 200, json: async () => ({ ok: true, result }) };
+    };
+    const tg = createTelegram({ file: path.join(dir, 'telegram.json'), fetchImpl: fakeFetch });
+    let action = null;
+    tg.onActions((d) => { action = d; });
+    tg.set({ token: '123456789:AAHfakeTokenForSmokeTest_abcdefghijk', chatId: '555111', enabled: true });
+    try {
+      // ส่งปุ่ม: reply_markup ครบ
+      await tg.sendInline('ตรวจปุ่ม', [[{ text: '✅ เข้าจริง', callback_data: 'sig:a' }]]);
+      assert.ok(hits.some((h) => h.reply_markup && h.reply_markup.inline_keyboard[0][0].callback_data === 'sig:a'), 'ปุ่มในข้อความ ✓');
+      // callback จากแชตอื่น = ปฏิเสธ + ไม่เรียก handler
+      cbPayload = { update_id: 2, callback_query: { id: 'cb2', data: 'sig:a', message: { chat: { id: 987654 } } } };
+      await tg.pollOnce();
+      assert.equal(action, null, 'แชตอื่นกดปุ่ม = เมิน');
+      assert.ok(replied && /แชต/.test(replied.text || ''), 'ตอบหมุดว่าใช้ชาตผ่านไม่ได้');
+      // callback จากแชตที่ตั้ง = ส่งต่อ handler
+      cbPayload = { update_id: 3, callback_query: { id: 'cb3', data: 'sig:a', message: { chat: { id: 555111 } } } };
+      await tg.pollOnce();
+      assert.equal(action, 'sig:a', 'ปุ่มจากแชตที่ตั้ง = ส่งต่อ handler');
+    } finally {
+      tg.stopPolling();
+      tg.set({ enabled: false });
+    }
+  });
+
   ok('เว็บ: ตัวแทน window.api มีคำสั่งครบทุกตัวของ preload', () => {
     const pre = fs.readFileSync(path.join(root, 'src', 'main', 'preload.js'), 'utf8');
     const shim = fs.readFileSync(path.join(root, 'renderer', 'web-api.js'), 'utf8');

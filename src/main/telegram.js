@@ -33,11 +33,11 @@ function createTelegram({ file, logger = () => {}, fetchImpl = (...a) => fetch(.
   const on = (ev) => (cfg.events && ev in cfg.events ? cfg.events[ev] === true : !!(EVENTS[ev] && EVENTS[ev].def));
   const ready = () => cfg.enabled === true && TOKEN_RE.test(cfg.token || '') && String(cfg.chatId || '').length > 0;
 
-  async function api(method, body, token = cfg.token) {
+  async function api(method, body, token = cfg.token, timeoutMs = 15_000) {
     let res;
     try {
       res = await fetchImpl(`${API}/bot${token}/${method}`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}), signal: AbortSignal.timeout(15_000),
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}), signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (e) {
       throw new Error(`ติดต่อ Telegram ไม่ได้ (${(e.cause && (e.cause.code || e.cause.message)) || e.message}) — ตรวจอินเทอร์เน็ต`);
@@ -79,6 +79,48 @@ function createTelegram({ file, logger = () => {}, fetchImpl = (...a) => fetch(.
     busy = false;
   }
 
+  // ---------- ปุ่มทดรองกดจาก Telegram (inline keyboard) ----------
+  // ปุ่มกด = callback_query → ตอบกลับผ่าน answerCallbackQuery • รับเฉพาะแชตเดียวกับที่ตั้ง (กันคนอื่นคุม)
+  const actionLis = { fn: null };
+  let polling = false;
+  let updateOffset = 0;
+  async function sendInline(text, buttons = []) {
+    const body = { chat_id: cfg.chatId, text: String(text).slice(0, 3900), disable_web_page_preview: true };
+    if (buttons.length) body.reply_markup = { inline_keyboard: buttons };
+    return api('sendMessage', body);
+  }
+  async function answerCb(id, text) {
+    try { await api('answerCallbackQuery', { callback_query_id: id, text: text || '' }); } catch { void 0; }
+  }
+  async function pollOnce() {
+    const ups = await api('getUpdates', { offset: updateOffset, timeout: 25, allowed_updates: ['callback_query', 'message'] }, cfg.token, 30_000);
+    for (const u of ups || []) {
+      updateOffset = (u.update_id || 0) + 1;
+      const cb = u.callback_query;
+      if (!cb) continue;
+      const msg = cb.message || cb.edited_message;
+      const chat = String((msg && msg.chat && msg.chat.id) || '');
+      if (chat !== String(cfg.chatId)) { await answerCb(cb.id, 'ปุ่มนี้ใช้ได้เฉพาะแชตที่ตั้งไว้เท่านั้น'); continue; }
+      await answerCb(cb.id, '');
+      if (actionLis.fn) try { actionLis.fn(String(cb.data || ''), (cb.data || '').split(':').slice(1)); } catch (e) { logger('telegram', `จัดการปุ่มกด Telegram ล้ม: ${e.message}`, 'warn'); }
+    }
+  }
+  function startPolling() {
+    if (!ready() || polling) return;
+    polling = true;
+    (async () => {
+      while (polling) {
+        try { await pollOnce(); }
+        catch { await new Promise((r) => setTimeout(r, 6000)); continue; } // ล่มแรง (เน็ต/อื่น ๆ) = รอแล้วลองใหม่วงเดิม
+        await new Promise((r) => setTimeout(r, 500)); // กันหมุนวน (โดยปกติ getUpdates ดักรอ 25 วิที่ฝั่ง Telegram อยู่แล้ว)
+      }
+    })();
+  }
+  function stopPolling() { polling = false; }
+
+  // บูตครั้งแรก (โหลด cfg จากไฟล์แล้ว): เปิดรับปุ่มกดทันทีถ้าตั้งครบและเปิดใช้อยู่
+  if (cfg.enabled && cfg.token && cfg.chatId) startPolling();
+
   return {
     EVENTS,
     // ส่งตามประเภทเหตุการณ์ (ปิดอยู่/ยังตั้งไม่ครบ = เงียบ)
@@ -89,11 +131,17 @@ function createTelegram({ file, logger = () => {}, fetchImpl = (...a) => fetch(.
       pump();
       return true;
     },
+    onActions(fn) { if (typeof fn === 'function') actionLis.fn = fn; return this; },
+    sendInline,
+    startPolling,
+    stopPolling,
+    pollOnce,
     // สำหรับหน้าตั้งค่า: token ไม่ส่งกลับเต็ม
     view() {
       return {
         enabled: cfg.enabled === true, chatId: cfg.chatId || '',
         tokenSet: !!cfg.token, tokenHint: cfg.token ? cfg.token.split(':')[0] + ':•••' + cfg.token.slice(-4) : '',
+        buttonsOn: cfg.enabled === true,
         events: Object.fromEntries(Object.entries(EVENTS).map(([k, v]) => [k, { label: v.label, on: on(k) }])),
       };
     },
@@ -117,6 +165,8 @@ function createTelegram({ file, logger = () => {}, fetchImpl = (...a) => fetch(.
         for (const [k, v] of Object.entries(p.events)) if (k in EVENTS) cfg.events[k] = v === true;
       }
       save();
+      if (cfg.enabled && cfg.token && cfg.chatId && !polling) startPolling();
+      if (!cfg.enabled && polling) stopPolling();
       return this.view();
     },
     // หา chat id: ผู้ใช้ส่งข้อความหา bot ก่อน แล้วอ่านจาก getUpdates

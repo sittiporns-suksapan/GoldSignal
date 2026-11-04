@@ -46,9 +46,22 @@ function normalizeSignal(raw, price) {
   };
 }
 
+// เพดานต่อกลุ่มคำสั่ง: ปรับได้ 2–10% (default 2%) — อัตโนมัติ = autoRiskMaxPct • ปุ่มกดเอง = manualRiskMaxPct
+// (เดิมล็อก 2% ตายทุกชั้น — รุ่นปรับยืดหยุ่น: ผู้ใช้ยกได้เอง ระบบแค่บีบกรอบ + ให้เหตุผลทุกครั้ง)
+function autoCapPct(settings = {}) {
+  return clamp(Number(settings.autoRiskMaxPct) || HARD_MAX_RISK_PCT, HARD_MAX_RISK_PCT, 10);
+}
+function manualCapPct(settings = {}) {
+  return clamp(Number(settings.manualRiskMaxPct) || HARD_MAX_RISK_PCT, HARD_MAX_RISK_PCT, 10);
+}
+function jointCapPct(settings = {}) {   // คำสั่งที่มาทางใดทางหนึ่งใช้เพดานกว้างกว่า (ผู้ใช้เลือกทั้งคู่เอง)
+  return Math.max(autoCapPct(settings), manualCapPct(settings));
+}
+
 // คำนวณขนาดล็อตตาม % ความเสี่ยง
-function calcPosition({ equity, riskPct, entry, sl, ozPerLot = OZ_PER_LOT }) {
-  const eff = clamp(riskPct, 0.05, HARD_MAX_RISK_PCT);
+function calcPosition({ equity, riskPct, entry, sl, ozPerLot = OZ_PER_LOT, settings }) {
+  const cap = settings ? autoCapPct(settings) : HARD_MAX_RISK_PCT;
+  const eff = clamp(riskPct, 0.05, cap);
   const riskUSD = (equity * eff) / 100;
   const slDist = Math.abs(entry - sl);
   const usdPerDollarPerLot = ozPerLot; // ราคาขยับ $1 => กำไร/ขาดทุน $100 ต่อ 1 ล็อต
@@ -63,7 +76,7 @@ function evaluateSignal(sig, settings) {
   const ozPerLot = Number(settings.ozPerLot) || OZ_PER_LOT;
   const minRR = Math.max(HARD_MIN_RR, Number(settings.minRR) || 1.5);
   const minConf = Math.max(0, Number(settings.minConfidence) || 60);
-  const pos = calcPosition({ equity, riskPct: settings.riskPct, entry: sig.entry, sl: sig.sl, ozPerLot });
+  const pos = calcPosition({ equity, riskPct: settings.riskPct, entry: sig.entry, sl: sig.sl, ozPerLot, settings });
   const rr = Math.abs(sig.tp - sig.entry) / Math.abs(sig.entry - sig.sl);
   const metrics = { rr: ind.round(rr, 2), riskUSD: ind.round(pos.riskUSD, 2), lot: pos.lot, slDist: ind.round(pos.slDist, 2), effRiskPct: pos.effRiskPct };
   const out = { ...sig, metrics, pass: true, reject: null };
@@ -112,8 +125,8 @@ function validateManualOrder({ side, lot, entry, sl, tp, settings, manualToday =
 
   const slDist = Math.abs(entry - sl);
   const riskUSD = lot * slDist * ozPerLot;
-  // เพดานของปุ่มกดเอง: ผู้ใช้ยกได้ (2–10%) — default ยัง 2%; โหมดเข้าอัตโนมัติยังล็อก HARD_MAX_RISK_PCT เด็ดขาด
-  const capPct = clamp(Number(settings.manualRiskMaxPct) || HARD_MAX_RISK_PCT, HARD_MAX_RISK_PCT, 10);
+  // เพดานของปุ่มกดเอง: ผู้ใช้ยกได้ (2–10%) — default ยัง 2%
+  const capPct = manualCapPct(settings);
   const hardMax = (equity * capPct) / 100;
   if (equity <= 0) return { ...base, reason: 'ยังไม่ได้ตั้งทุน (แท็บตั้งค่า)' };
   if (riskUSD > hardMax * 1.001) return {
@@ -160,11 +173,12 @@ function validateModify({ side, open, volume, curSl = 0, sl, tp, market, setting
   const lossAt = (s) => (s > 0 ? Math.max(0, side === 'buy' ? open - s : s - open) * volume * ozPerLot : Infinity);
   const riskUSD = lossAt(sl);
   const curRisk = lossAt(Number(curSl) || 0);
-  const hardMax = (equity * HARD_MAX_RISK_PCT) / 100;
+  const capPctMod = jointCapPct(settings);
+  const hardMax = (equity * capPctMod) / 100;
   const metrics = { riskUSD: ind.round(riskUSD, 2), hardMax: ind.round(hardMax, 2) };
   if (riskUSD > hardMax * 1.001 && riskUSD > curRisk + 1e-9) return {
     ...base, metrics,
-    reason: `SL ใหม่เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดาน ${HARD_MAX_RISK_PCT}% ของทุน ($${ind.round(hardMax, 2)}) — ขยับ SL ใกล้ขึ้น`,
+    reason: `SL ใหม่เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดาน ${capPctMod}% ของทุน ($${ind.round(hardMax, 2)}) — ขยับ SL ใกล้ขึ้น`,
   };
   return { pass: true, reason: null, metrics };
 }
@@ -188,12 +202,13 @@ function validatePendingModify({ side, ptype, volume, entry, sl, tp, curEntry = 
   if (equity <= 0) return { ...base, reason: 'ยังไม่ได้ตั้งทุน (แท็บตั้งค่า)' };
   const riskUSD = Math.abs(entry - sl) * volume * ozPerLot;
   const curRisk = curEntry > 0 && curSl > 0 ? Math.abs(curEntry - curSl) * volume * ozPerLot : Infinity;
-  const hardMax = (equity * HARD_MAX_RISK_PCT) / 100;
+  const capPctPend = jointCapPct(settings);
+  const hardMax = (equity * capPctPend) / 100;
   const rr = Number.isFinite(tp) && tp > 0 ? ind.round(Math.abs(tp - entry) / Math.abs(entry - sl), 2) : null;
   const metrics = { riskUSD: ind.round(riskUSD, 2), hardMax: ind.round(hardMax, 2), rr };
   if (riskUSD > hardMax * 1.001 && riskUSD > curRisk + 1e-9) return {
     ...base, metrics,
-    reason: `คำสั่งรอนี้เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดาน ${HARD_MAX_RISK_PCT}% ของทุน ($${ind.round(hardMax, 2)}) — ขยับ SL ใกล้ขึ้น`,
+    reason: `คำสั่งรอนี้เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดาน ${capPctPend}% ของทุน ($${ind.round(hardMax, 2)}) — ขยับ SL ใกล้ขึ้น`,
   };
   return { pass: true, reason: null, metrics };
 }
@@ -201,4 +216,5 @@ function validatePendingModify({ side, ptype, volume, entry, sl, tp, curEntry = 
 module.exports = {
   HARD_MAX_RISK_PCT, HARD_MIN_RR, MIN_LOT, OZ_PER_LOT,
   clamp, normalizeSignal, calcPosition, evaluateSignal, validateManualOrder, validateModify, validatePendingModify, riskScore,
+  autoCapPct, manualCapPct, jointCapPct,
 };

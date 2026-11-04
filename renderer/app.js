@@ -1783,6 +1783,8 @@ async function loadSettingsToForm() {
   const s = await window.api.getSettings();
   $('s-equity').value = s.equity;
   $('s-riskpct').value = s.riskPct;
+  $('s-automax').value = s.autoRiskMaxPct != null ? s.autoRiskMaxPct : 2;
+  $('s-manualriskmax').value = s.manualRiskMaxPct != null ? s.manualRiskMaxPct : 2;
   $('s-minrr').value = s.minRR;
   $('s-minconf').value = s.minConfidence;
   $('s-maxday').value = s.maxSignalsPerDay;
@@ -1817,9 +1819,11 @@ async function loadSettingsToForm() {
 }
 
 function updateCalcExample(s) {
+  const eff = Math.min(Number(s.riskPct) || 1, Number(s.autoRiskMaxPct) || 2);
+  const effAuto = Math.min(eff, Number(s.manualRiskMaxPct) || 6);
   $('calc-example').innerHTML = `
-    ทุน $${r2(s.equity, 0)} • เสี่ยง ${r2(s.riskPct, 2)}% ต่อไม้ → <b>สัญญาณ 1 ไม้ขาดทุนไม่เกิน $${r2((s.equity * s.riskPct) / 100, 2)}</b><br>
-    ตัวอย่าง: SL ห่าง $8.00 → ล็อตแนะนำ = ${((s.equity * s.riskPct) / 100 / (8 * 100)).toFixed(2)} ล็อต (XAUUSD 100 oz/ล็อต)`;
+    อัตโนมัติ: เสี่ยง ≤ ${r2(eff, 2)}% ต่อไม้ (เพดาน ${r2(Number(s.autoRiskMaxPct) || 2, 1)}%) → <b>ออกเงินต่อไม้ ≤ $${r2((s.equity * eff) / 100, 2)}</b><br>
+    ปุ่มกดเอง: เพดาน ${r2(Number(s.manualRiskMaxPct) || 2, 1)}% → ออกเงินสูงสุด <b>$${r2((s.equity * effAuto) / 100, 2)}/ไม้</b> • ตัวอย่าง: SL $8.00 → ล็อต = ${((s.equity * eff) / 100 / (8 * 100)).toFixed(2)} (XAUUSD 100 oz/ล็อต)`;
 }
 
 $('form-risk').addEventListener('submit', async (e) => {
@@ -1827,6 +1831,8 @@ $('form-risk').addEventListener('submit', async (e) => {
   const partial = {
     equity: Number($('s-equity').value),
     riskPct: Number($('s-riskpct').value),
+    autoRiskMaxPct: Number($('s-automax').value),
+    manualRiskMaxPct: Number($('s-manualriskmax').value),
     manualRiskMaxPct: Number($('s-manualriskmax').value),
     minRR: Number($('s-minrr').value),
     minConfidence: Number($('s-minconf').value),

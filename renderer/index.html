@@ -334,13 +334,19 @@
             <label>ทุนที่ใช้คำนวณ (USD)
               <input type="number" id="s-equity" min="0" step="10" />
             </label>
-            <label>ความเสี่ยงต่อไม้ % (เพดานบังคับ 2%)
-              <input type="number" id="s-riskpct" min="0.05" max="2" step="0.05" />
-              <small id="risk-note" class="muted">ล็อตจะถูกคำนวณให้ขาดทุนไม่เกิน % นี้แม้ราคาแตะ SL</small>
-            </label>
+            <div class="row2">
+              <label>ความเสี่ยงต่อไม้ % (เป้า)
+                <input type="number" id="s-riskpct" min="0.05" max="10" step="0.05" />
+                <small id="risk-note" class="muted">ล็อตจะถูกคำนวณให้ขาดทุนไม่เกิน % นี้แม้ราคาแตะ SL</small>
+              </label>
+              <label>เพดานเสี่ยงอัตโนมัติ % (2–10)
+                <input type="number" id="s-automax" min="2" max="10" step="0.5" />
+                <small class="muted">เพดานไม้ที่ระบบส่งเอง (สัญญาณ/เข้าอัตโนมัติ) — default 2% แนะนำ • ยกสูง = ยอมรับแพ้ติดกันใหญ่ขึ้น</small>
+              </label>
+            </div>
             <label>เพดานเสี่ยงของปุ่มกดเอง % (2–10)
               <input type="number" id="s-manualriskmax" min="2" max="10" step="0.5" />
-              <small class="muted">ใช้กับปุ่มซื้อ/ขายที่คุณกดเองเท่านั้น — โหมดอัตโนมัติยังล็อก 2% เด็ดขาด • สูงขึ้น = คุณยอมเสี่ยงเอง</small>
+              <small class="muted">ใช้กับปุ่มซื้อ/ขาย/คำสั่งรอ/แก้ SL ที่คุณกดเอง — ตอนนี้ตั้ง 6% ให้ SL-ATR ผ่าน • ยิ่งสูงยิ่งยอมเสี่ยงเอง</small>
             </label>
             <div id="calc-example" class="calc fx-result">ใส่ทุนแล้วดูตัวเลขจริงที่แท็บหน้าจอหลัก ในแต่ละบัตรสัญญาณ</div>
             <div class="row2">

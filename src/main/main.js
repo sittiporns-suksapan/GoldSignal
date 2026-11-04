@@ -96,8 +96,9 @@ function sanitizeSettings(input) {
     mt5BridgePath: typeof s.mt5BridgePath === 'string' ? s.mt5BridgePath.slice(0, 500) : '',
     pollSec: num(s.pollSec, 10, 5, 60),
     equity: num(s.equity, 1000, 0, 100_000_000),
-    riskPct: num(s.riskPct, 1, 0.05, risk.HARD_MAX_RISK_PCT),   // บีบเพดานกลางหลังที่นี่เลย
-    manualRiskMaxPct: num(s.manualRiskMaxPct, 2, 2, 10),         // เพดานของปุ่มกดเองเท่านั้น (2–10%)
+    riskPct: num(s.riskPct, 1, 0.05, 10),        // % เป้า (calcPosition บีบด้วยเพดานอัตโนมัติจริงอีกชั้น)
+    autoRiskMaxPct: num(s.autoRiskMaxPct, 2, 2, 10),   // เพดานไม้อัตโนมัติ (2–10%) — default 2% แนะนำ
+    manualRiskMaxPct: num(s.manualRiskMaxPct, 2, 2, 10),  // เพดานของปุ่มกดเอง/คำสั่งรอ/แก้ SL (2–10%)
     minRR: num(s.minRR, 1.5, risk.HARD_MIN_RR, 10),
     minConfidence: num(s.minConfidence, 60, 0, 95),
     maxSignalsPerDay: Math.round(num(s.maxSignalsPerDay, 3, 1, 50)),
@@ -352,7 +353,29 @@ function boot() {
 
   const tgSignalSeen = new Set();
   let tgRoundTs = Date.now();
-  engine.on('snapshot', (snap) => {
+  // ปุ่มยืนยันจาก Telegram → ส่งไม้จริง (ผ่านชั้นเกตเดิมทุกชั้น) หรือปิดคำเชิญ
+  const tgQueueConfirm = new Map();
+  tg.onActions(async (data, args) => {
+    const kind = String(data || '').split(':')[0];
+    const key = String(data || '').split(':').slice(1).join(':');
+    if (kind === 'skip') {
+      pendingSigConfirmRemove(key);
+      await tg.sendInline('✋ ปิดคำเชิญนี้แล้ว — ไม่ได้ส่งไม้');
+      return;
+    }
+    if (kind !== 'sig') return;
+    const sig = tgQueueConfirm.get(key);
+    if (!sig) { await tg.sendInline('⌛ คำเชิญนี้หมดอายุ — รอสัญญาณใหม่เท่านั้น'); return; }
+    const r = await sendOrderReq({ side: sig.side, lot: sig.lot, sl: sig.sl, tp: sig.tp || 0 });
+    if (r && r.ok) {
+      tgQueueConfirm.delete(key);
+      await tg.sendInline(`✅ ส่งไม้จริงแล้ว: ${sig.side === 'buy' ? 'BUY' : 'SELL'} ล็อต ${sig.lot} • SL ${px(sig.sl)} • TP ${sig.tp ? px(sig.tp) : '-'} (รอผลจาก MT5)`);
+    } else {
+      await tg.sendInline(`✗ ผ่านเกตไม่ได้: ${(r && r.reason) || 'ไม่ทราบสาเหตุ'} — ตรวจ: ทุนเสียอัตโนมัติใช้กลุ่ม "ปุ่มกดเอง" (${engine.settings.manualRiskMaxPct || 2}%) • SL กว้างไป/โควตาเต็ม/ข้อมูลไม่สด`);
+    }
+  });
+  function pendingSigConfirmRemove(key) { tgQueueConfirm.delete(key); }
+  engine.on('snapshot', async (snap) => {
     send('snapshot', snap);
     autoEnterMain(snap); // เข้าไม้อัตโนมัติฝั่ง main — ทำงานต่อแม้ปิดหน้าต่าง
     // ระบบรอเข้า: แจ้งเตือนทันทีที่โอกาสผ่านทุกเกต (ครั้งเดียวต่อสัญญาณ)
@@ -368,7 +391,20 @@ function boot() {
       if (!tgSignalSeen.has(tk)) {
         tgSignalSeen.add(tk);
         if (tgSignalSeen.size > 100) tgSignalSeen.clear();
-        notify('signal', `📣 สัญญาณ ${s.side === 'buy' ? 'BUY' : 'SELL'} ${s.confidence}% — ${s.pluginName}\nเข้า ${px(s.entry)} • SL ${px(s.sl)} • TP ${px(s.tp)} • ล็อต ${(s.metrics && s.metrics.lot) || '-'}\n${thTime()}`);
+        const sigTxt = `📣 สัญญาณ ${s.side === 'buy' ? 'BUY' : 'SELL'} ${s.confidence}% — ${s.pluginName}\nเข้า ${px(s.entry)} • SL ${px(s.sl)} • TP ${px(s.tp)} • ล็อต ${(s.metrics && s.metrics.lot) || '-'}\n${thTime()}`;
+        notify('signal', sigTxt);
+        // ปุ่มกดยืนยันจาก Telegram: สัญญาณผ่านทุกด่าน + ส่งจริงเปิด + โหวตมือ (โหมดอัตโนมัติยิงเองอยู่แล้ว = ไม่ส่งซ้ำ)
+        if (engine.settings.realOrdersEnabled === true && engine.settings.autoEnter !== true) {
+          const sk = `${s.plugin}|${s.side}|${Math.round(s.entry)}`;
+          tgQueueConfirm.set(sk, { side: s.side, lot: Math.max(0.01, Number(s.metrics && s.metrics.lot) || 0.01), sl: s.sl, tp: s.tp || 0, entry: s.entry });
+          if (tgQueueConfirm.size > 40) tgQueueConfirm.delete(tgQueueConfirm.keys().next().value);
+          try {
+            await tg.sendInline(`${sigTxt}\n\nกดเพื่อส่งไม้จริง (ผ่านเกตความเสี่ยง/โควตาของระบบเดิม • ใช้แชตนี้เท่านั้น):`, [
+              [{ text: `✅ เข้าจริง ${s.side === 'buy' ? 'BUY' : 'SELL'}`, callback_data: `sig:${sk}` },
+               { text: '✗ ปิดคำเชิญ', callback_data: `skip:${sk}` }],
+            ]);
+          } catch (e) { engine.pushLog('telegram', `ส่งปุ่มยืนยันไม่สำเร็จ: ${e.message}`, 'warn'); }
+        }
       }
       notifyOnce(`${s.plugin}|${s.side}|${Math.round(s.entry)}`,
         `GoldSignal — ${s.side === 'buy' ? 'BUY' : 'SELL'} SIGNAL ${s.confidence}% พร้อมแล้ว!`,
