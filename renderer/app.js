@@ -217,12 +217,14 @@ function renderLadder(snap, livePrice) {
     if (r.zone) { const z = r.zone; return price > z.top ? z.top - price : price < z.bottom ? z.bottom - price : 0; }
     return r.p - price;
   };
-  box.innerHTML = rows.map((r) => {
+  // memo บันไดราคา: ระดับ/ราคา/สถานะเดิมทั้งหมด = ไม่พิมพ์ DOM ซ้ำ (ราคาวิ่งทุกวิ — ข้ามเขียนบ่อย ๆ ทุกทิค)
+  const ladderKey = rows.map((r) => (r.now ? 'now' : `${r.p}${r.chip || ''}${fmtD(dist(r), 2)}`)).join('•');
+  renderOnce('ladder', ladderKey, box, rows.map((r) => {
     if (r.now) return `<div class="lad-row now"><span class="lad-name">ราคาตอนนี้</span><b class="lad-px">${fmtD(price, 2)}</b></div>`;
     const d = dist(r);
     return `<div class="lad-row ${r.cls}"><i class="lad-bar"></i><span class="lad-name">${r.name}${r.chip ? ` <em class="lad-chip ${r.chipCls}">${r.chip}</em>` : ''}</span>` +
       `<b class="lad-px">${r.txt}</b><span class="lad-d${d === 0 ? ' in' : ''}">${d === 0 ? 'ราคาอยู่ในโซน' : (d > 0 ? '+' : '−') + fmtD(Math.abs(d), 2)}</span></div>`;
-  }).join('');
+  }).join(''));
 }
 
 // ปุ่ม "เส้น": แสดง/ซ่อนเส้นระดับบนชาร์ต • ปุ่ม "แผง": แสดง/ซ่อนบันไดราคา (จำค่าไว้ทั้งคู่)
@@ -432,7 +434,14 @@ function renderSignals(snap) {
   }
   // key ระดับรายการ: จำนวนเดิมแต่มีดใหม่ (คนละสัญญาณ) ต้องวาดใหม่เสมอ
   const sKey = list.map((x) => `${x.ts || ''}|${x.side}|${x.entry}|${x.confidence}`).join('•');
-  renderOnce('signals', `s[${sKey}]`, box, list.length ? list.map(signalCard).join('') : noSignalHtml(snap));
+  // หน้าว่าง ("ยังไม่มีสัญญาณ") เนื้อหาคำอธิบายเปลี่ยนได้ทุกอย่าง (standby/filtered/ไม้จำลองใหม่) — รวมใน key
+  const emptyKey = [
+    (snap.filtered || []).slice(0, 2).map((x) => String(x.reason).slice(0, 30)).join('|'),
+    ((snap.standby && snap.standby.notes) || [])[0] || '',
+    (snap.zoneOpen || []).map((t) => t.openedAt).join(','),
+    (snap.zoneHistory || []).slice(-1)[0] && (snap.zoneHistory || []).slice(-1)[0].closedAt || '',
+  ].join('§');
+  renderOnce('signals', `s[${sKey || 'empty'}${emptyKey}]`, box, list.length ? list.map(signalCard).join('') : noSignalHtml(snap));
   const f = $('filtered');
   const flist = snap.filtered || [];
   renderOnce('filtered', `f[${flist.map((x) => String(x.reason).slice(0, 40)).join('|')}]`, f,
@@ -582,8 +591,9 @@ function openConfirmPending(req) {
     </div>`;
   $('modal').classList.add('show');
   $('m-cancel').focus();
-  if (overP) { $('m-go').disabled = true; return; }
+  // ผูกปุ่มยกเลิก "เสมอ" (กดออกได้ทุกสถานะ) — ปุ่มวางปิดเฉพาะเมื่อเกินเพดาน
   $('m-cancel').addEventListener('click', closeModal);
+  if (overP) { $('m-go').disabled = true; return; }
   $('m-go').addEventListener('click', async () => {
     $('m-go').disabled = true;
     $('m-go').textContent = 'กำลังวาง...';
