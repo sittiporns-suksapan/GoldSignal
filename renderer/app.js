@@ -1794,6 +1794,7 @@ async function loadSettingsToForm() {
   $('s-leastrisk').checked = s.leastRisk !== false;
   $('s-webpush-url').value = s.remoteDashboardUrl || '';
   $('s-webpush-token').value = s.remoteDashboardToken || '';
+  $('s-manualriskmax').value = s.manualRiskMaxPct != null ? s.manualRiskMaxPct : 2;
   $('t-auto').checked = !!s.autoEnter;
   $('t-real').checked = !!s.realOrdersEnabled;
   $('ac-all').checked = !!s.autoCloseAll;
@@ -1826,6 +1827,7 @@ $('form-risk').addEventListener('submit', async (e) => {
   const partial = {
     equity: Number($('s-equity').value),
     riskPct: Number($('s-riskpct').value),
+    manualRiskMaxPct: Number($('s-manualriskmax').value),
     minRR: Number($('s-minrr').value),
     minConfidence: Number($('s-minconf').value),
     maxSignalsPerDay: Number($('s-maxday').value),

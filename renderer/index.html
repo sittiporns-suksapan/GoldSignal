@@ -338,6 +338,10 @@
               <input type="number" id="s-riskpct" min="0.05" max="2" step="0.05" />
               <small id="risk-note" class="muted">ล็อตจะถูกคำนวณให้ขาดทุนไม่เกิน % นี้แม้ราคาแตะ SL</small>
             </label>
+            <label>เพดานเสี่ยงของปุ่มกดเอง % (2–10)
+              <input type="number" id="s-manualriskmax" min="2" max="10" step="0.5" />
+              <small class="muted">ใช้กับปุ่มซื้อ/ขายที่คุณกดเองเท่านั้น — โหมดอัตโนมัติยังล็อก 2% เด็ดขาด • สูงขึ้น = คุณยอมเสี่ยงเอง</small>
+            </label>
             <div id="calc-example" class="calc fx-result">ใส่ทุนแล้วดูตัวเลขจริงที่แท็บหน้าจอหลัก ในแต่ละบัตรสัญญาณ</div>
             <div class="row2">
               <label>RR ขั้นต่ำ (TP/SL)

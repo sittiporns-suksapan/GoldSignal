@@ -112,11 +112,13 @@ function validateManualOrder({ side, lot, entry, sl, tp, settings, manualToday =
 
   const slDist = Math.abs(entry - sl);
   const riskUSD = lot * slDist * ozPerLot;
-  const hardMax = (equity * HARD_MAX_RISK_PCT) / 100;
+  // เพดานของปุ่มกดเอง: ผู้ใช้ยกได้ (2–10%) — default ยัง 2%; โหมดเข้าอัตโนมัติยังล็อก HARD_MAX_RISK_PCT เด็ดขาด
+  const capPct = clamp(Number(settings.manualRiskMaxPct) || HARD_MAX_RISK_PCT, HARD_MAX_RISK_PCT, 10);
+  const hardMax = (equity * capPct) / 100;
   if (equity <= 0) return { ...base, reason: 'ยังไม่ได้ตั้งทุน (แท็บตั้งค่า)' };
   if (riskUSD > hardMax * 1.001) return {
     ...base,
-    reason: `ไม้นี้เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดาน ${HARD_MAX_RISK_PCT}% ของทุน ($${ind.round(hardMax, 2)}) — ลดล็อตหรือขยับ SL ใกล้ขึ้น`,
+    reason: `ไม้นี้เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดาน ${capPct}% ของทุน ($${ind.round(hardMax, 2)}) — ลดล็อตหรือขยับ SL ใกล้ขึ้น (ยกเพดานกดเองได้ในแท็บตั้งค่า)`,
     metrics: { riskUSD: ind.round(riskUSD, 2), hardMax: ind.round(hardMax, 2), slDist: ind.round(slDist, 2) },
   };
 

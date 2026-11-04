@@ -44,6 +44,7 @@ const DEFAULT_SETTINGS = {
   pollSec: 10,
   equity: 1000,
   riskPct: 1,                // เปอร์เซ็นต์ต่อไม้ — ถูกบีบด้วย HARD_MAX_RISK_PCT เสมอ
+  manualRiskMaxPct: 2,       // เพดานของปุ่มกดเองเท่านั้น (2–10) — ปรับสูงได้โดยผู้ใช้รับความเสี่ยงเอง; อัตโนมัติยังล็อก 2%
   minRR: 1.5,                // HARD_MIN_RR คือพื้น 1.0
   minConfidence: 60,
   maxSignalsPerDay: 3,   // โควตาไม้ต่อวัน (สัญญาณ + ปุ่มคำสั่งจริงนับรวม) — ผู้ใช้เลือกได้ในแท็บตั้งค่า
@@ -96,6 +97,7 @@ function sanitizeSettings(input) {
     pollSec: num(s.pollSec, 10, 5, 60),
     equity: num(s.equity, 1000, 0, 100_000_000),
     riskPct: num(s.riskPct, 1, 0.05, risk.HARD_MAX_RISK_PCT),   // บีบเพดานกลางหลังที่นี่เลย
+    manualRiskMaxPct: num(s.manualRiskMaxPct, 2, 2, 10),         // เพดานของปุ่มกดเองเท่านั้น (2–10%)
     minRR: num(s.minRR, 1.5, risk.HARD_MIN_RR, 10),
     minConfidence: num(s.minConfidence, 60, 0, 95),
     maxSignalsPerDay: Math.round(num(s.maxSignalsPerDay, 3, 1, 50)),
