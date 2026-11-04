@@ -21,18 +21,40 @@ const run = (bin, args, timeout = 20_000) => new Promise((resolve) => {
   execFile(bin, args, { timeout }, (err, stdout, stderr) => resolve({ code: err ? (err.code ?? 1) : 0, out: String(stdout || ''), err: String(stderr || '') }));
 });
 
-function createTunnel({ logger = () => {}, onUrl = () => {} } = {}) {
-  let child = null, provider = null, port = null, url = null, state = 'off', msg = '', stopping = false, retry = 0, retryTimer = null;
-  const setUrl = (u) => { if (u && u !== url) { url = u; state = 'on'; msg = ''; retry = 0; logger('tunnel', `เปิด tunnel ${provider} แล้ว: ${u}`); onUrl(u, provider); } };
+function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null } = {}) {
+  let child = null, provider = null, port = null, url = null, state = 'off', msg = '', stopping = false, retry = 0, retryTimer = null, adopted = false;
+  // สถานะ daemon ลงไฟล์: pid + url ล่าสุด — แอปปิด/อัปเดตใหม่ = adopt ลิงก์เดิมกลับมา (1033 หาย)
+  const saveState = () => {
+    if (!stateFile || !url || !provider || !child?.pid) return;
+    try { fs.writeFileSync(stateFile, JSON.stringify({ provider, pid: child.pid, url, port, ts: Date.now() })); } catch { void 0; }
+  };
+  const clearState = () => { if (stateFile) try { fs.unlinkSync(stateFile); } catch { void 0; } };
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const setUrl = (u) => {
+    if (u && u !== url) {
+      url = u; state = 'on'; msg = ''; retry = 0;
+      logger('tunnel', `เปิด tunnel ${provider} แล้ว: ${u}${adopted ? ' (นำกลับใช้จากรอบก่อนได้)' : ''}`);
+      if (child?.pid) saveState();
+      onUrl(u, provider);
+    }
+  };
   const fail = (m) => { state = 'error'; msg = m; logger('tunnel', `tunnel ${provider}: ${m}`, 'warn'); };
 
   function spawnWatch(bin, args, parse) {
     child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    const feed = (buf) => { for (const line of String(buf).split('\n')) { const u = parse(line); if (u) setUrl(u); else if (/ERR|error|failed|authtoken/i.test(line) && state !== 'on') msg = line.trim().slice(0, 200); } };
+    const pid = () => (child && child.pid) || 0;
+    const feed = (buf) => {
+      for (const line of String(buf).split('\n')) {
+        const u = parse(line);
+        if (u) { setUrl(u); if (pid()) saveState(); }
+        else if (/ERR|error|failed|authtoken/i.test(line) && state !== 'on') msg = line.trim().slice(0, 200);
+      }
+    };
     child.stdout.on('data', feed);
     child.stderr.on('data', feed);
     child.on('exit', (code) => {
       child = null;
+      clearState();
       if (stopping) return;
       url = null;
       // หลุด = เริ่มใหม่เอง (หน่วง 5 → 60 วิ) — cloudflared ได้ URL ใหม่ → onUrl อัปเดตลิงก์ถาวรให้
@@ -70,20 +92,47 @@ function createTunnel({ logger = () => {}, onUrl = () => {} } = {}) {
 
   return {
     available: () => Object.fromEntries(Object.keys(BIN).map((k) => [k, !!findBin(k)])),
-    status: () => ({ provider, state, url, msg }),
+    status: () => ({ provider, state, url, msg, adopted }),
+    // บูต: พยายามดึง tunnel เก่าที่ยังรันอยู่ (จาก update/ปิดหน้าต่างล่าสุด) — ได้ = ลิงก์เดิมไม่ตาย
+    async adopt(prt, preferred) {
+      if (!stateFile || state === 'on') return this.status();
+      try {
+        const s = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+        if (s && alive(s.pid) && Number(s.port) === Number(prt)) {
+          provider = s.provider; port = Number(prt); url = s.url; state = 'on'; adopted = true; msg = ''; retry = 0;
+          logger('tunnel', `ดึง tunnel เดิมคืนมาแล้ว (${s.provider}, pid ${s.pid}) — ลิงก์เดิมใช้ต่อได้ทันที: ${s.url}`);
+          onUrl(s.url, provider);
+          return this.status();
+        }
+        clearState();   // ตายแล้ว/พอร์ตลิบ = ขยะ — ล้างทิ้ง
+      } catch { void 0; }
+      if (preferred && provider !== preferred) { /* ยังไม่เปิด — ให้ start ปกติ */ }
+      return this.status();
+    },
     async start(p, prt) {
       await this.stop();
-      provider = p; port = prt; stopping = false; retry = 0;
+      provider = p; port = prt; stopping = false; retry = 0; adopted = false;
       await startInner();
       return this.status();
     },
-    async stop() {
-      stopping = true;
-      clearTimeout(retryTimer);
-      if (child) { try { child.kill('SIGTERM'); } catch { void 0; } child = null; }
-      if (provider === 'tailscale' && state === 'on') { const bin = findBin('tailscale'); if (bin) await run(bin, ['funnel', 'reset']); }
-      if (state !== 'off') logger('tunnel', 'ปิด tunnel แล้ว');
-      state = 'off'; url = null; msg = '';
+    async stop(opts = null) {
+      // opts.linger = ตอนแอปออก (before-quit): ไม่ฆ่า cloudflared — daemon คาบหอยไปต่อทั้งชับ update → ลิงก์เดิมใช้ต่อ
+      if (!(opts && opts.linger)) {
+        stopping = true;
+        clearTimeout(retryTimer);
+        if (child) { try { child.kill('SIGTERM'); } catch { void 0; } child = null; }
+        else if (adopted && provider === 'tailscale') { const bin = findBin('tailscale'); if (bin) await run(bin, ['funnel', 'reset']); }
+        else if (state === 'on' && url && provider !== 'tailscale') {
+          // adopt จากรอบก่อน (สาย pid ไฟล์เดียว): อ่าน pid ล่าสุดจาก state แล้วฆ่าเชียแรงตอนกดปิดเอง
+          try {
+            const s = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+            if (s && alive(s.pid)) { process.kill(s.pid, 'SIGTERM'); await new Promise((r) => setTimeout(r, 500)); if (alive(s.pid)) { try { process.kill(s.pid, 'SIGKILL'); } catch { void 0; } } }
+          } catch { void 0; }
+        }
+        clearState();
+        if (state !== 'off' && !(opts && opts.linger)) logger('tunnel', 'ปิด tunnel แล้ว');
+      }
+      state = 'off'; url = null; msg = ''; stopping = false; adopted = false;
       return this.status();
     },
   };

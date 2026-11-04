@@ -228,11 +228,14 @@ function boot() {
   startWebServer({
     getSnapshot: () => engine.lastSnap, logger: engine.pushLog,
     handlers, auth: webAuth, rendererDir: path.join(__dirname, '..', '..', 'renderer'), blocked: WEB_BLOCKED,
-  }).then((w) => {
+  }).then(async (w) => {
     web = w; webUrl = w ? w.url : null;
-    // เปิด tunnel ต่อเองตอนเปิดแอป ถ้าครั้งก่อนเปิดค้างไว้
+    // เปิด tunnel ต่อเองตอนเปิดแอป ถ้าครั้งก่อนเปิดค้างไว้ — ลอง "ดึง daemon เก่า" ก่อน (ลิงก์เดิมไม่ตาย 1033)
     const o = webAuth.opts();
-    if (w && o.tunnelOn && o.tunnelProvider && webAuth.isRemote()) tunnel.start(o.tunnelProvider, w.port);
+    if (w && o.tunnelOn && o.tunnelProvider && webAuth.isRemote()) {
+      const ad = await tunnel.adopt(w.port, o.tunnelProvider);
+      if (ad.state !== 'on') tunnel.start(o.tunnelProvider, w.port);
+    }
   });
   // tunnel ได้ URL ใหม่ → อัปเดตลิงก์ถาวรบน GitHub Pages (ถ้าตั้ง repo ไว้)
   const publish = (u, prov) => {
@@ -242,8 +245,9 @@ function boot() {
       .then(() => engine.pushLog('pages', u ? `อัปเดตลิงก์ถาวร → ${u}` : 'ลิงก์ถาวร: แจ้งว่าแผงปิด'))
       .catch((err) => engine.pushLog('pages', err.message, 'warn'));
   };
-  const tunnel = createTunnel({ logger: engine.pushLog, onUrl: publish });
-  app.on('before-quit', () => { tunnel.stop(); });
+  const tunnel = createTunnel({ logger: engine.pushLog, onUrl: publish, stateFile: path.join(app.getPath('userData'), 'tunnel-state.json') });
+  // ออกจากแอป (อัปเดต/ปิดหน้าต่าง): **ไม่ฆ่า cloudflared** — daemon รับทำการต่อกับรอบเปิดถัดไป = ลิงก์ (trycloudflare) ไม่ตาย 1033
+  app.on('before-quit', () => { tunnel.stop({ linger: true }); });
   handle('tunnel-start', async (_e, req) => {
     const provider = String((req && req.provider) || '');
     if (!['cloudflared', 'ngrok', 'tailscale'].includes(provider)) throw new Error('เลือก cloudflared / ngrok / tailscale');

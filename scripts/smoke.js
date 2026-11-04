@@ -704,6 +704,34 @@ console.log('\n[7] Engine end-to-end');
     } finally { r.server.close(); }
   });
 
+  await ok('tunnel daemon: ปิดแอป = คลาวด์แยกขีดรอด (linger) + เปิดใหม่ adopt pid เดิม + ปิดเอง = kill จริง', async () => {
+    const { createTunnel } = require(path.join(root, 'src', 'main', 'tunnel'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gstun-'));
+    const sf = path.join(dir, 'tunnel-state.json');
+    // จำลอง daemon ชีวิต: pid = process แอปจริง (ยังทำงาน)
+    const daemonPid = process.pid;
+    fs.writeFileSync(sf, JSON.stringify({ provider: 'cloudflared', pid: daemonPid, url: 'https://old.trycloudflare.com', port: 8008, ts: Date.now() }));
+    const urls = [];
+    const t = createTunnel({ stateFile: sf, onUrl: (u) => urls.push(u) });
+    const ad = await t.adopt(8008, 'cloudflared');
+    assert.equal(ad.state, 'on', 'adopt ตอน pid มีชีวิต = on');
+    assert.equal(ad.url, 'https://old.trycloudflare.com', 'ลิงก์เดิมคืนมา');
+    assert.equal(ad.adopted, true, 'ตัวเดิม (ไม่ spawn ใหม่)');
+    // ตัดพอร์ต/ตาย = ไม่ adopt (ใช้ state ไฟล์อื่นกันชนกับสายหลัก)
+    const sf2 = path.join(dir, 'tunnel-state2.json');
+    fs.writeFileSync(sf2, JSON.stringify({ provider: 'cloudflared', pid: 999999999, url: 'https://x.trycloudflare.com', port: 8009, ts: Date.now() }));
+    const dead = createTunnel({ stateFile: sf2, onUrl: () => {} });
+    const ad2 = await dead.adopt(8009, 'cloudflared');
+    assert.equal(ad2.state, 'off', 'pid ตาย = เริ่มใหม่ (URL ใหม่แน่ ๆ)');
+    assert.ok(!fs.existsSync(sf2), 'state ผิดพลาดถูกล้างทิ้ง');
+    // linger: ปิดแอป = ไม่แตะ daemon (state ค้างให้รอบหน้า)
+    const st = await t.stop({ linger: true });
+    assert.ok(st.state === 'off', 'สถานะในแอปปิด (daemon นอกไม่แตะ)');
+    assert.ok(fs.existsSync(sf), 'ต้องเหลือ state ไว้ adopt รอบต่อไป');
+    // ปิดเองจริง = ล้าง state (จรมาหลัง kill — kill ตัวจริงได้เฉพาะในแอปที่ pid นั้นของ cloudflared)
+    await t.stop();   // ปิดแบบทั่วไป = อ่าน pid จาก state + kill
+    assert.ok(!fs.existsSync(sf), 'state ถูกล้างหลังปิดเอง');
+  });
   await ok('เว็บ: ไม่ส่ง handlers = ดูอย่างเดียว เฉพาะเครื่องนี้ (snapshot) + port 8008', async () => {
     const { startWebServer } = require(path.join(root, 'src', 'main', 'webserver'));
     const w = await startWebServer({ getSnapshot: () => ({ ts: Date.now(), price: 3901.17, meta: { account: { currency: 'THB' } } }), logger: () => {} });
