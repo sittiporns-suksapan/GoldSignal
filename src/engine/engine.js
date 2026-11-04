@@ -427,12 +427,14 @@ class AnalysisEngine extends EventEmitter {
       action = `สัญญาณ (SIGNAL) ${s.side === 'buy' ? 'BUY' : 'SELL'} ${s.confidence}% @ ${s.entry} — ${s.pluginName}`;
       detail = `SL ${s.sl} • TP ${s.tp} • ล็อตแนะนำ ${s.metrics && s.metrics.lot != null ? s.metrics.lot : '—'}`;
     } else {
-      const dB = snap.entryPlan && snap.entryPlan.buy
-        ? (snap.entryPlan.buy.status === 'armed' ? 'ราคาอยู่ในโซนซื้อ' : `ห่างโซนซื้อ $${fmt(Math.max(0, snap.entryPlan.buy.distance))}`)
-        : 'ไม่มีโซนซื้อ';
-      const dS = snap.entryPlan && snap.entryPlan.sell
-        ? (snap.entryPlan.sell.status === 'armed' ? 'ราคาอยู่ในโซนขาย' : `ห่างโซนขาย $${fmt(Math.max(0, snap.entryPlan.sell.distance))}`)
-        : 'ไม่มีโซนขาย';
+      const zTxt = (z, label) => {
+        if (!z) return `ไม่มีโซน${label}`;
+        if (z.status === 'armed') return `ราคาอยู่ในโซน${label}`;
+        if (Number.isFinite(z.distance) && z.distance <= 0) return `อยู่ในโซน${label} (สถานะ ${z.status})`;
+        return `ห่างโซน${label} $${fmt(Math.max(0, z.distance))}`;
+      };
+      const dB = snap.entryPlan ? zTxt(snap.entryPlan.buy, 'ซื้อ') : 'ไม่มีโซนซื้อ';
+      const dS = snap.entryPlan ? zTxt(snap.entryPlan.sell, 'ขาย') : 'ไม่มีโซนขาย';
       action = `ไม่ลง — เฝ้ารอ (ราคา ${fmt(snap.price)})`;
       detail = `สภา: ${c.side === 'none' ? 'ไม่มีมติ' : `มติ${c.side === 'buy' ? 'ซื้อ' : 'ขาย'} ${c.confidence}%`} • ซื้อ: ${dB} • ขาย: ${dS}`;
       // ช่วงเฝ้ารอ: จดเฉพาะเมื่อมติ/สถานะโซนเปลี่ยน (เดิมราคา/ระยะขยับทุกทิค = จดรัวจนประวัติจริงหลุดหาย)
@@ -499,8 +501,8 @@ class AnalysisEngine extends EventEmitter {
       // โซนรอเข้า
       const zBuy = zones.buy, zSell = zones.sell;
       const zoneDesc = [];
-      if (zBuy) zoneDesc.push(`ซื้อ ${zBuy.bottom}–${zBuy.top} [${zBuy.status === 'armed' ? 'ราคาในโซน!' : zBuy.status === 'blocked' ? 'ถูกยกเลิก' : zBuy.status === 'danger' ? 'ห้าม' : `รอ เหลือ $${fmt(Math.max(0, zBuy.distance))}`}]`);
-      if (zSell) zoneDesc.push(`ขาย ${zSell.bottom}–${zSell.top} [${zSell.status === 'armed' ? 'ราคาในโซน!' : zSell.status === 'blocked' ? 'ถูกยกเลิก' : zSell.status === 'danger' ? 'ห้าม' : `รอ เหลือ $${fmt(Math.max(0, zSell.distance))}`}]`);
+      if (zBuy) zoneDesc.push(`ซื้อ ${zBuy.bottom}–${zBuy.top} [${zBuy.status === 'armed' ? 'ราคาในโซน!' : zBuy.status === 'blocked' ? 'ถูกยกเลิก' : zBuy.status === 'danger' ? 'ห้าม' : Number.isFinite(zBuy.distance) && zBuy.distance <= 0 ? `อยู่ในโซน (รอยืนยัน ${zBuy.status})` : `รอ เหลือ $${fmt(Math.max(0, zBuy.distance))}`}]`);
+      if (zSell) zoneDesc.push(`ขาย ${zSell.bottom}–${zSell.top} [${zSell.status === 'armed' ? 'ราคาในโซน!' : zSell.status === 'blocked' ? 'ถูกยกเลิก' : zSell.status === 'danger' ? 'ห้าม' : Number.isFinite(zSell.distance) && zSell.distance <= 0 ? `อยู่ในโซน (รอยืนยัน ${zSell.status})` : `รอ เหลือ $${fmt(Math.max(0, zSell.distance))}`}]`);
       lines.push(`จุดรอเข้า: ${zoneDesc.length ? zoneDesc.join(' • ') : 'ไม่มีโซนชัดตอนนี้'}`);
 
       // คำแนะนำตอนนี้ (จากห้องรอ+เกต)
