@@ -84,6 +84,17 @@ function createTelegram({ file, logger = () => {}, fetchImpl = (...a) => fetch(.
   const actionLis = { fn: null };
   let polling = false;
   let updateOffset = 0;
+  // แชตที่เพิ่งทักมา (จากวงดึงข้อความ) — ให้ "หา chat id" ใช้ได้ระหว่างที่วงดึงข้อความทำงาน
+  // (เดิมเรียก getUpdates ซ้อนกับวงดึง = Telegram ตอบ 409 Conflict ทุกครั้ง)
+  const recentChats = new Map();
+  function rememberChat(u) {
+    const m = u.message || u.channel_post || u.my_chat_member || (u.callback_query && u.callback_query.message);
+    const c = m && m.chat;
+    if (!c) return;
+    recentChats.delete(String(c.id));
+    recentChats.set(String(c.id), { id: String(c.id), name: c.title || [c.first_name, c.last_name].filter(Boolean).join(' ') || c.username || String(c.id), type: c.type });
+    if (recentChats.size > 20) recentChats.delete(recentChats.keys().next().value);
+  }
   async function sendInline(text, buttons = []) {
     const body = { chat_id: cfg.chatId, text: String(text).slice(0, 3900), disable_web_page_preview: true };
     if (buttons.length) body.reply_markup = { inline_keyboard: buttons };
@@ -96,6 +107,7 @@ function createTelegram({ file, logger = () => {}, fetchImpl = (...a) => fetch(.
     const ups = await api('getUpdates', { offset: updateOffset, timeout: 25, allowed_updates: ['callback_query', 'message'] }, cfg.token, 30_000);
     for (const u of ups || []) {
       updateOffset = (u.update_id || 0) + 1;
+      rememberChat(u);
       const cb = u.callback_query;
       if (!cb) continue;
       const msg = cb.message || cb.edited_message;
@@ -178,6 +190,8 @@ function createTelegram({ file, logger = () => {}, fetchImpl = (...a) => fetch(.
       let me, ups;
       try {
         me = await api('getMe', {}, t);
+        // วงดึงข้อความทำงานอยู่ด้วย token เดียวกัน → ใช้แชตที่วงดึงเห็นแล้ว ไม่เรียก getUpdates ซ้อน
+        if (polling && t === cfg.token) return { bot: me.username, chats: [...recentChats.values()].reverse() };
         // 409 Conflict = มี getUpdates อื่นของ token นี้ค้างอยู่ (กดซ้ำ/โปรแกรมอื่น) → รอแล้วลองใหม่ 3 ครั้ง
         for (let i = 0; ; i++) {
           try { ups = await api('getUpdates', { limit: 50, timeout: 0 }, t); break; }

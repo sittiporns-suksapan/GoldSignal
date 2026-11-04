@@ -495,7 +495,7 @@ function renderRealHistory(meta) {
       ...perSide.slice(0, 12).map((h) => {
         const pl = h.profit;
         const cls = h.reason === 'TP' ? 'TP' : h.reason === 'SL' ? 'SL' : pl === 0 ? 'open' : 'manual';
-        return `<div class="zh-line"><span class="t">${Number.isFinite(h.time) ? stamp(h.time) : '—'}</span><span>${h.type === 'buy' ? 'BUY' : 'SELL'} ${fmtD(h.volume, 2)} ล็อต ${fmtD(h.open, 2)} → ${fmtD(h.close, 2)}</span><span class="res ${cls}">${(reasonTh[h.reason] || h.reason)} ${money(pl, acctCur, true)}</span></div>`;
+        return `<div class="zh-line"><span class="t">${Number.isFinite(h.time) ? stamp(h.time) : '—'}</span><span>${h.type === 'buy' ? 'BUY' : 'SELL'} ${fmtD(h.volume, 2)} ล็อต ${fmtD(h.open, 2)} → ${fmtD(h.close, 2)}</span><span class="res ${cls}">${esc(reasonTh[h.reason] || h.reason)} ${money(pl, acctCur, true)}</span></div>`;
       }),
     ];
     return `<div class="zh-side ${s}"><h5>${s === 'buy' ? 'ไม้จริงซื้อ (BUY)' : 'ไม้จริงขาย (SELL)'}</h5>
@@ -1222,20 +1222,40 @@ window.api.onOrderResult((r) => {
 });
 
 // ---------- เลนเรียลไทม์ (ราคาวิ่งทุก ~1 วิ เหมือน MT5) ----------
+// ทิคมาได้ถึง ~10 ครั้ง/วิ → วาดรวบเป็นเฟรมเดียว (ใช้ทิคล่าสุดเสมอ) แบ่ง 2 ชั้น:
+//   ชั้นเร็ว (ราคา/bid/ask/ทุนสด) ≤ 4 ครั้ง/วิ • ชั้นหนัก (วาดชาร์ตใหม่ + บันไดราคา + ระยะจุดรอ) ≤ 1 ครั้ง/วิ
+// วัดจริง: วาดทุกทิคกิน CPU renderer+GPU ~35% ตอนตลาดวิ่ง • หน้าต่างถูกซ่อน = rAF ไม่ทำงาน = ไม่วาดเลย
+let pendingTick = null, tickTimer = 0, lastTickPaint = 0, lastHeavyPaint = 0;
+const TICK_PAINT_MS = 250, HEAVY_PAINT_MS = 1000;
 window.api.onTick((q) => {
   if (!q || !Number.isFinite(q.bid)) return;
+  pendingTick = q;
+  if (tickTimer) return;
+  const wait = Math.max(0, TICK_PAINT_MS - (performance.now() - lastTickPaint));
+  tickTimer = setTimeout(() => requestAnimationFrame(() => {
+    tickTimer = 0;
+    lastTickPaint = performance.now();
+    const latest = pendingTick;
+    pendingTick = null;
+    if (latest) paintTick(latest);
+  }), wait);
+});
+// กระพริบตัวเลขตามทิศ (เหมือน MT5) — สลับ class ค้างไว้สั้นๆ ไม่ interpolate ทุกเฟรม (ดู .flash-up ใน styles.css)
+const FLASH_MS = 350;
+function paintTick(q) {
   const d = q.digits || 2;
   const bidEl = $('t-bid'), askEl = $('t-ask'), priceEl = $('price');
   const oldBid = bidEl._v, oldAsk = askEl._v;
   bidEl.textContent = q.bid.toFixed(d);
   askEl.textContent = q.ask.toFixed(d);
   bidEl._v = q.bid; askEl._v = q.ask;
-  // ตัวเลขกระพริบตามทิศ (เหมือน MT5) — ใช้ animation รีสตาร์ทได้ ไม่ต้องตั้ง timer ต่อทิค
+  // ตัวเลขกระพริบตามทิศ (เหมือน MT5) — 1 timer ต่อช่อง ทิคใหม่ล้าง timer เก่า
   const blink = (el, now, before) => {
     if (!Number.isFinite(before) || now === before) return;
-    el.classList.remove('flash-up', 'flash-down');
-    void el.offsetWidth;
-    el.classList.add(now > before ? 'flash-up' : 'flash-down');
+    el.classList.toggle('flash-up', now > before);
+    el.classList.toggle('flash-down', now < before);
+    clearTimeout(el._flashT);
+    el._flashT = setTimeout(() => el.classList.remove('flash-up', 'flash-down'), FLASH_MS);
   };
   blink(bidEl, q.bid, oldBid);
   blink(askEl, q.ask, oldAsk);
@@ -1261,16 +1281,27 @@ window.api.onTick((q) => {
   if (!sameFeed) return;
   const el = $('price-delta');
   if (Number.isFinite(oldBid) && oldBid !== q.bid) { el.textContent = (q.bid > oldBid ? '▲ ' : '▼ ') + fmtD(Math.abs(q.bid - oldBid), d); el.className = 'delta ' + (q.bid > oldBid ? 'up' : 'down'); }
-  // แท่งสุดท้ายของชาร์ตขยับสด (bars เก็บรูปแบบ lightweight-charts: open/high/low/close — เดิมใช้ h/l/c ทำให้ได้ NaN)
+  // แท่งสุดท้าย: จด high/low/close ทุกทิค (ไม่พลาดไส้เทียน) — แต่วาดชาร์ตใหม่ในชั้นหนัก
   if (chartBars.length && candleSeries) {
     const i = chartBars.length - 1, last = chartBars[i];
     chartBars[i] = { ...last, high: Math.max(last.high, q.bid), low: Math.min(last.low, q.bid), close: q.bid };
-    try { candleSeries.update(chartBars[i]); } catch { void 0; }
   }
-  // ระยะห่างจากจุดรอเข้า + บันไดราคา — วิ่งสด
+  lastTickQ = q;
+  const since = performance.now() - lastHeavyPaint;
+  if (since >= HEAVY_PAINT_MS) paintHeavy();
+  else if (!heavyTimer) heavyTimer = setTimeout(paintHeavy, HEAVY_PAINT_MS - since); // ทิคสุดท้ายก่อนตลาดเงียบยังถูกวาด
+}
+// ชั้นหนัก ≤ 1 ครั้ง/วิ: วาดแท่งล่าสุดบนชาร์ต + ระยะจุดรอเข้า + บันไดราคา ด้วยทิคล่าสุด
+let lastTickQ = null, heavyTimer = 0;
+function paintHeavy() {
+  heavyTimer = 0;
+  lastHeavyPaint = performance.now();
+  const q = lastTickQ;
+  if (!q) return;
+  if (chartBars.length && candleSeries) { try { candleSeries.update(chartBars[chartBars.length - 1]); } catch { void 0; } }
   if (lastSnap && lastSnap.entryPlan) renderEntryPlan(lastSnap, q.bid);
   if (lastSnap) renderLadder(lastSnap, q.bid);
-});
+}
 
 /* ---------- trading (จบ) ---------- */
 

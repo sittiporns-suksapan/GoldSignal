@@ -704,33 +704,69 @@ console.log('\n[7] Engine end-to-end');
     } finally { r.server.close(); }
   });
 
-  await ok('tunnel daemon: ปิดแอป = คลาวด์แยกขีดรอด (linger) + เปิดใหม่ adopt pid เดิม + ปิดเอง = kill จริง', async () => {
+  await ok('tunnel daemon: linger รอดปิดแอป • adopt เฉพาะ pid ที่เป็น cloudflared จริง • ปิดเอง = kill ตัวจริง (ไม่ฆ่าผิดตัว)', async () => {
     const { createTunnel } = require(path.join(root, 'src', 'main', 'tunnel'));
+    const { spawn } = require('child_process');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gstun-'));
-    const sf = path.join(dir, 'tunnel-state.json');
-    // จำลอง daemon ชีวิต: pid = process แอปจริง (ยังทำงาน)
-    const daemonPid = process.pid;
-    fs.writeFileSync(sf, JSON.stringify({ provider: 'cloudflared', pid: daemonPid, url: 'https://old.trycloudflare.com', port: 8008, ts: Date.now() }));
-    const urls = [];
-    const t = createTunnel({ stateFile: sf, onUrl: (u) => urls.push(u) });
-    const ad = await t.adopt(8008, 'cloudflared');
-    assert.equal(ad.state, 'on', 'adopt ตอน pid มีชีวิต = on');
-    assert.equal(ad.url, 'https://old.trycloudflare.com', 'ลิงก์เดิมคืนมา');
-    assert.equal(ad.adopted, true, 'ตัวเดิม (ไม่ spawn ใหม่)');
-    // ตัดพอร์ต/ตาย = ไม่ adopt (ใช้ state ไฟล์อื่นกันชนกับสายหลัก)
-    const sf2 = path.join(dir, 'tunnel-state2.json');
-    fs.writeFileSync(sf2, JSON.stringify({ provider: 'cloudflared', pid: 999999999, url: 'https://x.trycloudflare.com', port: 8009, ts: Date.now() }));
-    const dead = createTunnel({ stateFile: sf2, onUrl: () => {} });
-    const ad2 = await dead.adopt(8009, 'cloudflared');
-    assert.equal(ad2.state, 'off', 'pid ตาย = เริ่มใหม่ (URL ใหม่แน่ ๆ)');
-    assert.ok(!fs.existsSync(sf2), 'state ผิดพลาดถูกล้างทิ้ง');
-    // linger: ปิดแอป = ไม่แตะ daemon (state ค้างให้รอบหน้า)
-    const st = await t.stop({ linger: true });
-    assert.ok(st.state === 'off', 'สถานะในแอปปิด (daemon นอกไม่แตะ)');
-    assert.ok(fs.existsSync(sf), 'ต้องเหลือ state ไว้ adopt รอบต่อไป');
-    // ปิดเองจริง = ล้าง state (จรมาหลัง kill — kill ตัวจริงได้เฉพาะในแอปที่ pid นั้นของ cloudflared)
-    await t.stop();   // ปิดแบบทั่วไป = อ่าน pid จาก state + kill
-    assert.ok(!fs.existsSync(sf), 'state ถูกล้างหลังปิดเอง');
+    // daemon จำลอง: โปรแกรมชื่อ "cloudflared" จริง = สำเนา node (clone APFS) — ps เห็นชื่อ cloudflared
+    // (สำเนา /bin/sleep ใช้ไม่ได้: macOS ฆ่า platform binary ที่ถูกคัดลอกออกนอกระบบทันที)
+    const fake = path.join(dir, 'cloudflared');
+    fs.copyFileSync(process.execPath, fake, fs.constants.COPYFILE_FICLONE); fs.chmodSync(fake, 0o755);
+    const d = spawn(fake, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
+    await new Promise((r) => setTimeout(r, 400));
+    const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    try {
+      // pid มีชีวิตแต่เป็นโปรแกรมอื่น (pid ถูกนำไปใช้ซ้ำ) = ห้าม adopt และห้ามฆ่า
+      const sfX = path.join(dir, 'state-x.json');
+      fs.writeFileSync(sfX, JSON.stringify({ provider: 'cloudflared', pid: process.pid, url: 'https://x.trycloudflare.com', port: 8997, ts: Date.now() }));
+      const tx = createTunnel({ stateFile: sfX, onUrl: () => {} });
+      assert.equal((await tx.adopt(8997, 'cloudflared')).state, 'off', 'pid ของโปรแกรมอื่น = ไม่ adopt');
+      assert.ok(!fs.existsSync(sfX), 'state ที่ชี้ผิดตัวถูกล้าง');
+      // pid ตายแล้ว = ไม่ adopt
+      const sfD = path.join(dir, 'state-d.json');
+      fs.writeFileSync(sfD, JSON.stringify({ provider: 'cloudflared', pid: 999999999, url: 'https://y.trycloudflare.com', port: 8996, ts: Date.now() }));
+      assert.equal((await createTunnel({ stateFile: sfD }).adopt(8996, 'cloudflared')).state, 'off', 'pid ตาย = เริ่มใหม่');
+      // cloudflared จริงยังรัน = adopt ลิงก์เดิม
+      const sf = path.join(dir, 'state.json');
+      fs.writeFileSync(sf, JSON.stringify({ provider: 'cloudflared', pid: d.pid, url: 'https://old.trycloudflare.com', port: 8997, ts: Date.now() }));
+      const urls = [];
+      const t = createTunnel({ stateFile: sf, onUrl: (u) => urls.push(u) });
+      const ad = await t.adopt(8997, 'cloudflared');
+      assert.equal(ad.state, 'on'); assert.equal(ad.url, 'https://old.trycloudflare.com'); assert.equal(ad.adopted, true);
+      assert.deepEqual(urls, ['https://old.trycloudflare.com'], 'แจ้งลิงก์เดิมให้ลิงก์ถาวร');
+      // linger (ปิดแอป) = ไม่แตะ daemon + เก็บ state ไว้
+      await t.stop({ linger: true });
+      assert.ok(alive(d.pid) && fs.existsSync(sf), 'daemon รอด + state ยังอยู่');
+      // เปิดแอปรอบใหม่ → adopt → ปิดเอง = kill ตัวจริง + ล้าง state
+      const t2 = createTunnel({ stateFile: sf });
+      assert.equal((await t2.adopt(8997, 'cloudflared')).state, 'on');
+      await t2.stop();
+      await new Promise((r) => setTimeout(r, 300));
+      assert.ok(!alive(d.pid), 'ปิดเอง = daemon ถูก kill');
+      assert.ok(!fs.existsSync(sf), 'state ถูกล้างหลังปิดเอง');
+      assert.ok(alive(process.pid), 'ไม่ฆ่าผิดตัว');
+    } finally { try { d.kill('SIGKILL'); } catch { void 0; } }
+  });
+  await ok('tunnel: เก็บกวาด cloudflared กำพร้าของพอร์ตเรา (ppid 1) ไม่แตะพอร์ตอื่น/ตัวที่ใช้อยู่', async () => {
+    const { createTunnel } = require(path.join(root, 'src', 'main', 'tunnel'));
+    const { execFileSync } = require('child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsorph-'));
+    const fake = path.join(dir, 'cloudflared');
+    fs.copyFileSync(process.execPath, fake, fs.constants.COPYFILE_FICLONE); fs.chmodSync(fake, 0o755);
+    // แตก process ให้พ่อแม่ตาย (ppid → 1) เหมือนแอปปิดไปแล้ว + args แบบ cloudflared จริง
+    const mk = (port) => { execFileSync('/bin/sh', ['-c', `"${fake}" -e "setTimeout(()=>{},30000)" tunnel --url http://localhost:${port} >/dev/null 2>&1 &`]); };
+    mk(8999); mk(8998);
+    await new Promise((r) => setTimeout(r, 600));
+    const t = createTunnel({});
+    const o99 = t.findOrphans(8999), o98 = t.findOrphans(8998);
+    try {
+      assert.equal(o99.length, 1, 'เจอกำพร้าของพอร์ต 8999 ตัวเดียว');
+      assert.equal(t.findOrphans(8999, o99[0]).length, 0, 'ตัวที่ใช้อยู่ (keepPid) ไม่ถูกนับ');
+      t.reapOrphans(8999);
+      await new Promise((r) => setTimeout(r, 300));
+      assert.equal(t.findOrphans(8999).length, 0, 'ถูกปิดแล้ว');
+      assert.equal(t.findOrphans(8998).length, 1, 'พอร์ตอื่นไม่ถูกแตะ');
+    } finally { for (const pid of [...o99, ...o98]) { try { process.kill(pid, 'SIGKILL'); } catch { void 0; } } }
   });
   await ok('เว็บ: ไม่ส่ง handlers = ดูอย่างเดียว เฉพาะเครื่องนี้ (snapshot) + port 8008', async () => {
     const { startWebServer } = require(path.join(root, 'src', 'main', 'webserver'));

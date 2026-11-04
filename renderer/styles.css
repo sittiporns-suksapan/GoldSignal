@@ -114,8 +114,7 @@ button.ghost { background: transparent; color: var(--text-2); }
   display: grid; grid-template-columns: auto 1fr auto; grid-template-areas: "brand nav right";
   align-items: center; gap: 20px;
   padding: 12px 24px;
-  background: rgba(7, 8, 11, .78);
-  backdrop-filter: blur(18px) saturate(140%);
+  background: rgba(7, 8, 11, .97); /* ทึบแทน backdrop-filter: blur ที่ต้องคำนวณใหม่ทุกเฟรมที่เนื้อหาใต้แถบขยับ */
   border-bottom: 1px solid var(--line);
 }
 #topbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: linear-gradient(90deg, transparent, var(--gold-line), transparent); }
@@ -155,7 +154,7 @@ button.ghost { background: transparent; color: var(--text-2); }
 .badge.err { background: var(--down-bg); color: var(--down-text); border-color: var(--down-line); }
 #conn-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; margin-right: 8px; box-shadow: 0 0 8px currentColor; }
 #conn-badge.ok::before { animation: pulse 2.2s ease-in-out infinite; }
-@keyframes pulse { 50% { opacity: .3; box-shadow: none; } }
+@keyframes pulse { 50% { opacity: .3; } }
 
 main { flex: 1; overflow: auto; padding: 18px 24px 24px; }
 .tab { display: none; }
@@ -196,9 +195,10 @@ details.more[open] summary { margin-bottom: 10px; }
   border: 1px solid var(--line);
 }
 .sb-chip { font: 700 11px/1 var(--font-num); padding: 7px 12px; border-radius: 9px; border: 1px solid var(--line-strong); color: var(--muted); flex: none; letter-spacing: 1.2px; background: var(--surface-2); }
-.sb-chip.ready { background: var(--up-bg); border-color: var(--up-line); color: var(--up-text); animation: glow 1.8s ease-in-out infinite; }
+.sb-chip.ready { position: relative; background: var(--up-bg); border-color: var(--up-line); color: var(--up-text); }
+.sb-chip.ready::after, .ezstatus .chip.armed::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 5px rgba(43, 196, 138, .12); opacity: 0; animation: ring 1.8s ease-in-out infinite; pointer-events: none; }
 .sb-chip.waiting { background: var(--gold-bg); border-color: var(--gold-line); color: var(--gold-hi); }
-@keyframes glow { 50% { box-shadow: 0 0 0 5px rgba(43, 196, 138, .12); } }
+@keyframes ring { 50% { opacity: 1; } }
 .sb-body { display: grid; gap: 3px; min-width: 0; }
 .sb-session { font-size: 12.5px; display: flex; align-items: center; gap: 8px; color: var(--text-2); }
 .sb-session .badge { padding: 1px 8px; font-size: 10.5px; }
@@ -444,7 +444,7 @@ code { background: var(--inset); border: 1px solid var(--line-soft); padding: 1p
 .ezzone { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .ezstatus { font-size: 12.5px; margin: 6px 0 2px; display: flex; align-items: center; gap: 8px; justify-content: space-between; }
 .ezstatus .chip { font-weight: 600; font-size: 10.5px; letter-spacing: .8px; }
-.ezstatus .chip.armed { background: var(--up-bg); color: var(--up-text); border-color: var(--up-line); animation: glow 1.8s ease-in-out infinite; }
+.ezstatus .chip.armed { position: relative; background: var(--up-bg); color: var(--up-text); border-color: var(--up-line); }
 .ezstatus .chip.waiting { color: var(--muted); }
 .ezstatus .chip.blocked { background: var(--down-bg); color: var(--down-text); border-color: var(--down-line); }
 .ezstatus .chip.danger { background: var(--down-bg); color: var(--down-text); border-color: var(--down-line); }
@@ -546,13 +546,12 @@ code { background: var(--inset); border: 1px solid var(--line-soft); padding: 1p
 .tside.sell { --glow: rgba(216, 72, 88, .9); background: linear-gradient(180deg, var(--sell-a), var(--sell-b)); }
 .tside.buy { --glow: rgba(47, 111, 228, .9); background: linear-gradient(180deg, var(--buy-a), var(--buy-b)); }
 .tside:hover { filter: brightness(1.1) saturate(1.05); color: #fff; }
-.flash-up { animation: flashUp .5s; }
-.flash-down { animation: flashDown .5s; }
-@keyframes flashUp { 0% { color: #3ce495; text-shadow: 0 0 10px rgba(60, 228, 149, .6); } }
-@keyframes flashDown { 0% { color: #ff6573; text-shadow: 0 0 10px rgba(255, 101, 115, .6); } }
+/* กระพริบแบบสลับ class (ค้างสี ~0.35 วิ แล้วคืน) — paint แค่ 2 ครั้ง/ทิค
+   เดิม animate color+text-shadow ทุกเฟรม 0.5 วิ: วัดจริงกิน CPU renderer+GPU ~20% ตอนตลาดวิ่ง */
+.flash-up, #price.flash-up { color: #3ce495; }
+.flash-down, #price.flash-down { color: #ff6573; }
 /* บนปุ่ม BUY/SELL พื้นสีอยู่แล้ว — กระพริบด้วยแสงขาวแทนเปลี่ยนสีตัวอักษร (เดิมแดงบนแดงอ่านไม่ออก) */
-.tside .flash-up, .tside .flash-down { animation: flashBtn .5s; }
-@keyframes flashBtn { 0% { text-shadow: 0 0 14px rgba(255, 255, 255, .95); } }
+.tside .flash-up, .tside .flash-down { color: #fff; text-shadow: 0 0 8px rgba(255, 255, 255, .9); }
 .tmid { display: grid; gap: 6px; align-content: center; }
 .tmid label { display: grid; gap: 3px; color: var(--faint); font-size: 10px; letter-spacing: .5px; }
 .tmid input { width: 112px; border-radius: 8px; padding: 8px 6px; text-align: center; font-size: 15px; font-weight: 600; }
@@ -633,8 +632,8 @@ button.danger:hover { color: #fff; filter: brightness(1.1); }
 .autoclose .loss .switch input:checked + span { background: linear-gradient(135deg, var(--sell-a), var(--sell-b)); }
 .closeall-hint { font-size: 12px; color: var(--muted); }
 .closeall-row.alert { border-color: var(--down-line); background: var(--down-bg); }
-.closeall-row.alert button.danger { animation: alarm 1.4s ease-in-out infinite; }
-@keyframes alarm { 50% { box-shadow: 0 0 0 5px rgba(240, 97, 109, .25); } }
+.closeall-row.alert button.danger { position: relative; }
+.closeall-row.alert button.danger::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 5px rgba(240, 97, 109, .25); opacity: 0; animation: ring 1.4s ease-in-out infinite; pointer-events: none; }
 
 /* ---------- confirm modal ---------- */
 #modal { position: fixed; inset: 0; background: rgba(3, 4, 6, .66); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 120; }

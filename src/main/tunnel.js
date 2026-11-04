@@ -9,7 +9,7 @@
 // ============================================================
 
 const fs = require('fs');
-const { spawn, execFile } = require('child_process');
+const { spawn, execFile, execFileSync } = require('child_process');
 
 const BIN = {
   cloudflared: ['/opt/homebrew/bin/cloudflared', '/usr/local/bin/cloudflared'],
@@ -30,6 +30,25 @@ function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null } 
   };
   const clearState = () => { if (stateFile) try { fs.unlinkSync(stateFile); } catch { void 0; } };
   const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  // pid ยังเป็นโปรแกรม tunnel ของเราจริงไหม (กัน macOS เอา pid เดิมไปให้โปรแกรมอื่นแล้วเราไปฆ่าผิดตัว)
+  const isTunnelPid = (pid, prov) => {
+    if (!(Number(pid) > 1) || !alive(pid) || !BIN[prov]) return false;
+    try { return String(execFileSync('/bin/ps', ['-p', String(pid), '-o', 'comm='], { timeout: 3000 })).trim().split('/').pop() === prov; }
+    catch { return false; }
+  };
+  let adoptedPid = 0, healthTimer = null;
+  // tunnel ที่ adopt มาไม่มี child ให้ฟัง exit → ตรวจทุก 15 วิ ตายแล้ว = เปิดใหม่ (ได้ URL ใหม่ → ลิงก์ถาวรอัปเดตเอง)
+  const watchAdopted = () => {
+    clearInterval(healthTimer);
+    healthTimer = setInterval(() => {
+      if (!adopted || stopping || state !== 'on' || provider === 'tailscale') return;
+      if (isTunnelPid(adoptedPid, provider)) return;
+      clearInterval(healthTimer);
+      logger('tunnel', `tunnel ${provider} ที่ดึงคืนมา (pid ${adoptedPid}) หยุดทำงานแล้ว — เปิดใหม่`, 'warn');
+      adopted = false; adoptedPid = 0; url = null; clearState();
+      startInner();
+    }, 15_000);
+  };
   const setUrl = (u) => {
     if (u && u !== url) {
       url = u; state = 'on'; msg = ''; retry = 0;
@@ -41,7 +60,8 @@ function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null } 
   const fail = (m) => { state = 'error'; msg = m; logger('tunnel', `tunnel ${provider}: ${m}`, 'warn'); };
 
   function spawnWatch(bin, args, parse) {
-    child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const me = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    child = me;
     const pid = () => (child && child.pid) || 0;
     const feed = (buf) => {
       for (const line of String(buf).split('\n')) {
@@ -53,6 +73,9 @@ function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null } 
     child.stdout.on('data', feed);
     child.stderr.on('data', feed);
     child.on('exit', (code) => {
+      // ตัวที่ถูกสั่งปิด/ถูกแทนแล้ว = ไม่ต้องเริ่มใหม่ (เดิม stop() คืน stopping=false ก่อน exit มาถึง
+      // → exit คิดว่าล่มเอง → spawn ตัวที่สองซ้อน = cloudflared กำพร้าค้าง + ลิงก์เก่ายังเปิดอยู่)
+      if (child !== me) return;
       child = null;
       clearState();
       if (stopping) return;
@@ -90,7 +113,26 @@ function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null } 
     return fail('ไม่รู้จักผู้ให้บริการ tunnel');
   }
 
+  // หา tunnel กำพร้าของแอปนี้: ชื่อโปรแกรม + args ชี้พอร์ตแผงของเรา + ppid 1 (แอปตัวที่เปิดมันปิดไปแล้ว)
+  // ไม่แตะ tunnel ของโปรแกรมอื่น (พอร์ตอื่น / พ่อแม่ยังอยู่)
+  function findOrphans(prt, keepPid = 0) {
+    let out = '';
+    try { out = String(execFileSync('/bin/ps', ['-axo', 'pid=,ppid=,args='], { timeout: 5000 })); } catch { return []; }
+    const sig = new RegExp(`/(cloudflared|ngrok)\\s.*(localhost|127\\.0\\.0\\.1):${Number(prt)}(\\s|$)|/ngrok\\s+http\\s+${Number(prt)}(\\s|$)`);
+    return out.split('\n').map((l) => l.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/)).filter(Boolean)
+      .filter((m) => Number(m[2]) === 1 && Number(m[1]) !== Number(keepPid) && sig.test(m[3]))
+      .map((m) => Number(m[1]));
+  }
+  function reapOrphans(prt, keepPid = 0) {
+    const pids = findOrphans(prt, keepPid);
+    for (const pid of pids) { try { process.kill(pid, 'SIGTERM'); } catch { void 0; } }
+    if (pids.length) logger('tunnel', `ปิด tunnel กำพร้าที่ค้างจากรอบก่อน ${pids.length} ตัว (pid ${pids.join(', ')}) — ลิงก์เก่าเหล่านั้นใช้ไม่ได้แล้ว`, 'warn');
+    return pids;
+  }
+
   return {
+    findOrphans,
+    reapOrphans,
     available: () => Object.fromEntries(Object.keys(BIN).map((k) => [k, !!findBin(k)])),
     status: () => ({ provider, state, url, msg, adopted }),
     // บูต: พยายามดึง tunnel เก่าที่ยังรันอยู่ (จาก update/ปิดหน้าต่างล่าสุด) — ได้ = ลิงก์เดิมไม่ตาย
@@ -98,19 +140,24 @@ function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null } 
       if (!stateFile || state === 'on') return this.status();
       try {
         const s = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-        if (s && alive(s.pid) && Number(s.port) === Number(prt)) {
+        const pidOk = s && s.provider === 'tailscale' ? true : s && isTunnelPid(s.pid, s.provider);
+        if (s && pidOk && Number(s.port) === Number(prt) && /^https:\/\//.test(String(s.url || ''))) {
           provider = s.provider; port = Number(prt); url = s.url; state = 'on'; adopted = true; msg = ''; retry = 0;
+          adoptedPid = Number(s.pid) || 0;
+          watchAdopted();
+          reapOrphans(prt, adoptedPid);
           logger('tunnel', `ดึง tunnel เดิมคืนมาแล้ว (${s.provider}, pid ${s.pid}) — ลิงก์เดิมใช้ต่อได้ทันที: ${s.url}`);
           onUrl(s.url, provider);
           return this.status();
         }
-        clearState();   // ตายแล้ว/พอร์ตลิบ = ขยะ — ล้างทิ้ง
+        clearState();   // ตายแล้ว/ชี้ผิดตัว = ขยะ — ล้างทิ้ง
       } catch { void 0; }
-      if (preferred && provider !== preferred) { /* ยังไม่เปิด — ให้ start ปกติ */ }
+      reapOrphans(prt); // ไม่มีตัวให้ adopt = ตัวค้างทั้งหมดเป็นกำพร้า
       return this.status();
     },
     async start(p, prt) {
       await this.stop();
+      reapOrphans(prt);
       provider = p; port = prt; stopping = false; retry = 0; adopted = false;
       await startInner();
       return this.status();
@@ -120,19 +167,20 @@ function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null } 
       if (!(opts && opts.linger)) {
         stopping = true;
         clearTimeout(retryTimer);
-        if (child) { try { child.kill('SIGTERM'); } catch { void 0; } child = null; }
+        if (child) { const c = child; child = null; try { c.kill('SIGTERM'); } catch { void 0; } }
         else if (adopted && provider === 'tailscale') { const bin = findBin('tailscale'); if (bin) await run(bin, ['funnel', 'reset']); }
         else if (state === 'on' && url && provider !== 'tailscale') {
           // adopt จากรอบก่อน (สาย pid ไฟล์เดียว): อ่าน pid ล่าสุดจาก state แล้วฆ่าเชียแรงตอนกดปิดเอง
           try {
             const s = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-            if (s && alive(s.pid)) { process.kill(s.pid, 'SIGTERM'); await new Promise((r) => setTimeout(r, 500)); if (alive(s.pid)) { try { process.kill(s.pid, 'SIGKILL'); } catch { void 0; } } }
+            if (s && isTunnelPid(s.pid, provider)) { process.kill(s.pid, 'SIGTERM'); await new Promise((r) => setTimeout(r, 500)); if (isTunnelPid(s.pid, provider)) { try { process.kill(s.pid, 'SIGKILL'); } catch { void 0; } } }
           } catch { void 0; }
         }
         clearState();
         if (state !== 'off' && !(opts && opts.linger)) logger('tunnel', 'ปิด tunnel แล้ว');
       }
-      state = 'off'; url = null; msg = ''; stopping = false; adopted = false;
+      clearInterval(healthTimer);
+      state = 'off'; url = null; msg = ''; stopping = false; adopted = false; adoptedPid = 0;
       return this.status();
     },
   };

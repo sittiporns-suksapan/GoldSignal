@@ -332,8 +332,7 @@ function boot() {
         preload: path.join(__dirname, 'preload.js'),
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: true,
-        backgroundThrottling: false,
+        sandbox: true, // throttling ค่าเริ่มต้น: หน้าต่างที่มองเห็นอยู่ไม่ถูกหน่วง — ย่อ/ถูกบังทั้งหมดเท่านั้นที่พักวาด (ประหยัด CPU)
       },
     });
     w.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//i.test(url)) shell.openExternal(url); return { action: 'deny' }; });
@@ -372,11 +371,19 @@ function boot() {
     if (kind !== 'sig') return;
     const sig = tgQueueConfirm.get(key);
     if (!sig) { await tg.sendInline('⌛ คำเชิญนี้หมดอายุ — รอสัญญาณใหม่เท่านั้น'); return; }
+    tgQueueConfirm.delete(key); // ยึดก่อนส่ง — กดซ้ำเร็ว ๆ ไม่ส่งไม้ซ้อน
+    // กติกาเดียวกับหน้ายืนยันในแอป: เกิน 15 นาที หรือราคาทะลุ SL/TP ของโอกาสไปแล้ว = ไม่ส่งตามราคาเก่า
+    const pxNow = quoteFor(sig.side);
+    const crossed = Number.isFinite(pxNow) && ((sig.side === 'buy' ? pxNow <= sig.sl : pxNow >= sig.sl) || (Number(sig.tp) > 0 && (sig.side === 'buy' ? pxNow >= sig.tp : pxNow <= sig.tp)));
+    if (Date.now() - sig.at > 15 * 60_000 || crossed) {
+      await tg.sendInline(`⌛ คำเชิญนี้ใช้ไม่ได้แล้ว — ${crossed ? 'ราคาทะลุ SL/TP ของโอกาสไปแล้ว' : 'เกิน 15 นาที ราคาอาจเก่าเกิน'} • ไม่ได้ส่งไม้`);
+      return;
+    }
     const r = await sendOrderReq({ side: sig.side, lot: sig.lot, sl: sig.sl, tp: sig.tp || 0, auto: false });
     if (r && r.ok) {
-      tgQueueConfirm.delete(key);
       await tg.sendInline(`✅ ส่งไม้จริงแล้ว: ${sig.side === 'buy' ? 'BUY' : 'SELL'} ล็อต ${sig.lot} • SL ${px(sig.sl)} • TP ${sig.tp ? px(sig.tp) : '-'} (รอผลจาก MT5)`);
     } else {
+      tgQueueConfirm.set(key, sig); // เกตไม่ผ่าน = คืนคำเชิญ ให้กดใหม่ได้ (ยังติดกติกา 15 นาทีเดิม)
       await tg.sendInline(`✗ ผ่านเกตไม่ได้: ${(r && r.reason) || 'ไม่ทราบสาเหตุ'} — ตรวจ: ทุนเสียอัตโนมัติใช้กลุ่ม "ปุ่มกดเอง" (${engine.settings.manualRiskMaxPct || 2}%) • SL กว้างไป/โควตาเต็ม/ข้อมูลไม่สด`);
     }
   });
@@ -402,7 +409,7 @@ function boot() {
         // ปุ่มกดยืนยันจาก Telegram: สัญญาณผ่านทุกด่าน + ส่งจริงเปิด + โหวตมือ (โหมดอัตโนมัติยิงเองอยู่แล้ว = ไม่ส่งซ้ำ)
         if (engine.settings.realOrdersEnabled === true && engine.settings.autoEnter !== true) {
           const sk = `${s.plugin}|${s.side}|${Math.round(s.entry)}`;
-          tgQueueConfirm.set(sk, { side: s.side, lot: Math.max(0.01, Number(s.metrics && s.metrics.lot) || 0.01), sl: s.sl, tp: s.tp || 0, entry: s.entry });
+          tgQueueConfirm.set(sk, { side: s.side, lot: Math.max(0.01, Number(s.metrics && s.metrics.lot) || 0.01), sl: s.sl, tp: s.tp || 0, entry: s.entry, at: Date.now() });
           if (tgQueueConfirm.size > 40) tgQueueConfirm.delete(tgQueueConfirm.keys().next().value);
           try {
             await tg.sendInline(`${sigTxt}\n\nกดเพื่อส่งไม้จริง (ผ่านเกตความเสี่ยง/โควตาของระบบเดิม • ใช้แชตนี้เท่านั้น):`, [
@@ -568,7 +575,15 @@ function boot() {
     return { ok: true, quote, effSettings, snap, acct, liveEquity };
   };
 
-  handle('send-order', (_e, req) => sendOrderReq(req));
+  // หน้าต่าง/เว็บส่งมา = กลุ่ม "ปุ่มกดเอง" เสมอ (เดิมเชื่อ req.auto จากฝั่งหน้าจอ → ยืมเพดานกลุ่มอัตโนมัติได้)
+  // เทียบรุ่น EA แบบตัวเลข (เดิมเทียบสตริง: '1.10' < '1.7' = true → EA รุ่นใหม่ถูกปฏิเสธ)
+  const eaBelow = (have, need) => {
+    const a = String(have || '').split('.').map(Number), b = String(need).split('.').map(Number);
+    if (!a.length || a.some((x) => !Number.isFinite(x))) return true;
+    for (let i = 0; i < Math.max(a.length, b.length); i++) { const x = a[i] || 0, y = b[i] || 0; if (x !== y) return x < y; }
+    return false;
+  };
+  handle('send-order', (_e, req) => sendOrderReq({ ...(req || {}), auto: false }));
   function sendOrderReq(req) {
     const side = req.side === 'buy' ? 'buy' : 'sell';
     const g = orderGatePre(side);
@@ -603,7 +618,7 @@ function boot() {
     const g = orderGatePre(side);
     if (!g.ok) return g;
     // EA ต้องรุ่นใหม่พอ: pendings มาตั้งแต่ v1.7 (ป้าย "ea" ใน bridge — ป้ายไม่มี/ต่ำกว่า = ปฏิเสธ)
-    if (String(g.snap.meta.ea || '') < '1.7') return { ok: false, reason: EA_PENDINGS };
+    if (eaBelow(g.snap.meta.ea, '1.7')) return { ok: false, reason: EA_PENDINGS };
     const entry = Number(req.entry);
     if (!Number.isFinite(entry) || entry <= 0) return { ok: false, reason: 'ใส่ราคาเข้า (ราคาที่จะรอ) ก่อน — จะวาง limit/stop นี้ไว้รอเช่นไหน' };
     // ทิศราคาต้องถูกตามชนิด: BUY LIMIT ต่ำกว่าตลาด / BUY STOP สูงกว่าตลาด / SELL LIMIT สูงกว่าตลาด / SELL STOP ต่ำกว่าตลาด
@@ -648,7 +663,7 @@ function boot() {
     const [, side, ptype] = m;
     const g = orderGatePre(side);
     if (!g.ok) return g;
-    if (String(g.snap.meta.ea || '') < '1.8') return { ok: false, reason: EA_PMODIFY };
+    if (eaBelow(g.snap.meta.ea, '1.8')) return { ok: false, reason: EA_PMODIFY };
     if ([...mt5.pending.values()].some((c) => Number(c.ticket) === ticket)) return { ok: false, reason: `คำสั่งรอ #${ticket} มีคำสั่งค้างอยู่ — รอผลจาก MT5` };
     const entry = Number(req.entry), sl = Number(req.sl), tp = Number(req.tp) || 0;
     const v = risk.validatePendingModify({ side, ptype, volume: Number(po.volume), entry, sl, tp, curEntry: Number(po.open), curSl: Number(po.sl), market: g.quote, settings: g.effSettings });
@@ -760,7 +775,7 @@ function boot() {
     const key = sigKey(sig);
     const lot = Math.max(0.01, Number(sig.metrics && sig.metrics.lot) || 0.01);
     autoEntered.add(key);
-    if (autoEntered.size > 200) autoEntered.clear();
+    if (autoEntered.size > 200) autoEntered.delete(autoEntered.values().next().value);
     let r;
     try { r = sendOrderReq({ side: sig.side, lot, sl: sig.sl, tp: sig.tp || 0, auto: true }); }
     catch (err) { r = { ok: false, reason: err.message }; }
@@ -772,7 +787,7 @@ function boot() {
     } else {
       autoEntered.delete(key);
       autoRejectedAt.set(key, now);
-      if (autoRejectedAt.size > 200) autoRejectedAt.clear();
+      if (autoRejectedAt.size > 200) autoRejectedAt.delete(autoRejectedAt.keys().next().value);
       send('auto-enter', { ok: false, msg: `ระบบขอเข้าไม้อัตโนมัติแต่ถูกกันเหนียวปฏิเสธ — ${(r && r.reason) || 'เกตไม่ผ่าน'}` });
     }
   }
