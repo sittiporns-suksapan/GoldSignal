@@ -26,7 +26,12 @@ const { PluginLoader } = require(path.join(root, 'src', 'engine', 'plugins'));
 
 const SETTINGS = {
   equity: 10000, riskPct: 1, minRR: 1.5, minConfidence: 60,
-  councilEnabled: true, councilQuorum: 3, councilMin: Number(process.env.COUNCIL_MIN) || 70,
+  councilEnabled: true, councilQuorum: Number(process.env.COUNCIL_QUORUM) || 3,
+  councilMin: Number(process.env.COUNCIL_MIN) || 70,
+  // ทดสอบทีมที่ปิดเอเจนต์รายคน: COUNCIL_AGENTS_OFF=regime,session,confluence (id แบบ engine)
+  councilAgents: process.env.COUNCIL_AGENTS_OFF
+    ? Object.fromEntries(String(process.env.COUNCIL_AGENTS_OFF).split(',').map((s) => s.trim()).filter(Boolean).map((id) => [id, false]))
+    : undefined,
   newsStop: false, pollSec: 10,
 };
 const SPREAD_TOTAL = 0.5;
@@ -137,7 +142,14 @@ const summary = (Rs) => {
 
 (async () => {
   try {
-    const m5 = await loadBars();
+    let m5 = await loadBars();
+    // split-half ยืนยันกฎไม่ใช่ผลของช่วงข้อมูลเดียว (มาตรฐานสภา: ต้องบวก/พอดีศูนย์ทั้งสองครึ่ง)
+    const half = Number(process.env.BACKTEST_HALF);
+    if (half === 1 || half === 2) {
+      const mid = Math.floor(m5.length / 2);
+      m5 = half === 1 ? m5.slice(0, mid) : m5.slice(mid);
+      console.log(`(ทดสอบครึ่ง${half === 1 ? 'หน้า' : 'หลัง'}ของข้อมูล — ${m5.length} แท่ง)`);
+    }
     const m15 = ind.aggregate(m5, 3);
     const h1 = ind.aggregate(m5, 12);
     const map15 = tfIndexMap(m5, m15), map1h = tfIndexMap(m5, h1);
