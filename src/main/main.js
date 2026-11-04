@@ -241,7 +241,7 @@ function boot() {
   const notifyLink = (why, repo, u, prov) => notify('link',
     `🔗 GoldSignal: ${why}\nลิงก์ถาวร: ${pages.pagesUrl(repo)}` +
     (u ? `\nลิงก์ตรง (${prov || 'tunnel'}): ${u}` : '\nแผงระยะไกลปิดอยู่') +
-    `\nเวอร์ชัน ${app.getVersion()}`);
+    `\nVersion ${app.getVersion()} (${app.getVersion()})`);
   // tunnel ได้ URL ใหม่ → อัปเดตลิงก์ถาวรบน GitHub Pages (ถ้าตั้ง repo ไว้)
   const publish = (u, prov) => {
     const repo = webAuth.opts().pagesRepo;
