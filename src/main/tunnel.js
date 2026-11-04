@@ -48,7 +48,8 @@ function createTunnel({ logger = () => {}, onUrl = () => {} } = {}) {
     const bin = findBin(provider);
     if (!bin) return fail(`ไม่พบโปรแกรม ${provider} (ติดตั้งด้วย brew install ${provider === 'tailscale' ? '--cask tailscale' : provider})`);
     if (provider === 'cloudflared') {
-      return spawnWatch(bin, ['tunnel', '--no-autoupdate', '--url', `http://localhost:${port}`], (l) => (l.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/) || [])[0]);
+      // --protocol http2: เอา HTTP/2 (TCP) แทน QUIC ที่ท้ายเน็ตองค์กร/บ้านหลายร่างบล็อก UDP → ป่องแสดให้ 530 อย่างเดียว
+      return spawnWatch(bin, ['tunnel', '--no-autoupdate', '--protocol', 'http2', '--url', `http://localhost:${port}`], (l) => (l.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/) || [])[0]);
     }
     if (provider === 'ngrok') {
       return spawnWatch(bin, ['http', String(port), '--log', 'stdout', '--log-format', 'json'], (l) => {
