@@ -498,7 +498,7 @@ ok('เอเจนต์ v2: โครงสร้าง BOS/CHoCH ขารา
   }
 });
 
-ok('สภา: คิวรัมอัตโนมัติตามจำนวนทีมที่เปิด (3→2 • 4→3 • 6→4) + แก้มือได้', () => {
+ok('สภา: คิวรัมอัตโนมัติ = min(ค่าที่ตั้ง, 60% ของทีมที่เปิด) + ตั้งมือได้', () => {
   const analysisTf = require(path.join(root, 'src', 'engine', 'analysis')).analyzeMarket(candles);
   const ctx = { analysis: analysisTf, candles, price: candles.M5[candles.M5.length - 1].c, now: Date.now(), ind, skills: {} };
   const allIds = council.AGENTS.map((a) => a.id);
@@ -513,6 +513,11 @@ ok('สภา: คิวรัมอัตโนมัติตามจำน�
   assert.equal(q(4).quorumNeed, 3, 'เปิด 4 = 3');
   assert.equal(q(3).quorumNeed, 2, 'เปิด 3 = 2');
   assert.ok(q(2).quorumNeed >= 2, 'เปิด 2 = อย่างน้อย 2 (ยิงสัญญาณต้อง 2 คนเท่านั้น)');
+  // อัตโนมัติ + ค่าที่ตั้ง = เพดาน (ไม่ทิ้งค่าที่ผู้ใช้ตั้ง)
+  assert.equal(q(4, { councilQuorum: 2 }).quorumNeed, 2, 'อัตโนมัติ ตั้ง 2 เปิด 4 = 2');
+  assert.equal(q(7, { councilQuorum: 3 }).quorumNeed, 3, 'อัตโนมัติ ตั้ง 3 เปิด 7 = 3');
+  assert.equal(q(7, { councilQuorum: 6 }).quorumNeed, 5, 'อัตโนมัติ ตั้ง 6 เปิด 7 = 5 (60%)');
+  assert.equal(q(3, { councilQuorum: 6 }).quorumNeed, 2, 'อัตโนมัติ ตั้ง 6 เปิด 3 = 2');
   // ตั้งมือ: ยึดค่าที่ตั้ง — ครอบด้วยจำนวนเปิดจริง
   const m3 = council.runCouncil(ctx, { councilQuorumAuto: false, councilQuorum: 4, councilAgents: Object.fromEntries(allIds.map((id, i) => [id, i < 3])) });
   assert.equal(m3.quorumNeed, 3, 'ตั้งมือ 4 แต่ทีม 3 คน = ลดเหลือ 3');

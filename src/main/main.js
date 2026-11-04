@@ -57,8 +57,8 @@ const DEFAULT_SETTINGS = {
   autoEnter: false,         // เปิด = ระบบเข้าไม้เองทันทีเมื่อผ่านทุกเกต (ไม่รอกด) • ปิด = ระบบเด้งหน้ายืนยันรอกด
   councilEnabled: true,   // ทีมเอเจนต์วิเคราะห์ก่อนทุกไม้
   councilStrict: true,    // โหมดเข้ม: ต้องมีมติสภาสนับสนุนถึงแสดงสัญญาณ (หลักฐานจาก backtest 60 วัน)
-  councilQuorum: 3,       // จำนวนเอเจนต์เห็นพ้องขั้นต่ำให้สภาออกมติ (ใช้เมื่อปิดโหมดอัตโนมัติ)
-  councilQuorumAuto: true, // อัตโนมัติ: คิวรัม = 60% ขของเอเจนต์ที่เปิด (3→2 • 4→3 • 5→3 • 6→4 • 7→5)
+  councilQuorum: 3,       // จำนวนเอเจนต์เห็นพ้องขั้นต่ำให้สภาออกมติ (โหมดอัตโนมัติใช้เป็นเพดาน)
+  councilQuorumAuto: true, // อัตโนมัติ: คิวรัม = min(councilQuorum, 60% ของเอเจนต์ที่เปิด ปัดขึ้น)
   autoCloseAll: false,        // ปิดรวบอัตโนมัติเมื่อกำไรลอยตัวรวม ≥ autoCloseAllProfit (สกุลเงินบัญชี)
   autoCloseAllProfit: 100,
   autoCloseLoss: false,       // ตัดขาดทุนรวบอัตโนมัติเมื่อขาดทุนลอยตัวรวม ≥ autoCloseLossValue (สกุลเงินบัญชี)

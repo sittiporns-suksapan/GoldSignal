@@ -264,13 +264,16 @@ function runCouncil(ctx, settings = {}) {
   // สวิตช์เปิด/ปิดรายเอเจนต์: settings.councilAgents = { id: true|false } — ค่าที่ไม่ได้พูดถึง = เปิด
   const agentSwitch = settings.councilAgents && typeof settings.councilAgents === 'object' ? settings.councilAgents : {};
   const enabledCount = AGENTS.filter((a) => agentSwitch[a.id] !== false).length;
-  // คิวรัม: โหมดอัตโนมัติ (councilQuorumAuto ไม่ปิด) = 60% ของเอเจนต์ที่เปิดอยู่ ปัดขึ้น (3→2 • 4→3 • 5→3 • 6→4 • 7→5)
-  //          หรือยึดค่าที่ผู้ใช้แก้มือ (councilQuorum) — และไม่เกินจำนวนที่เปิดจริงเสมอ
+  // คิวรัม: ค่าที่ผู้ใช้ตั้ง (councilQuorum 2–6) ใช้ทั้ง 2 โหมด — และไม่เกินจำนวนที่เปิดจริงเสมอ
+  //   ตั้งมือ: ยึดค่าที่ตั้งตรงๆ
+  //   อัตโนมัติ: ค่าที่ตั้ง = เพดาน แต่ลดลงเองตามทีมที่เปิด (60% ปัดขึ้น) — ทีมเล็กไม่ติดเกณฑ์สูงเกินจริง
+  //     เช่น ตั้ง 3: เปิด 4→3 • 3→2 • 2→2 • ตั้ง 2: เปิดกี่คนก็ 2 • ตั้ง 6: เปิด 7→5 • 5→3
   const autoOn = settings.councilQuorumAuto !== false;
-  // อัตโนมัติ: 60% ของที่เปิด ปัดขึ้น — 1 คน = 1 (ต้องมอบเท่าที่มี) • 2→2 • 3→2 • 4→3 • 5→3 • 6→4 • 7→5
-  const quorumNeed = autoOn
-    ? Math.max(1, Math.min(6, enabledCount > 0 ? Math.ceil(enabledCount * 0.6) : 2))
-    : Math.max(1, Math.min(Math.max(2, Math.min(6, Number(settings.councilQuorum) || 3)), Math.max(1, enabledCount)));
+  const hasUser = settings.councilQuorum != null && Number.isFinite(Number(settings.councilQuorum));
+  const userQuorum = Math.max(2, Math.min(6, Math.round(Number(settings.councilQuorum)) || 3));
+  const teamCap = Math.max(1, enabledCount);
+  const autoNeed = Math.max(2, Math.ceil(enabledCount * 0.6));
+  const quorumNeed = Math.max(1, Math.min(autoOn ? Math.min(hasUser ? userQuorum : 6, autoNeed) : userQuorum, teamCap));
   const skills = ctx.skills || {};
   const votes = [];
   for (const agent of AGENTS) {
@@ -300,7 +303,8 @@ function runCouncil(ctx, settings = {}) {
   // น้ำหนักจริง = ฐาน × ผลงานตัวเอง (0.6-1.5) × ตัวปรับตามสนาม
   const effWeight = (v) => v.weight * (Number.isFinite(v.skillFactor) ? v.skillFactor : 1) * (adjust[v.id] || 1);
   const dir = votes.filter((v) => v.side === 'buy' || v.side === 'sell');
-  let verdict = { side: 'none', confidence: 0, net: 0, agree: 0, quorumNeed, quorumAuto: autoOn, quorumSrc: autoOn ? `อัตโนมัติ: ${quorumNeed} (60% จากทีม ${enabledCount} คน)` : `ตั้งมือ: ${Number(settings.councilQuorum) || 3}` };
+  const quorumInfo = { quorumNeed, quorumAuto: autoOn, quorumSrc: autoOn ? `อัตโนมัติ: ใช้ ${quorumNeed} (ตั้งไว้ ${hasUser ? userQuorum : '—'} • 60% ของทีม ${enabledCount} คน = ${Math.min(autoNeed, teamCap)})` : `ตั้งมือ: ${quorumNeed}${quorumNeed < userQuorum ? ` (ตั้ง ${userQuorum} แต่เปิดอยู่ ${enabledCount} คน)` : ''}` };
+  let verdict = { side: 'none', confidence: 0, net: 0, agree: 0, ...quorumInfo };
   if (dir.length) {
     const wSum = dir.reduce((s, v) => s + effWeight(v), 0);
     const net = dir.reduce((s, v) => s + effWeight(v) * (v.side === 'buy' ? 1 : -1) * (v.conf || 0), 0) / wSum;
@@ -309,9 +313,12 @@ function runCouncil(ctx, settings = {}) {
     if (side !== 'none' && agree < quorumNeed) side = 'none';
     if (side !== 'none') {
       const agreeBonus = Math.min(12, Math.max(0, agree - 2) * 4);
-      verdict = { side, confidence: Math.min(95, Math.round(Math.abs(net)) + agreeBonus), net: Math.round(net, 1), agree, quorumNeed };
+      verdict = { side, confidence: Math.min(95, Math.round(Math.abs(net)) + agreeBonus), net: Math.round(net, 1), agree, ...quorumInfo };
     } else {
-      verdict = { side: 'none', confidence: Math.min(70, Math.round(Math.abs(net))), net: Math.round(net, 1), agree: dir.length, quorumNeed };
+      // ฝั่งที่เอียงอยู่ + จำนวนคนฝั่งนั้น — ให้ UI บอกได้ว่าขาดอีกกี่เสียง
+      const leanSide = net > 0 ? 'buy' : net < 0 ? 'sell' : 'none';
+      const leanAgree = leanSide === 'none' ? 0 : votes.filter((v) => v.side === leanSide).length;
+      verdict = { side: 'none', confidence: Math.min(70, Math.round(Math.abs(net))), net: Math.round(net, 1), agree: dir.length, ...quorumInfo, leanSide, leanAgree, weak: Math.abs(net) < NET_THRESHOLD };
     }
   }
   // แรงเสริมจากบริบท (เช่น มติวิ่งชนแนวใกล้ที่มักแตก) — ใช้ก่อนเพดาน เพดานยังเป็นคำขาด
@@ -358,7 +365,7 @@ function gateSignal(sig, verdict, settings = {}) {
   const strict = enabled && settings.councilStrict !== false;
   if (!enabled) return { ok: true, info: { councilConf: 0, note: 'ทีมเอเจนต์ถูกปิด' } };
   if (!verdict || verdict.side === 'none') {
-    if (strict) return { ok: false, reason: `โหมดเข้ม — ทีมเอเจนต์ยังไม่มีมติชัดพอ (ต้องเห็นพ้อง ≥ ${settings.councilQuorum || 3} คน จึงอนุญาต)` };
+    if (strict) return { ok: false, reason: `โหมดเข้ม — ทีมเอเจนต์ยังไม่มีมติชัดพอ (ต้องเห็นพ้อง ≥ ${(verdict && verdict.quorumNeed) || settings.councilQuorum || 3} คน จึงอนุญาต)` };
     return { ok: true, info: { councilConf: verdict ? Math.max(0, verdict.confidence) : 0, note: 'สภายังไม่มีมติชัด' } };
   }
   if (sig.side === verdict.side) return { ok: true, info: { councilConf: verdict.confidence, note: `สภาเห็นด้วย ${verdict.agree}/${verdict.quorumNeed}+ เอเจนต์` } };

@@ -1774,7 +1774,13 @@ function renderKpis(snap) {
   setKpi('kpi-bias', bias === 'bull' ? 'ขาขึ้น ▲' : bias === 'bear' ? 'ขาลง ▼' : a ? 'ออกข้าง' : '—', bias === 'bull' ? 'up' : bias === 'bear' ? 'down' : '');
   const c = snap.council;
   if (!c) setKpi('kpi-council', 'ปิดอยู่');
-  else if (c.side === 'none') setKpi('kpi-council', `ไม่ผ่านมติ • ${Math.max(0, c.confidence)}%`, '');
+  else if (c.side === 'none') {
+    const lean = c.leanSide === 'buy' ? 'ซื้อ' : c.leanSide === 'sell' ? 'ขาย' : '';
+    const why = !lean ? 'ยังไม่มีใครเลือกฝั่ง'
+      : (c.leanAgree || 0) < (c.quorumNeed || 3) ? `${lean} ${c.leanAgree}/${c.quorumNeed} คน`
+      : `${lean} ${c.leanAgree}/${c.quorumNeed} คน แต่โหวตขัดกัน`;
+    setKpi('kpi-council', `ไม่ผ่านมติ • ${why} • ${Math.max(0, c.confidence)}%`, '');
+  }
   else {
     // ผ่านมติ = สภาออกทิศ + ครบเกณฑ์จริงที่ใช้ (โหมดเข้ม: มั่นใจรวม ≥ councilMin และเห็นพ้อง ≥ โควตา)
     const strict = !(snap.risk && snap.risk.councilStrict === false);
@@ -2123,15 +2129,9 @@ function renderCouncil(c, error, stats) {
     (stats ? councilStatsHtml(stats) : '');
   const ck = `${c.side}|${c.confidence}|${c.agree}|${(c.votes || []).map((v) => `${v.id}${v.side}${v.conf}${v.off ? '0' : '1'}`).join('')}|${stats ? `${stats.verdict && stats.verdict.n}|${stats.lean && stats.lean.n}` : ''}`;
   renderOnce('council', ck, $('council-agents'), rows + notesHtml);
-  // คิวรัมอัตโนมัติ: ช่องตั้งค่าโชว์ค่าล่าสุดตามทีม (ถ้าไม่ได้พิมพ์อยู่) — เปิด/ปิดสวิตช์เอเจนต์ = ตัวเลขปรับเองทุกรอบ
-  const qInput = $('s-quorum');
-  if (qInput && c.quorumAuto !== undefined && document.activeElement !== qInput) {
-    if ((appSettings && appSettings.councilQuorumAuto) !== false) {
-      qInput.value = c.quorumNeed;
-      const qn = $('quorum-note');
-      if (qn && qn.textContent !== c.quorumSrc) qn.textContent = `อัตโนมัติ: ${c.quorumSrc || ''} — พิมพ์เลขทับ = สลับตั้งมือ`;
-    }
-  }
+  // ช่องตั้งค่าเก็บค่าที่ผู้ใช้พิมพ์เสมอ (ไม่เขียนทับ) — หมายเหตุใต้ช่องบอกค่าที่ใช้จริงรอบนี้
+  const qn = $('quorum-note');
+  if (qn && c.quorumSrc && qn.textContent !== c.quorumSrc) qn.textContent = c.quorumSrc;
 }
 
 // แถบผลงานจริงของสภา (สมุด council-stats): ตรวจมติย้อนหลัง 30 นาทีทุกใบ
