@@ -366,7 +366,7 @@ function boot() {
     if (kind !== 'sig') return;
     const sig = tgQueueConfirm.get(key);
     if (!sig) { await tg.sendInline('⌛ คำเชิญนี้หมดอายุ — รอสัญญาณใหม่เท่านั้น'); return; }
-    const r = await sendOrderReq({ side: sig.side, lot: sig.lot, sl: sig.sl, tp: sig.tp || 0 });
+    const r = await sendOrderReq({ side: sig.side, lot: sig.lot, sl: sig.sl, tp: sig.tp || 0, auto: false });
     if (r && r.ok) {
       tgQueueConfirm.delete(key);
       await tg.sendInline(`✅ ส่งไม้จริงแล้ว: ${sig.side === 'buy' ? 'BUY' : 'SELL'} ล็อต ${sig.lot} • SL ${px(sig.sl)} • TP ${sig.tp ? px(sig.tp) : '-'} (รอผลจาก MT5)`);
@@ -572,6 +572,7 @@ function boot() {
       settings: g.effSettings,
       manualToday: engine.manualToday,
       signalsToday: engine.dailyCount,
+      auto: req.auto === true,
     });
     if (!v.pass) { engine.pushLog('order', `ปฏิเสธคำสั่ง ${side}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, warn: v.warn, metrics: v.metrics }; }
     // มติสภาบังคับเหมือนสัญญาณ (สวนมติ/ไร้มติ = กรอง ตามโหมดเข้ม)
@@ -615,6 +616,7 @@ function boot() {
       settings: g.effSettings,
       manualToday: engine.manualToday,
       signalsToday: engine.dailyCount,
+      auto: req.auto === true,
     });
     if (!v.pass) { engine.pushLog('order', `ปฏิเสธคำสั่งรอ ${side}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, warn: v.warn, metrics: v.metrics }; }
     try {
@@ -754,7 +756,7 @@ function boot() {
     autoEntered.add(key);
     if (autoEntered.size > 200) autoEntered.clear();
     let r;
-    try { r = sendOrderReq({ side: sig.side, lot, sl: sig.sl, tp: sig.tp || 0 }); }
+    try { r = sendOrderReq({ side: sig.side, lot, sl: sig.sl, tp: sig.tp || 0, auto: true }); }
     catch (err) { r = { ok: false, reason: err.message }; }
     const c = snap.council && snap.council.confidence != null ? `มติสภา ${snap.council.confidence}%` : '-';
     if (r && r.ok) {

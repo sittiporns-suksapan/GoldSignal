@@ -378,10 +378,12 @@ function noSignalHtml(snap) {
   const riskPct = Number(snap.risk && snap.risk.riskPct) || 1;
   const atr = snap.analysis && snap.analysis.tf && snap.analysis.tf.M15 && snap.analysis.tf.M15.atr;
   const oz = (snap.meta && snap.meta.spec && snap.meta.spec.contractSize) || 100;
-  const budget = (eq * riskPct) / 100;
+  const autoMax = (Number(snap.risk && snap.risk.autoRiskMaxPct) || 2);
+  const effPct = Math.min(riskPct, autoMax);
+  const budget = (eq * effPct) / 100;
   const minRisk = Number.isFinite(atr) ? atr * 0.01 * oz : null; // 0.01 ล็อต กับ SL ระยะ 1 ATR(M15)
   const small = minRisk != null && budget > 0 && budget < minRisk
-    ? `<div class="nosig-cap">⚠ ทุนที่ใช้คิด $${fmtD(eq, 0)} × ${fmtD(riskPct, 2)}% = เสี่ยงได้ $${fmtD(budget, 2)}/ไม้ แต่ 0.01 ล็อตกับ SL แค่ 1 ATR ($${fmtD(atr, 2)}) ก็เสี่ยง $${fmtD(minRisk, 2)} แล้ว — สัญญาณที่เจอจะถูกปฏิเสธเพราะ SL กว้างเกินทุน • ทางออก: (1) เพิ่มทุนจริงใน MT5 (2) ถ้า 0.01 ล็อต: SL แน่นสุดที่ผ่านเกต = $${fmtD(budget, 0)} ≈ ${Math.round(budget * 100)} จุด (3) ยอมข้ามรอบ (กฎ 2% ป้องกันไม้กลับใหญ่)</div>`
+    ? `<div class="nosig-cap">⚠ ทุนที่ใช้คิด $${fmtD(eq, 0)} × ${fmtD(effPct, 2)}% = เสี่ยงได้ $${fmtD(budget, 2)}/ไม้ (ตั้ง "เพดานอัตโนมัติ ${fmtD(autoMax, 1)}%") แต่ 0.01 ล็อตกับ SL แค่ 1 ATR ($${fmtD(atr, 2)}) ก็เสี่ยง $${fmtD(minRisk, 2)} แล้ว — เพดานอัตโนมัติที่จะออกไม้ได้ต้อง ≥ $${fmtD(atr, 2)} (ตั้งได้ 2–10% ในแท็บความเสี่ยง) • ทางออก: (1) เพิ่มทุนจริง (2) กดเองด้วยเพดานปุ่มกด (3) ยอมข้ามรอบ</div>`
     : '';
   let last = null;
   try { last = JSON.parse(localStorage.getItem('gs.lastSignal') || 'null'); } catch { last = null; }
@@ -771,12 +773,19 @@ function stopsFor(side, snap) {
   const lot = Number($('t-lot').value) || 0.01;
   const oz = (meta.spec && meta.spec.contractSize) || 100;
   const eqUSD = (meta.account && Number.isFinite(meta.account.equityUSD) && meta.account.equityUSD > 0) ? meta.account.equityUSD : (Number((snap && snap.risk && snap.risk.equity)) || 0);
-  const maxDist = eqUSD > 0 ? (eqUSD * 0.02) / (lot * oz) : Infinity;
+  // เพดานของปุ่มกด (manualRiskMaxPct) — ช่อง ATR แนะนำ SL ที่ผ่านเกตได้จริงตามเพดานที่ผู้ใช้ตั้ง
+  const capPct = clampPct(snap);
+  const maxDist = eqUSD > 0 ? (eqUSD * capPct) / (lot * oz) / 100 : Infinity;
   if (atr * 1.8 > maxDist) atr = maxDist / 1.8;
   const read = (id, auto) => ($(id).value.trim() !== '' ? Number($(id).value) : Number(auto.toFixed(d)));
   return { sl: read('t-sl', px - dir * atr * 1.8), tp: read('t-tp', px + dir * atr * 4.5), px };
 }
 
+// เพดาน % ตามกลุ่มคำสั่ง (ผู้ใช้ตั้ง 2–10) — ใช้ตรวจ hint ปุ่มกดเอง
+function clampPct(snap) {
+  const r = (snap && snap.risk) || {};
+  return Math.max(2, Math.min(10, Number(r.manualRiskMaxPct) || 2));
+}
 function renderTradePanel(snap) {
   const meta = snap.meta || {};
   const live = Number.isFinite(meta.bid) && Number.isFinite(meta.ask);
@@ -797,7 +806,8 @@ function renderTradePanel(snap) {
     return st && Number.isFinite(st.sl) ? (side === 'buy' ? meta.ask - st.sl : st.sl - meta.bid) : null;
   };
   const riskBuy = riskOf('buy'), riskSell = riskOf('sell');
-  const capUSD = eqUsed * 0.02;   // เพดาน 2% จากทุนจริง (ถ้าเชื่อม MT5) หรือทุนที่ตั้ง
+  const capPct = clampPct(snap);
+  const capUSD = eqUsed * capPct / 100;   // เพดานปุ่มกดเอง (จากทุนจริงเมื่อเชื่อม MT5 หรือทุนที่ตั้ง)
   const oz = (meta.spec && meta.spec.contractSize) || 100;
   const rb = riskBuy != null && riskBuy > 0 ? (riskBuy * lotVal * oz) : null;
   const rs = riskSell != null && riskSell > 0 ? (riskSell * lotVal * oz) : null;
@@ -816,7 +826,7 @@ function renderTradePanel(snap) {
     ? (acct.ordersAllowed && acct.algoTrading ? 'ส่งไม้พร้อม ✓' : `ส่งไม้ยังไม่พร้อม (AllowOrders: ${acct.ordersAllowed ? '✓' : '✗'} • AutoTrading: ${acct.algoTrading ? '✓' : '✗'})`)
     : '—';
   $('t-info').textContent = live
-    ? `เสี่ยง/ไม้: ซื้อ $${rb != null ? fmtD(rb, 2) : '—'} • ขาย $${rs != null ? fmtD(rs, 2) : '—'} / เพดาน $${fmtD(capUSD, 2)} (2% ของ ${eqLive ? `ทุนจริง ≈ $${fmtD(eqUsed, 0)}${acctCur !== 'USD' ? ` แปลงจาก ${acctCur}` : ''}` : `ทุนที่ตั้ง $${fmtD(eqUsed, 0)}`}) • โควตา ${(quota.dailyCount || 0) + (quota.manualCount || 0)}/${quota.maxPerDay} • ${gateTxt}`
+    ? `เสี่ยง/ไม้: ซื้อ $${rb != null ? fmtD(rb, 2) : '—'} • ขาย $${rs != null ? fmtD(rs, 2) : '—'} / เพดานปุ่มกด $${fmtD(capUSD, 2)} (${fmtD(capPct, 1)}% ของ ${eqLive ? `ทุนจริง ≈ $${fmtD(eqUsed, 0)}${acctCur !== 'USD' ? ` แปลงจาก ${acctCur}` : ''}` : `ทุนที่ตั้ง $${fmtD(eqUsed, 0)}`}) • โควตา ${(quota.dailyCount || 0) + (quota.manualCount || 0)}/${quota.maxPerDay} • ${gateTxt}`
     : 'ส่งออร์เดอร์จริงใช้ได้เมื่อเชื่อม MT5 (ราคา bid/ask มาจากโบรกเกอร์ของคุณ — ลาก EA JsonBridgeEA ลงชาร์ตทองแล้วรอ 5 วิ)';
   // บัญชีจริงแถวล่าง (ทุนจริง/ทุนสุทธิ/กำไรลอยตัว/มาร์จิ้น)
   const acctLine = $('acct-line');
@@ -1822,8 +1832,9 @@ function updateCalcExample(s) {
   const eff = Math.min(Number(s.riskPct) || 1, Number(s.autoRiskMaxPct) || 2);
   const effAuto = Math.min(eff, Number(s.manualRiskMaxPct) || 6);
   $('calc-example').innerHTML = `
-    อัตโนมัติ: เสี่ยง ≤ ${r2(eff, 2)}% ต่อไม้ (เพดาน ${r2(Number(s.autoRiskMaxPct) || 2, 1)}%) → <b>ออกเงินต่อไม้ ≤ $${r2((s.equity * eff) / 100, 2)}</b><br>
-    ปุ่มกดเอง: เพดาน ${r2(Number(s.manualRiskMaxPct) || 2, 1)}% → ออกเงินสูงสุด <b>$${r2((s.equity * effAuto) / 100, 2)}/ไม้</b> • ตัวอย่าง: SL $8.00 → ล็อต = ${((s.equity * eff) / 100 / (8 * 100)).toFixed(2)} (XAUUSD 100 oz/ล็อต)`;
+    <b>สูตรคำนวณจากทุนที่ตั้ง $${r2(s.equity, 0)}</b> — เมื่อเชื่อม MT5 ระบบใช้ <b>ทุนจริงบนบัญชี</b>แทนเสมอ (ป้ายสดอยู่แผงส่งคำสั่ง)<br>
+    อัตโนมัติ: เสี่ยง ≤ ${r2(eff, 2)}% ต่อไม้ (เพดาน ${r2(Number(s.autoRiskMaxPct) || 2, 1)}%) → ออกเงินต่อไม้ ≤ <b>$${r2((s.equity * eff) / 100, 2)}</b> • ปุ่มกดเอง: เพดาน ${r2(Number(s.manualRiskMaxPct) || 2, 1)}% → สูงสุด <b>$${r2((s.equity * effAuto) / 100, 2)}/ไม้</b><br>
+    ตัวอย่าง: SL $8.00 → ล็อต = ${((s.equity * eff) / 100 / (8 * 100)).toFixed(2)} (XAUUSD 100 oz/ล็อต)`;
 }
 
 $('form-risk').addEventListener('submit', async (e) => {

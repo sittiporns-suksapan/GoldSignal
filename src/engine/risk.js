@@ -107,8 +107,8 @@ function riskScore(sig, sessionQuality = 'good') {
 
 // ---------- ตรวจคำสั่งซื้อขายจริงจากปุ่มในแอป (กันเหนียว 3 ชั้น) ----------
 // จุดต่างจากสัญญาณ: ผู้ใช้เป็นผู้ตัดสินใจ — เราบังคับเฉพาะของแข็ง:
-//  SL ห้ามลบ • ล็อตไม่เกินเพดานเสี่ยง 2% ต่อไม้เด็ดขาด • ทุกไม้มีที่รอเง้อายุหรือกรองพร้อมเหตุผล
-function validateManualOrder({ side, lot, entry, sl, tp, settings, manualToday = 0, signalsToday = 0 }) {
+//  SL ห้ามลบ • เพดานเสี่ยงตามกลุ่ม: auto=autoRiskMaxPct, ปุ่มกด/เว็บ/Telegram=manualRiskMaxPct (2–10%) • ทุกไม้มีเหตุผลกรองพร้อมแสดง
+function validateManualOrder({ side, lot, entry, sl, tp, settings, manualToday = 0, signalsToday = 0, auto = false }) {
   const equity = Number(settings.equity) || 0;
   const ozPerLot = Number(settings.ozPerLot) || OZ_PER_LOT;   // ขนาดสัญญาจริงของโบรกเกอร์ (จาก EA) ถ้ามี
   const base = { pass: false, reason: null, warn: null, metrics: {} };
@@ -125,13 +125,14 @@ function validateManualOrder({ side, lot, entry, sl, tp, settings, manualToday =
 
   const slDist = Math.abs(entry - sl);
   const riskUSD = lot * slDist * ozPerLot;
-  // เพดานของปุ่มกดเอง: ผู้ใช้ยกได้ (2–10%) — default ยัง 2%
-  const capPct = manualCapPct(settings);
+  // เพดานตามกลุ่มผู้ร้อง: ระบบส่งเอง (auto-enter/สัญญาณ) = เพดานอัตโนมัติ • มือ/เว็บ/Telegram ปุ่มกด = เพดานปุ่มกด
+  const capPct = auto ? autoCapPct(settings) : manualCapPct(settings);
+  const groupTxt = auto ? 'อัตโนมัติ' : 'ปุ่มกดเอง';
   const hardMax = (equity * capPct) / 100;
   if (equity <= 0) return { ...base, reason: 'ยังไม่ได้ตั้งทุน (แท็บตั้งค่า)' };
   if (riskUSD > hardMax * 1.001) return {
     ...base,
-    reason: `ไม้นี้เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดาน ${capPct}% ของทุน ($${ind.round(hardMax, 2)}) — ลดล็อตหรือขยับ SL ใกล้ขึ้น (ยกเพดานกดเองได้ในแท็บตั้งค่า)`,
+    reason: `ไม้นี้เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดาน${groupTxt} ${capPct}% ของทุน ($${ind.round(hardMax, 2)}) — ลดล็อต/ขยับ SL ใกล้ขึ้น (ยกเพดาน ${groupTxt} ได้ในแท็บตั้งค่า)`,
     metrics: { riskUSD: ind.round(riskUSD, 2), hardMax: ind.round(hardMax, 2), slDist: ind.round(slDist, 2) },
   };
 
