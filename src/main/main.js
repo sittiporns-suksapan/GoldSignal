@@ -687,7 +687,20 @@ function boot() {
   const sigKey = (x) => `${x.plugin || '?'}|${x.side}|${x.ts || ''}`;
   function autoEnterMain(snap) {
     const s = engine.settings;
-    if (s.realOrdersEnabled !== true || s.autoEnter !== true) return;
+    if (s.realOrdersEnabled !== true || s.autoEnter !== true) {
+      // มีโอกาสผ่านทุกด่านแต่สวิตช์ยังปิด = บอกเหตุผลลง log (ครั้งเดียว / 10 นาที ไม่กลั่นแกล้ง log)
+      const approved = (snap.signals || []).find((x) => !x.held);
+      if (approved) {
+        const why = s.realOrdersEnabled !== true ? 'สวิตช์ "ส่งออร์เดอร์จริง" ยังปิด' : 'สวิตช์ "เข้าอัตโนมัติ" ยังปิด (รอยืนยันในหน้าจอ/เว็บ)';
+        const k = 'sw-' + (s.realOrdersEnabled ? 0 : 1);
+        if (!(engine._autoSkippedAt && engine._autoSkippedAt[k] > Date.now() - 600_000)) {
+          engine._autoSkippedAt = engine._autoSkippedAt || {};
+          engine._autoSkippedAt[k] = Date.now();
+          engine.pushLog('auto', `มีโอกาสผ่านทุกด่าน (${approved.side.toUpperCase()}) แต่${why} — ไม่ได้ส่งไม้จริง เปิดสวิตช์ในแท็บ การวม แผงส่งคำสั่ง (หรือกดยืนยันนอกหน้าจอใน 15 นาที)`, 'warn');
+        }
+      }
+      return;
+    }
     const now = Date.now();
     const sig = (snap.signals || []).find((x) => !x.held && !autoEntered.has(sigKey(x)) && !(now - (autoRejectedAt.get(sigKey(x)) || 0) < 60_000));
     if (!sig || !Number.isFinite(sig.sl) || sig.sl <= 0) return;

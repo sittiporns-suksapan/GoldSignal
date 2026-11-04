@@ -381,7 +381,7 @@ function noSignalHtml(snap) {
   const budget = (eq * riskPct) / 100;
   const minRisk = Number.isFinite(atr) ? atr * 0.01 * oz : null; // 0.01 ล็อต กับ SL ระยะ 1 ATR(M15)
   const small = minRisk != null && budget > 0 && budget < minRisk
-    ? `<div class="nosig-cap">⚠ ทุนที่ใช้คิด $${fmtD(eq, 0)} × ${fmtD(riskPct, 2)}% = เสี่ยงได้ $${fmtD(budget, 2)}/ไม้ แต่ 0.01 ล็อตกับ SL แค่ 1 ATR ($${fmtD(atr, 2)}) ก็เสี่ยง $${fmtD(minRisk, 2)} แล้ว — สัญญาณที่เจอจะถูกปฏิเสธเพราะ SL กว้างเกินทุน</div>`
+    ? `<div class="nosig-cap">⚠ ทุนที่ใช้คิด $${fmtD(eq, 0)} × ${fmtD(riskPct, 2)}% = เสี่ยงได้ $${fmtD(budget, 2)}/ไม้ แต่ 0.01 ล็อตกับ SL แค่ 1 ATR ($${fmtD(atr, 2)}) ก็เสี่ยง $${fmtD(minRisk, 2)} แล้ว — สัญญาณที่เจอจะถูกปฏิเสธเพราะ SL กว้างเกินทุน • ทางออก: (1) เพิ่มทุนจริงใน MT5 (2) ถ้า 0.01 ล็อต: SL แน่นสุดที่ผ่านเกต = $${fmtD(budget, 0)} ≈ ${Math.round(budget * 100)} จุด (3) ยอมข้ามรอบ (กฎ 2% ป้องกันไม้กลับใหญ่)</div>`
     : '';
   let last = null;
   try { last = JSON.parse(localStorage.getItem('gs.lastSignal') || 'null'); } catch { last = null; }

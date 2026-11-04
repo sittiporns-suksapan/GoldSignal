@@ -55,12 +55,15 @@ class CouncilStats {
     } catch (e) { this.logger('council', `บันทึกสถิติสภาล้ม: ${e.message}`, 'warn'); }
   }
 
-  // จดมติแต่ละรอบ — verdict จาก runCouncil (side may be 'none')
+  // จดมติแต่ละรอบ — verdict จาก runCouncil (side may be 'none'); กันซ้ำต่อบาร์ 5 นาที (tick 10 วิ มิฉะนั้นสถิติล่มด้วยตัวเดิมนับถม)
   open(verdict, price, atrRef, now) {
     if (!verdict || !Number.isFinite(price) || price <= 0) return;
     if (!Number.isFinite(atrRef) || atrRef <= 0) return;
     const bar = Math.floor(now / 300_000);
+    const seen = new Set(this.pending.filter((p) => p.bar === bar).map((p) => p.kind + '|' + p.side));
     const push = (kind, side, conf, agree) => {
+      if (seen.has(kind + '|' + side)) return;          // บาร์เดียวกัน ทิศเดียวกัน = ตัวเดียว
+      seen.add(kind + '|' + side);
       this.pending.push({
         bar, kind, side, entry: price, atr: atrRef, conf, agree,
         net: verdict.net != null ? verdict.net : null, dueAt: now + EVAL_DELAY_MS,
