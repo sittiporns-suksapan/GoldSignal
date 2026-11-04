@@ -313,13 +313,13 @@ details.more[open] summary { margin-bottom: 10px; }
 
 /* ---------- settings form ---------- */
 form label, .row2 label { display: block; margin-bottom: 14px; color: var(--muted); font-size: 12.5px; }
-form input[type=number], form input[type=text], .tmid input, .positions .pin, .pend-line .pin, .row2 input[type=text] {
+form input[type=number], form input[type=text], .tmid input, .stopbox .fld input, .positions .pin, .pend-line .pin, .row2 input[type=text] {
   background: var(--inset); border: 1px solid var(--line); border-radius: var(--radius-sm);
   color: var(--text); font-family: var(--font-num); font-variant-numeric: tabular-nums;
   transition: border-color .2s var(--ease), box-shadow .2s var(--ease);
 }
 form input[type=number], form input[type=text], .row2 input[type=text] { display: block; width: 100%; margin-top: 6px; padding: 9px 12px; font-size: 14px; }
-form input:focus, .tmid input:focus, .row2 input:focus, .positions .pin:focus, .pend-line .pin:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-bg); }
+form input:focus, .tmid input:focus, .stopbox .fld input:focus, .row2 input:focus, .positions .pin:focus, .pend-line .pin:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-bg); }
 form h4 { margin: 20px 0 12px; padding-top: 16px; border-top: 1px solid var(--line-soft); color: var(--gold); font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; }
 form button.primary { width: 100%; padding: 12px; margin-top: 8px; font-size: 14px; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -570,6 +570,7 @@ code { background: var(--inset); border: 1px solid var(--line-soft); padding: 1p
 .stopbox .sb-sub { font-weight: 500; color: var(--faint); font-size: 10.5px; letter-spacing: 0; }
 .stopbox .fld { position: relative; margin-top: 7px; }
 .stopbox .fld input { width: 100%; box-sizing: border-box; border-radius: 8px; padding: 8px 46px 8px 10px; text-align: right; font-size: 13.5px; font-family: var(--font-num); }
+.stopbox .fld input::placeholder { color: var(--faint); }
 .stopbox .fld .unit { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); font-style: normal; font-size: 10.5px; color: var(--faint); pointer-events: none; }
 .stopbox .stop-hint { display: block; margin-top: 6px; font-size: 11px; color: var(--faint); line-height: 1.5; }
 .stop-hint b { color: var(--text-2); font-weight: 600; font-family: var(--font-num); }
