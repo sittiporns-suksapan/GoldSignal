@@ -414,7 +414,7 @@ function noSignalHtml(snap) {
            <div class="sig-cell"><small>ราคาเข้า</small><b>${fmtD(vSim.entry, 2)}</b></div>
            <div class="sig-cell"><small>SL / TP</small><b>${fmtD(vSim.sl, 2)} / ${fmtD(vSim.tp, 2)}</b></div>
            <div class="sig-cell"><small>สภา ณ เปิดไม้</small><b class="${vSim.councilAtOpen.side === 'none' ? '' : (vSim.councilAtOpen.side === 'buy' ? 'up' : 'down')}">${vSim.councilAtOpen.side === 'none' ? `ไม่มีมติ ${vSim.councilAtOpen.confidence}%` : `${vSim.councilAtOpen.side === 'buy' ? 'ซื้อ' : 'ขาย'} ${vSim.councilAtOpen.confidence}%`}</b></div>
-           <div class="sig-cell"><small>ผ่านไม้จริง</small><b>${vSim.councilAtOpen.side !== 'none' && Math.round(vSim.councilAtOpen.agree || 0) >= (vSim.councilAtOpen.quorumNeed || 3) && vSim.councilAtOpen.confidence >= 70 ? 'ผ่าน ✓' : 'ไม่ผ่าน ✗'}</b></div>
+           <div class="sig-cell"><small>ผ่านไม้จริง</small><b>${(vSim.councilAtOpen.side !== 'none' && vSim.councilAtOpen.side === vSim.side) ? 'ผ่านสภา ✓' : vSim.councilAtOpen.side === 'none' ? 'ไม่ผ่าน (ไม่มีมติ)' : 'ไม่ผ่าน (สภาสวน)'}</b></div>
          </div>
        </div>`
     : '';
@@ -547,8 +547,9 @@ function tryPending() {
       || (st.ptype === 'stop' && st.side === 'buy' && !(entry > px))
       || (st.ptype === 'stop' && st.side === 'sell' && !(entry < px));
     const oz = (meta.spec && meta.spec.contractSize) || 100;
+    const capP = Math.max(2, Math.min(10, Number(lastSnap.risk && lastSnap.risk.manualRiskMaxPct) || 2));
     const riskUSD = Math.abs(entry - st.sl) * lot * oz;
-    $('pend-hint').innerHTML = `<span class="${bad ? 'down' : 'muted'}">ตอนนี้: ${fmtD(px)} </span>• เสี่ยงถ้าแตะ SL: <b>$${fmtD(riskUSD, 2)}</b> / เพดาน $${fmtD(((meta.account && meta.account.equityUSD) || (lastSnap.risk && lastSnap.risk.equity) || 0) * 0.02, 2)} • R:R 1:${fmtD(Math.abs((Number(st.tp) || entry) - entry) / (Math.abs(entry - st.sl) || 1e-9), 2)}${bad ? ' <b class="down">— ทิศราคาผิดตามชนิดที่เลือก (รายละเอียดเมื่อกด)</b>' : ''}`;
+    $('pend-hint').innerHTML = `<span class="${bad ? 'down' : 'muted'}">ตอนนี้: ${fmtD(px)} </span>• เสี่ยงถ้าแตะ SL: <b>$${fmtD(riskUSD, 2)}</b> / เพดานปุ่มกด $${fmtD((((meta.account && meta.account.equityUSD) || (lastSnap.risk && lastSnap.risk.equity) || 0) * capP) / 100, 2)} (${fmtD(capP, 1)}%) • R:R 1:${fmtD(Math.abs((Number(st.tp) || entry) - entry) / (Math.abs(entry - st.sl) || 1e-9), 2)}${bad ? ' <b class="down">— ทิศราคาผิดตามชนิดที่เลือก (รายละเอียดเมื่อกด)</b>' : ''}`;
     hint = bad ? 'ทิศผิด' : 'ok';
   }
   openConfirmPending({ kind, entry, lot, sl: st.sl, tp: st.tp });
@@ -560,6 +561,11 @@ function openConfirmPending(req) {
   const digits = meta.digits || 2;
   const oz = (meta.spec && meta.spec.contractSize) || 100;
   const riskUSD = Math.abs(req.entry - req.sl) * req.lot * oz;
+  // เพดานปุ่มกดเอง — เกิน = แสดงเหตุผล + ปิดปุ่ม (ตรงกับที่ main จะปฏิเสธ)
+  const capEq = (meta.account && meta.account.equityUSD > 0 ? meta.account.equityUSD : (Number(lastSnap && lastSnap.risk && lastSnap.risk.equity) || 0));
+  const capPctP = Math.max(2, Math.min(10, Number(lastSnap && lastSnap.risk && lastSnap.risk.manualRiskMaxPct) || 2));
+  const capP2 = capEq * capPctP / 100;
+  const overP = capP2 > 0 && riskUSD > capP2 * 1.001;
   $('mbox').innerHTML = `
     <h3>ยืนยันวางคำสั่งรอ — ${side === 'buy' ? 'BUY' : 'SELL'} ${ptype.toUpperCase()}</h3>
     <div class="mline"><span>ราคาเข้า (รอ trigger)</span><b>${fmtD(req.entry, digits)}</b></div>
@@ -567,14 +573,16 @@ function openConfirmPending(req) {
     <div class="mline"><span>Stop Loss</span><b class="down">${fmtD(req.sl, digits)}</b></div>
     ${Number(req.tp) > 0 ? `<div class="mline"><span>Take Profit</span><b class="up">${fmtD(req.tp, digits)}</b></div>` : '<div class="mwarn">⚠ ไม่มี TP — ต้องปิดไม้เองด้วยมือ</div>'}
     <div class="mline"><span>เงินเสี่ยงถ้าแตะ SL</span><b class="gold">$${fmtD(riskUSD, 2)}</b></div>
+    ${overP ? `<div class="merr">✗ เสี่ยง $${fmtD(riskUSD, 2)} เกินเพดานปุ่มกด ${fmtD(capPctP, 1)}% ของทุน ($${fmtD(capP2, 2)}) — วางไม่ได้: ลดล็อต / SL ใกล้ขึ้น (ยกเพดาน 2–10% ที่แท็บความเสี่ยง)</div>` : ''}
     <div class="mwarn">⚠ กดยืนยัน = วางคำสั่งรอบน MT5 — เมื่อราคาถึง ระบบจะเปิดไม้เองพร้อม SL/TP ตามนี้ (โควตานับเป็น 1 ไม้)</div>
     <div class="merr" id="m-err"></div>
     <div class="mbtns">
       <button class="mcancel" id="m-cancel">ยกเลิก</button>
-      <button class="mgo ${side}" id="m-go">วางคำสั่งรอจริง</button>
+      <button class="mgo ${side}" id="m-go">${overP ? 'วางไม่ได้ (เกินเพดาน)' : 'วางคำสั่งรอจริง'}</button>
     </div>`;
   $('modal').classList.add('show');
   $('m-cancel').focus();
+  if (overP) { $('m-go').disabled = true; return; }
   $('m-cancel').addEventListener('click', closeModal);
   $('m-go').addEventListener('click', async () => {
     $('m-go').disabled = true;
@@ -722,8 +730,15 @@ function openPendingAt(ev) {
   const m15 = snap.analysis && snap.analysis.tf && snap.analysis.tf.M15;
   const atr = (m15 && Number.isFinite(m15.atr) && m15.atr > 0) ? Number(m15.atr) : mid * 0.0008;
   const entry = Number(px.toFixed(d));
-  const sl = side === 'buy' ? entry - atr * 1.8 : entry + atr * 1.8;
-  const tp = side === 'buy' ? entry + atr * 4.5 : entry - atr * 4.5;
+  // SL ให้ผ่านเกตจริง: ระยะ SL จำกัดตามเพดานปุ่มกด/ล็อต (ถ้า ATR กว้างเกิน = บีบ, TP ยึด RR 2.5 ตามระยะใหม่)
+  const lot = Math.max(0.01, Number($('p-lot').value) || 0.01);
+  const capPct = Math.max(2, Math.min(10, Number(snap.risk && snap.risk.manualRiskMaxPct) || 2));
+  const eqReal = (meta.account && Number.isFinite(meta.account.equityUSD)) ? meta.account.equityUSD : (Number(snap.risk && snap.risk.equity) || 0);
+  const maxSlDist = eqReal > 0 ? (eqReal * capPct) / (lot * 100) : Infinity;
+  const slDist = Math.min(atr * 1.8, maxSlDist);
+  const riskTxt = slDist < atr * 1.8 ? ` (บีบ SL ตามเพดาน ${capPct}% — เดิม $${fmtD(atr * 1.8, 2)})` : '';
+  const sl = side === 'buy' ? entry - slDist : entry + slDist;
+  const tp = side === 'buy' ? entry + slDist * 2.5 : entry - slDist * 2.5;
   $('p-kind').value = `${side}-limit`;
   $('p-entry').value = entry;
   $('p-sl').value = Number(sl.toFixed(d));
@@ -732,7 +747,7 @@ function openPendingAt(ev) {
   el.classList.add('max'); $('pend-max').textContent = '↘ ย่อ';
   setupPendDrag();
   try { el.scrollIntoView({ block: 'nearest' }); } catch { void 0; }
-  toast(`📋 ${side === 'buy' ? 'BUY LIMIT — ราคาอยู่ล่างเส้น' : 'SELL LIMIT — ราคาอยู่บนเส้น'} @ ${entry.toFixed(d)} • SL ${Number(sl.toFixed(d))} • TP ${Number(tp.toFixed(d))} — ตรวจแล้วกด "วางคำสั่งรอ"`, 'ok');
+  toast(`📋 ${side === 'buy' ? 'BUY LIMIT — ราคาอยู่ล่างเส้น' : 'SELL LIMIT — ราคาอยู่บนเส้น'} @ ${entry.toFixed(d)} • SL ${Number(sl.toFixed(d))} • TP ${Number(tp.toFixed(d))}${riskTxt} — ตรวจแล้วกด "วางคำสั่งรอ"`, 'ok');
 }
 $('chart').addEventListener('dblclick', (e) => { e.preventDefault(); openPendingAt(e); });
 
@@ -1009,10 +1024,11 @@ function openConfirm(req) {
   const slDist = Math.abs(entry - sl);
   const oz = (meta.spec && meta.spec.contractSize) || 100;
   const riskUSD = lot * slDist * oz;
-  // เพดาน 2% จากทุน USD — เตือนก่อนกด (ฝั่ง main ปฏิเสธอยู่แล้ว แต่ผู้ใช้ควรรู้ตั้งแต่หน้านี้)
+  // เพดานปุ่มกดเอง (manualRiskMaxPct) — เตือนก่อนกด + ปุ่มส่งจริงปิดตายเมื่อเกิน (ฝั่ง main ปฏิเสธอยู่แล้ว ผู้ใช้รู้ตั้งแต่หน้านี้)
   const acct = meta.account;
   const capEq = acct && acct.equityUSD > 0 ? acct.equityUSD : Number(lastSnap && lastSnap.risk && lastSnap.risk.equity) || 0;
-  const cap = capEq * 0.02;
+  const capPctC = Math.max(2, Math.min(10, Number((lastSnap && lastSnap.risk && lastSnap.risk.manualRiskMaxPct) || (appSettings && appSettings.manualRiskMaxPct)) || 2));
+  const cap = capEq * capPctC / 100;
   const overCap = cap > 0 && riskUSD > cap * 1.001;
   const goTxt = buy ? 'ส่งไม้ซื้อจริง' : 'ส่งไม้ขายจริง';
   const councilLine = v && v.side !== 'none'
@@ -1027,7 +1043,7 @@ function openConfirm(req) {
     <div class="mline"><span>เงินเสี่ยงถ้าแตะ SL</span><b class="gold">$${fmtD(riskUSD, 2)}</b></div>
     ${tp ? `<div class="mline"><span>R:R</span><b>1:${fmtD(Math.abs(tp - entry) / (slDist || 1e-9), 2)}</b></div>` : ''}
     ${councilLine}
-    ${overCap ? `<div class="merr">✗ เสี่ยง $${fmtD(riskUSD, 2)} เกินเพดาน 2% ของทุน ($${fmtD(cap, 2)}) — ระบบจะปฏิเสธ: ลดล็อตหรือขยับ SL ให้ใกล้ขึ้น</div>` : ''}
+    ${overCap ? `<div class="merr">✗ เสี่ยง $${fmtD(riskUSD, 2)} เกินเพดานปุ่มกด ${fmtD(capPctC, 1)}% ของทุน ($${fmtD(cap, 2)}) — ระบบปฏิเสธมากลับแน่: ลดล็อต / ใกล้ SL (ยกเพดานได้ 2–10% ที่แท็บความเสี่ยง)</div>` : ''}
     ${g.newsStop ? '<div class="mwarn">⚠ โหมดหยุดช่วงข่าวเปิดอยู่ — ไม้นี้มาจากความตั้งใจของคุณ ไม่ใช่สัญญาณระบบ</div>' : ''}
     ${!tp ? '<div class="mwarn">⚠ ไม่มี TP — ต้องปิดไม้เองด้วยมือ</div>' : ''}
     <div class="mwarn">⚠ กดยืนยัน = ลำดับ MARKET จะไปบัญชี MT5 ของคุณทันที</div>
@@ -1038,6 +1054,7 @@ function openConfirm(req) {
     </div>`;
   $('modal').classList.add('show');
   $('m-cancel').focus(); // ปุ่มที่โฟกัสก่อน = ยกเลิก (กด Enter พลาดไม่ส่งไม้)
+  if (overCap) $('m-go').disabled = true;   // เกินเพดาน = ปิดปุ่มส่ง (บอกเหตุผลในหน้าจอแล้ว)
   $('m-cancel').addEventListener('click', closeModal);
   $('m-go').addEventListener('click', async () => {
     $('m-go').disabled = true;
@@ -1354,9 +1371,12 @@ function zoneHistoryHtml(snap) {
     const sc = s[side] || {};
     const score = `ชนะ <b>${sc.w || 0}</b> • แพ้ <b>${sc.l || 0}</b> • หมดเวลา ${sc.time || 0} • รวม <b class="${(sc.total || 0) >= 0 ? 'up' : 'down'}">${(sc.total || 0) >= 0 ? '+' : ''}$${fmtD(sc.total || 0, 2)}</b>` +
       (openRows.length ? ` • ลอยตัว <b class="${floatSum >= 0 ? 'up' : 'down'}">${floatSum >= 0 ? '+' : '-'}$${fmtD(Math.abs(floatSum), 2)}</b>` : '');
-    const cTxt = (t) => { const c = t.councilAtOpen; if (!c) return ''; return c.side === 'none'
-      ? `<span class="zcouncil none">สภา: ไม่มีมติ ${c.confidence}%${c.net != null ? ` (เอน ${c.net > 0 ? 'ซื้อ' : 'ขาย'} ${Math.abs(c.net)})` : ''} → ${c.confidence >= 50 ? 'ไม่ขอไม้จริง' : 'เงียบ'}</span>`
-      : `<span class="zcouncil ${c.side}">สภา ณ เปิดไม้: ${c.side === 'buy' ? 'ซื้อ' : 'ขาย'} ${c.confidence}% • เห็นพ้อง ${c.agree}${c.quorumNeed ? `/${c.quorumNeed}+` : ''} → ไม้จริง ${c.confidence >= 70 && c.agree >= (c.quorumNeed || 3) ? 'ผ่านสภา (ผ่านเกตต่อ)' : 'ไม่ผ่านสภา'}</span>`; };
+    const cTxt = (t) => { const c = t.councilAtOpen; if (!c) return ''; 
+      // ตัดสินเหมือน gateSignal จริง: สภามีทิศตรงกับไม้ = ผ่านด่านมติ (conf แค่ตัดสินตัวกรองสวน — ≥55% ยับ) • ไม่มีมติ/สวน = ไม่ผ่าน
+      const verdictSide = c.side;
+      if (verdictSide === 'none') return `<span class="zcouncil none">สภา: ไม่มีมติ ${c.confidence}%${c.net != null ? ` (เอน ${c.net > 0 ? 'ซื้อ' : 'ขาย'} ${Math.abs(c.net)})` : ''} → ไม้จริงโหมดเข้มไม่ผ่าน (ต้องมีมติก่อน)</span>`;
+      if (verdictSide !== t.side) return `<span class="zcouncil none">สภา: ${verdictSide === 'buy' ? 'ซื้อ' : 'ขาย'} ${c.confidence}% — <b>สวนไม้</b> → ไม้จริงไม่ผ่าน (สภายับอีกฝั่ง)</span>`;
+      return `<span class="zcouncil ${c.side}">สภา ณ เปิดไม้: ${c.side === 'buy' ? 'ซื้อ' : 'ขาย'} ${c.confidence}% • เห็นพ้อง ${c.agree}${c.quorumNeed ? `/${c.quorumNeed}+` : ''} → ✅ ผ่านมติ (ฝั่งตรงกัน — ผ่านเกตความเสี่ยงต่อได้)</span>`; };
     const lines = [
       ...openRows.map((t) => `<div class="zh-line"><span class="t">เปิดอยู่</span><span>${t.side === 'buy' ? 'BUY' : 'SELL'} ${fmtD(t.entry, 2)} • SL ${fmtD(t.sl, 2)} • TP ${fmtD(t.tp, 2)}</span>${(() => { const l = liveOf(t); return l ? `<span class="res open ${l.pnl >= 0 ? 'up' : 'down'}">${l.pnl >= 0 ? '+' : '-'}$${fmtD(Math.abs(l.pnl), 2)} (${l.pts >= 0 ? '+' : ''}${Math.round(l.pts)} จุด)</span>` : '<span class="res open">เปิด</span>'; })()}${cTxt(t)}</div>`),
       ...rows.map((t) => `<div class="zh-line"><span class="t">${fmtTs(t.closedAt || t.openedAt)}</span><span>${t.side === 'buy' ? 'BUY' : 'SELL'} ${fmtD(t.entry, 2)} → ${fmtD(t.exit != null ? t.exit : 0, 2)}</span><span class="res ${t.status || ''}">${t.status || '-'} ${t.pnl != null ? (t.pnl >= 0 ? '+' : '') + fmtD(t.pnl, 2) : ''}</span>${cTxt(t)}</div>`),

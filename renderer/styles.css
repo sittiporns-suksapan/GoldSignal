@@ -637,7 +637,7 @@ button.danger:hover { color: #fff; filter: brightness(1.1); }
 @keyframes alarm { 50% { box-shadow: 0 0 0 5px rgba(240, 97, 109, .25); } }
 
 /* ---------- confirm modal ---------- */
-#modal { position: fixed; inset: 0; background: rgba(3, 4, 6, .66); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 50; }
+#modal { position: fixed; inset: 0; background: rgba(3, 4, 6, .66); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 120; }
 #modal.show { display: flex; animation: fade .2s ease; }
 #modal.show .mbox { animation: pop .28s var(--ease); }
 @keyframes fade { from { opacity: 0; } }
