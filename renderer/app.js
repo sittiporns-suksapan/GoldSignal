@@ -2031,7 +2031,7 @@ function renderCouncil(c, error, stats) {
     const skTxt = a.off ? 'เอเจนต์ปิดอยู่ — ไม่ร่วมโหวตในรอบนี้' : (sk.hit != null ? `${a.name.split('เอเจนต์')[1] || ''}: ผลงาน ${sk.grade} ${Math.round(sk.hit * 100)}% (${sk.n} ไม้)` : (sk.grade === 'ใหม่' ? 'เพิ่งรับหน้าที่ — ยังไม่ผ่านการตรวจผลงาน' : `${sk.grade} (${sk.n})`));
     // ตัวปรับน้ำหนักจากฝ่ายบริบท (สภาพตลาด/ช่วงเวลา) — โชว์เมื่อไม่ใช่ ×1
     const adj = Number.isFinite(a.weightAdj) && Math.abs(a.weightAdj - 1) > 0.01 ? ` • น้ำหนักตามสนาม ×${a.weightAdj.toFixed(2)}` : '';
-    const sw = `<label class="asw" title="เปิด/ปิดเอเจนต์นี้ — ใช้ตั้งแต่รอบวิเคราะห์ถัดไป"><input type="checkbox" class="agl" data-agent="${a.id}" ${a.off ? '' : 'checked'}><span>${a.off ? 'ปิด' : 'เปิด'}</span></label>`;
+    const sw = `<span class="asw" title="เปิด/ปิดเอเจนต์นี้ — ใช้ตั้งแต่รอบวิเคราะห์ถัดไป"><label class="switch"><input type="checkbox" class="agl" data-agent="${a.id}" ${a.off ? '' : 'checked'}><span></span></label><i>${a.off ? 'ปิด' : 'เปิด'}</i></span>`;
     return `<div class="cagent${a.off ? ' is-off' : ''}" title="${esc(a.reason)}${a.skillNote ? ' | ' + esc(a.skillNote) : ''}"><span class="cname">${esc(a.name)}</span><span class="${cls}">${txt}</span><span class="creason">${esc(a.reason)}</span>${sw}</div><div class="cagent-skill">${esc(skTxt)}${esc(adj)}${a.skillNote ? ' • ' + esc(a.skillNote) : ''}</div>`;
   }).join('');
   const notesHtml =
