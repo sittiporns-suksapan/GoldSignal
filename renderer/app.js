@@ -1864,6 +1864,23 @@ $('source-sel').addEventListener('change', async (e) => {
   window.api.refreshNow();
 });
 
+// สวิตช์เปิด/ปิดเอเจนต์รายคน (แผงสภา) — บันทึกทันที สภาใช้ทีมนี้ตั้งแต่รถัดไป ไม่ต้องรีสตาร์ท
+$('council-agents').addEventListener('change', async (e) => {
+  const box = e.target;
+  const id = box && box.dataset && box.dataset.agent;
+  if (!id) return;
+  const next = Object.assign({}, appSettings.councilAgents || {}, { [id]: box.checked });
+  try {
+    const s = await window.api.saveSettings({ councilAgents: next });
+    appSettings = s;
+    toast('สภา: อัปเดตทีมเอเจนต์แล้ว — ใช้ตั้งแต่รอบถัดไป', 'ok');
+    window.api.refreshNow();
+  } catch (err) {
+    box.checked = !box.checked;
+    toast('บันทึกไม่สำเร็จ: ' + err.message, 'err');
+  }
+});
+
 $('btn-refresh').addEventListener('click', () => { $('conn-badge').textContent = 'กำลังอัปเดต...'; window.api.refreshNow(); });
 $('btn-newwin').addEventListener('click', async () => {
   if (window.GS_WEB) return;
@@ -2011,17 +2028,18 @@ function renderCouncil(c, error, stats) {
     const cls = a.side === 'buy' ? 'vbuy' : a.side === 'sell' ? 'vsell' : 'vnone';
     const txt = a.side === 'buy' ? `ซื้อ ${a.conf}%` : a.side === 'sell' ? `ขาย ${a.conf}%` : '—';
     const sk = a.skill || {};
-    const skTxt = sk.hit != null ? `${a.name.split('เอเจนต์')[1] || ''}: ผลงาน ${sk.grade} ${Math.round(sk.hit * 100)}% (${sk.n} ไม้)` : (sk.grade === 'ใหม่' ? 'เพิ่งรับหน้าที่ — ยังไม่ผ่านการตรวจผลงาน' : `${sk.grade} (${sk.n})`);
+    const skTxt = a.off ? 'เอเจนต์ปิดอยู่ — ไม่ร่วมโหวตในรอบนี้' : (sk.hit != null ? `${a.name.split('เอเจนต์')[1] || ''}: ผลงาน ${sk.grade} ${Math.round(sk.hit * 100)}% (${sk.n} ไม้)` : (sk.grade === 'ใหม่' ? 'เพิ่งรับหน้าที่ — ยังไม่ผ่านการตรวจผลงาน' : `${sk.grade} (${sk.n})`));
     // ตัวปรับน้ำหนักจากฝ่ายบริบท (สภาพตลาด/ช่วงเวลา) — โชว์เมื่อไม่ใช่ ×1
     const adj = Number.isFinite(a.weightAdj) && Math.abs(a.weightAdj - 1) > 0.01 ? ` • น้ำหนักตามสนาม ×${a.weightAdj.toFixed(2)}` : '';
-    return `<div class="cagent" title="${esc(a.reason)}${a.skillNote ? ' | ' + esc(a.skillNote) : ''}"><span class="cname">${esc(a.name)}</span><span class="${cls}">${txt}</span><span class="creason">${esc(a.reason)}</span></div><div class="cagent-skill">${esc(skTxt)}${esc(adj)}${a.skillNote ? ' • ' + esc(a.skillNote) : ''}</div>`;
+    const sw = `<label class="asw" title="เปิด/ปิดเอเจนต์นี้ — ใช้ตั้งแต่รอบวิเคราะห์ถัดไป"><input type="checkbox" class="agl" data-agent="${a.id}" ${a.off ? '' : 'checked'}><span>${a.off ? 'ปิด' : 'เปิด'}</span></label>`;
+    return `<div class="cagent${a.off ? ' is-off' : ''}" title="${esc(a.reason)}${a.skillNote ? ' | ' + esc(a.skillNote) : ''}"><span class="cname">${esc(a.name)}</span><span class="${cls}">${txt}</span><span class="creason">${esc(a.reason)}</span>${sw}</div><div class="cagent-skill">${esc(skTxt)}${esc(adj)}${a.skillNote ? ' • ' + esc(a.skillNote) : ''}</div>`;
   }).join('');
   const notesHtml =
     (c.boosts && c.boosts.length ? `<div class="council-note boost">➕ ${esc(c.boosts.map(String).join(' | '))}</div>` : '') +
     (c.caps && c.caps.length ? `<div class="council-note">⚠ ${esc(c.caps.map(String).join(' | '))}</div>` : '') +
     (c.calibrated ? `<div class="council-note boost">🎓 ปรับความมั่นใจตามผลจริงของสภา: ${esc(c.calibrated.before)}% → ${c.confidence}% (${esc(c.calibrated.note || '')})</div>` : '') +
     (stats ? councilStatsHtml(stats) : '');
-  const ck = `${c.side}|${c.confidence}|${c.agree}|${(c.votes || []).map((v) => `${v.id}${v.side}${v.conf}`).join('')}|${stats ? `${stats.verdict && stats.verdict.n}|${stats.lean && stats.lean.n}` : ''}`;
+  const ck = `${c.side}|${c.confidence}|${c.agree}|${(c.votes || []).map((v) => `${v.id}${v.side}${v.conf}${v.off ? '0' : '1'}`).join('')}|${stats ? `${stats.verdict && stats.verdict.n}|${stats.lean && stats.lean.n}` : ''}`;
   renderOnce('council', ck, $('council-agents'), rows + notesHtml);
 }
 

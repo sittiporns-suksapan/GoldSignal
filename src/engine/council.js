@@ -261,10 +261,19 @@ function minutesSinceLocal(now, timeZone, h, m) {
 
 // ---------- ประธานสภา (น้ำหนัก × สกิลของเอเจนต์เอง) ----------
 function runCouncil(ctx, settings = {}) {
-  const quorumNeed = Math.max(2, Math.min(6, Number(settings.councilQuorum) || 3));
+  // สวิตช์เปิด/ปิดรายเอเจนต์: settings.councilAgents = { id: true|false } — ค่าที่ไม่ได้พูดถึง = เปิด
+  const agentSwitch = settings.councilAgents && typeof settings.councilAgents === 'object' ? settings.councilAgents : {};
+  const enabledCount = AGENTS.filter((a) => agentSwitch[a.id] !== false).length;
+  // คิวรัมยึดตามตั้งค่า — แต่ถ้าเปิดเอเจนต์น้อยกว่าโควตา ลดลงเท่าจำนวนที่เปิด (อย่างน้อย 1 คน จึงออกมติได้)
+  const quorumNeed = Math.max(1, Math.min(Math.max(2, Math.min(6, Number(settings.councilQuorum) || 3)), Math.max(1, enabledCount)));
   const skills = ctx.skills || {};
   const votes = [];
   for (const agent of AGENTS) {
+    if (agentSwitch[agent.id] === false) {
+      // ปิดอยู่: ไม่วิเคราะห์ ไม่โหวต ไม่มี cap/boost/adjust — คงแถวไว้ให้ UI โชว์สวิตช์
+      votes.push({ id: agent.id, name: agent.name, weight: agent.weight, off: true, side: 'none', conf: 0, reason: 'ปิดอยู่ (สวิตช์รายเอเจนต์)', skillFactor: 1, skillGrade: 'ปิด', skillHit: null, skillN: 0 });
+      continue;
+    }
     let v;
     try { v = agent.analyze(ctx); }
     catch (e) { v = { side: 'none', conf: 0, reason: 'เอเจนต์พัง: ' + e.message }; }
@@ -274,6 +283,7 @@ function runCouncil(ctx, settings = {}) {
       weight: agent.weight, skillFactor: sk.factor,
       skillGrade: sk.grade, skillHit: sk.hit, skillN: sk.n,
       ...v,
+      off: false,
     });
   }
   // ตัวปรับน้ำหนักจากฝ่ายบริบท (สภาพตลาด/ช่วงเวลา) — คูณกันเมื่อหลายคนสั่ง
@@ -329,8 +339,8 @@ function runCouncil(ctx, settings = {}) {
     verdict.calibrated = { before, factor: cal.factor, note: cal.note };
   }
   verdict.adjust = adjust;
-  verdict.votes = votes.map(({ id, name, side, conf, reason, skillNote, skillGrade, skillHit, skillN }) => ({
-    id, name, side, conf: Math.round(conf || 0), reason: String(reason || ''), skillNote: skillNote || null,
+  verdict.votes = votes.map(({ id, name, side, conf, reason, skillNote, skillGrade, skillHit, skillN, off }) => ({
+    id, name, side, conf: Math.round(conf || 0), reason: String(reason || ''), skillNote: skillNote || null, off: !!off,
     skill: { grade: skillGrade, hit: skillHit, n: skillN },
     weightAdj: adjust[id] ? Math.round(adjust[id] * 100) / 100 : 1,
   }));

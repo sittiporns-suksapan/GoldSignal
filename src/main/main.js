@@ -11,7 +11,7 @@ const { AnalysisEngine } = require('../engine/engine');
 const { PluginLoader } = require('../engine/plugins');
 const { MT5Connector, findMql5ExpertsDir, compileEA } = require('../engine/connectors/mt5');
 const { YahooConnector } = require('../engine/connectors/yahoo');
-const { gateSignal } = require('../engine/council');
+const { gateSignal, AGENTS } = require('../engine/council');
 const risk = require('../engine/risk');
 const autoclose = require('../engine/autoclose');
 const { startWebServer, startRemotePush } = require('./webserver');
@@ -113,6 +113,13 @@ function sanitizeSettings(input) {
     councilStrict: s.councilStrict === false ? false : true,
     councilQuorum: Math.round(num(s.councilQuorum, 3, 2, 6)),
     councilMin: num(s.councilMin, 70, 50, 95),
+    // สวิตช์เปิด/ปิดรายเอเจนต์ในสภา — เก็บเฉพาะ id ที่รู้จัก (id แปลก/เอเจนต์ที่ถอดออกจากโค้ด = ลบออก) ค่า default = เปิด
+    councilAgents: (() => {
+      const src = input && input.councilAgents && typeof input.councilAgents === 'object' && !Array.isArray(input.councilAgents) ? input.councilAgents : s.councilAgents;
+      const out = {};
+      for (const a of AGENTS) out[a.id] = src && typeof src === 'object' && src[a.id] !== undefined ? !!src[a.id] : true;
+      return out;
+    })(),
     autoCloseAll: s.autoCloseAll === true,
     autoCloseAllProfit: num(s.autoCloseAllProfit, 100, 0.01, 1e9),
     autoCloseLoss: s.autoCloseLoss === true,

@@ -194,6 +194,20 @@ ok('ผู้ใช้ขอ quorum สูง (6) → สภาถ่อมต�
   const v6 = council.runCouncil({ analysis, candles, price: candles.M5[candles.M5.length - 1].c, now: Date.now() }, { councilQuorum: 6 });
   assert.equal(v6.quorumNeed, 6);
 });
+ok('สวิตช์รายเอเจนต์: ปิด 6 ตัว = ไม่ร่วมโหวต + คิวรัมหดเหลือเท่าที่เปิด (≥1)', () => {
+  const analysis = require(path.join(root, 'src', 'engine', 'analysis')).analyzeMarket(candles);
+  const ctx = { analysis, candles, price: candles.M5[candles.M5.length - 1].c, now: Date.now(), ind };
+  const v1 = council.runCouncil(ctx, { councilAgents: { momentum: false, reversion: false, structure: false, regime: false, session: false, confluence: false } });
+  const offs = v1.votes.filter((x) => x.off);
+  assert.equal(offs.length, 6, `ต้องมี 6 เอเจนต์ปิดอยู่ (ได้ ${offs.length})`);
+  assert.ok(v1.votes.every((x) => x.off || x.id === 'trend'), 'ต้องเหลือแต่ trend ร่วมโหวต');
+  assert.equal(v1.quorumNeed, 1, 'คิวรัมลดไม่เกินจำนวนคนที่เปิด');
+  const m = v1.votes.find((x) => x.id === 'momentum');
+  assert.equal(m.side, 'none', 'เอเจนต์ที่ปิดต้องไม่มีทิศโหวต');
+  const vDefault = council.runCouncil(ctx, { councilAgents: { trend: false } });
+  assert.equal(vDefault.votes.filter((x) => x.off).length, 1, 'ปิดตัวเดียว = อีก 6 ตัวโหวตปกติ');
+  assert.equal(vDefault.quorumNeed, 3, 'คิวรัมคงเดิมเมื่อคนเปิดเหลือมากกว่าโควตา');
+});
 ok('gateSignal: สวนมติที่มั่นใจ ≥55% = กรอง / โหมดปกติ สภาไม่มีมติ = ผ่าน', () => {
   const verdictBuy = { side: 'buy', confidence: 80, agree: 4, quorumNeed: 3 };
   const g = council.gateSignal({ side: 'sell' }, verdictBuy, {});
