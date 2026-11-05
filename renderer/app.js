@@ -496,7 +496,8 @@ function renderRealHistory(meta) {
       ...perSide.slice(0, 12).map((h) => {
         const pl = h.profit;
         const cls = h.reason === 'TP' ? 'TP' : h.reason === 'SL' ? 'SL' : pl === 0 ? 'open' : 'manual';
-        return `<div class="zh-line"><span class="t">${Number.isFinite(h.time) ? stamp(h.time) : '—'}</span><span>${h.type === 'buy' ? 'BUY' : 'SELL'} ${fmtD(h.volume, 2)} ล็อต ${fmtD(h.open, 2)} → ${fmtD(h.close, 2)}</span><span class="res ${cls}">${esc(reasonTh[h.reason] || h.reason)} ${money(pl, acctCur, true)}</span></div>`;
+        const signCls = pl >= 0 ? 'up' : 'down';
+        return `<div class="zh-line"><span class="t">${Number.isFinite(h.time) ? stamp(h.time) : '—'}</span><span>${h.type === 'buy' ? 'BUY' : 'SELL'} ${fmtD(h.volume, 2)} ล็อต ${fmtD(h.open, 2)} → ${fmtD(h.close, 2)}</span><span class="res ${cls}">${esc(reasonTh[h.reason] || h.reason)} <b class="sig ${signCls}">${money(pl, acctCur, true)}</b></span></div>`;
       }),
     ];
     return `<div class="zh-side ${s}"><h5>${s === 'buy' ? 'ไม้จริงซื้อ (BUY)' : 'ไม้จริงขาย (SELL)'}</h5>

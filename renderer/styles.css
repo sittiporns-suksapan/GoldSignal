@@ -506,8 +506,9 @@ code { background: var(--inset); border: 1px solid var(--line-soft); padding: 1p
 .zh-all:hover { color: var(--gold); border-color: var(--gold-line); }
 .zh-line .res.TP { color: var(--up-text); } .zh-line .res.SL { color: var(--down-text); } .zh-line .res.TIME, .zh-line .res.open { color: var(--muted); }
 .zh-line .res.open.up { color: var(--up-text); } .zh-line .res.open.down { color: var(--down-text); }
-/* ปิดเอง (manual): สีฟ้าทำเด่นจากแถวอื่น — ตามที่เจ้าของขอมาตรง ๆ */
+/* ปิดเอง (manual): คำ "ปิดเอง" = สีฟ้า ทำเด่นจากแถวอื่น — ส่วนเลขเงินสีเขียว/แดงตามเครื่องหมาย เสมอ */
 .zh-line .res.manual { color: var(--accent); }
+.zh-line .res .sig.up { color: var(--up-text); } .zh-line .res .sig.down { color: var(--down-text); } .zh-line .res .sig { font-weight: 700; }
 
 /* มติสภา ณ จังหวะเปิดไม้จำลอง — ยาวแยกบรรทัดเดียวใต้แถว */
 .zh-line { flex-wrap: wrap; }
