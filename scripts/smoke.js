@@ -391,11 +391,11 @@ ok('validateManualOrder: กันเหนียว 3 ชั้นของป�
   // 8) ตั้งต่ำกว่า 2 = บีบกลับ 2 เสมอ (ไม่มีช่องรูดหลุดจากเพดานแข็ง)
   const lowcap = risk.validateManualOrder({ side: 'buy', lot: 0.1, entry: 3900, sl: 3850, settings: { ...S, manualRiskMaxPct: 1 } });
   assert.equal(lowcap.pass, false, 'ตั้ง 1% ต้องถูกบีบกลับ 2% — $500 ยังถูกปฏิเสธ');
-  // 9) ตั้งสูงเกิน 10 = บีบกันที่ 10% พอดี ($1,000)
-  const capped = risk.validateManualOrder({ side: 'buy', lot: 0.1, entry: 3900, sl: 3848, settings: { ...S, manualRiskMaxPct: 99 } });
-  assert.equal(capped.pass, true, '$520 ≤ เพดาน 10% = $1,000 → ผ่าน (บีบที่ 10)');
-  const overCap = risk.validateManualOrder({ side: 'buy', lot: 0.21, entry: 3900, sl: 3848, settings: { ...S, manualRiskMaxPct: 99 } });
-  assert.equal(overCap.pass, false, '$1,092 เกินเพดาน 10% = $1,000 → ปฏิเสธ');
+  // 9) ขอบบนบีบที่ 100% ของทุนเสมอ (ตั้ง 99 → 99% = $9,900 บนทุน $10,000)
+  const ok99 = risk.validateManualOrder({ side: 'buy', lot: 0.1, entry: 3900, sl: 3848, settings: { ...S, manualRiskMaxPct: 99 } });
+  assert.equal(ok99.pass, true, '$520 ≤ 99% ของทุน → ผ่าน');
+  const big99 = risk.validateManualOrder({ side: 'buy', lot: 2, entry: 3900, sl: 3848, settings: { ...S, manualRiskMaxPct: 99 } });
+  assert.equal(big99.pass, false, '$10,400 = 104% ของทุน → เกินเพดาน 100% = ปฏิเสธเด็ดขาด');
 });
 
 ok('บัญชี MT5 จาก bridge: parse ครบ + ใช้ทุนจริงแทนค่าที่ตั้ง', () => {
