@@ -193,6 +193,15 @@ class AnalysisEngine extends EventEmitter {
           this.dailyCount++;
         }
       }
+      // วินิจฉัยอัตโนมัติ: สภาผ่านมติแต่ 0 สัญญาณ = บอกเหตุผลทันที (ห้ามผู้ใช้หาเอง — รายงานทุก 5 นาที)
+      if (councilVerdict && councilVerdict.side !== 'none' && !signals.length && (filtered.length || this.settings.councilEnabled !== false)) {
+        const now = Date.now();
+        if (!(this._councilNoSigAt > now - 300_000)) {
+          this._councilNoSigAt = now;
+          const why = filtered.slice(0, 2).map((x) => `${x.plugin}: ${x.reason}`).join(' • ');
+          this.pushLog('council', `🧠 สภามีมติ ${councilVerdict.side === 'buy' ? 'ซื้อ' : 'ขาย'} ${councilVerdict.confidence}% (เห็นพ้อง ${councilVerdict.agree}) แต่ 0 สัญญาณ — ${why || 'กลยุทธ์ยังรอเงื่อนไขราคาตัวเอง (เช่น รอย่อเข้า EMA)'}`);
+        }
+      }
       const lastSnap = this._snapshot({ data, analysis, price, signals, filtered, connectorLabel: c.label, fallbackReason, council: councilVerdict, councilStats: this.councilStats ? this.councilStats.snapshot() : null });
       lastSnap.session = sessionNow;
       lastSnap.sessionWindows = sessions.WINDOWS;

@@ -452,7 +452,8 @@ class MT5Connector {
     }
     if (stale) {
       this.status = { state: 'stale', msg: 'ไฟล์ bridge ไม่อัปเดตแล้ว (EA อาจหยุดทำงาน/MT5 ปิดอยู่)' };
-      throw new Error(this.status.msg); // ห้ามวิเคราะห์/ส่งไม้จากข้อมูลค้าง — โหมดอัตโนมัติจะสลับไปข้อมูลฟรีเอง
+      this.logger('mt5', `MT5 ข้อมูลสดหาย — สลับฟรี (วิเคราะห์ต่อ) แต่คงส่ง**ไม้จริงไม่ได้**จนกลับมา — ตรวจ MT5 เปิด + EA บนชาร์ต`, 'warn');
+      throw new Error(this.status.msg); // ห้ามวิเคราะห์... (โหมดอัตโนมัติสลับข้อมูลฟรีเอง)
     }
     let json;
     try { json = JSON.parse(raw); } catch {
