@@ -53,14 +53,14 @@ function autoCapPct(settings = {}) {
   return clamp(Number(settings.autoRiskMaxPct) || HARD_MAX_RISK_PCT, HARD_MAX_RISK_PCT, 10);
 }
 function manualCapPct(settings = {}) {
-  return clamp(Number(settings.manualRiskMaxPct) || HARD_MAX_RISK_PCT, HARD_MAX_RISK_PCT, 10);
+  return clamp(Number(settings.manualRiskMaxPct) || HARD_MAX_RISK_PCT, HARD_MAX_RISK_PCT, 100);
 }
 function jointCapPct(settings = {}) {   // คำสั่งที่มาทางใดทางหนึ่งใช้เพดานกว้างกว่า (ผู้ใช้เลือกทั้งคู่เอง)
   return Math.max(autoCapPct(settings), manualCapPct(settings));
 }
-// เพดานสัมบูรณ์ของการแก้ SL/คำสั่งรอแบบกดเอง: default 10% — ผู้ใช้ยกได้ถึง 50% ของทุน (ยืนยันทุกครั้งตามเดิม)
+// เพดานสัมบูรณ์ของการแก้ SL/คำสั่งรอแบบกดเอง: default 10% — ผู้ใช้ยกได้ถึง 100% ของทุน (ยืนยันทุกครั้งตามเดิม)
 function absOvercapPct(settings = {}) {
-  return clamp(Number(settings.modifyAbsMaxPct) || OVERCAP_MAX_PCT, OVERCAP_MAX_PCT, 50);
+  return clamp(Number(settings.modifyAbsMaxPct) || OVERCAP_MAX_PCT, OVERCAP_MAX_PCT, 100);
 }
 
 // คำนวณขนาดล็อตตาม % ความเสี่ยง

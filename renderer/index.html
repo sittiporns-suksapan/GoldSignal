@@ -394,13 +394,13 @@
               </label>
             </div>
             <small id="rc-out" class="muted rc-out">ใส่ล็อต + จุด SL เพื่อคำนวณความเสี่ยง % ให้อัตโนมัติ (1 จุด = 0.01)</small>
-            <label>เพดานเสี่ยงของปุ่มกดเอง % (2–10)
-              <input type="number" id="s-manualriskmax" inputmode="decimal" min="2" max="10" step="0.5" />
-              <small class="muted">ใช้กับปุ่มซื้อ/ขาย/คำสั่งรอ/แก้ SL ที่คุณกดเอง • SL จาก ATR กว้าง ต้องตั้งเพดานพอให้ผ่าน • ยิ่งสูงยิ่งยอมเสี่ยง</small>
+            <label>เพดานเสี่ยงของปุ่มกดเอง % (2–100)
+              <input type="number" id="s-manualriskmax" inputmode="decimal" min="2" max="100" step="0.5" />
+              <small class="muted">ใช้กับปุ่มซื้อ/ขาย/คำสั่งรอ/แก้ SL ที่คุณกดเอง • 100 = ไม่มีดัก (เหลือแค่กดยืนยัน + SL บังคับ) • ยิ่งสูงยิ่งยอมเสี่ยง</small>
             </label>
-            <label>เพดานสูงสุดแก้ SL/คำสั่งรอ % (10–50)
-              <input type="number" id="s-modifyabsmax" inputmode="decimal" min="10" max="50" step="1" />
-              <small class="muted">ขอบบนของ "แก้ SL แบบยืนยัน": รวมเสี่ยงของทุกไม้ห้ามเกิน % นี้ของทุนเด็ดขาด — เกิน = ขยับ SL ใกล้ขึ้นเท่านั้น (default 10% • ยกสูง = คุณยอมเสี่ยงเอง)</small></small>
+            <label>เพดานสูงสุดแก้ SL/คำสั่งรอ % (10–100)
+              <input type="number" id="s-modifyabsmax" inputmode="decimal" min="10" max="100" step="1" />
+              <small class="muted">ขอบบนของ "แก้ SL แบบยืนยัน": รวมเสี่ยงของหลายไม้ห้ามเกิน % นี้ของทุน — 100 = ไม่กั้น (คงเหลือกดยืนยัน) • เกิน = ขยับ SL ใกล้ขึ้นเท่านั้น</small>
             </label>
             <div id="calc-example" class="calc fx-result">ใส่ทุนแล้วดูตัวเลขจริงที่แท็บหน้าจอหลัก ในแต่ละบัตรสัญญาณ</div>
             <div class="row2">

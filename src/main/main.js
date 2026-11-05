@@ -100,8 +100,8 @@ function sanitizeSettings(input) {
     equity: num(s.equity, 1000, 0, 100_000_000),
     riskPct: num(s.riskPct, 1, 0.05, 10),        // % เป้า (calcPosition บีบด้วยเพดานอัตโนมัติจริงอีกชั้น)
     autoRiskMaxPct: num(s.autoRiskMaxPct, 2, 2, 10),   // เพดานไม้อัตโนมัติ (2–10%) — default 2% แนะนำ
-    manualRiskMaxPct: num(s.manualRiskMaxPct, 2, 2, 10),  // เพดานของปุ่มกดเอง/คำสั่งรอ/แก้ SL (2–10%)
-    modifyAbsMaxPct: num(s.modifyAbsMaxPct, 10, 10, 50),  // เพดานสัมบูรณ์แก้ SL/คำสั่งรอ: กดยืนยันเกินได้จนถึงค่านี้ (default 10% • สูงสุด 50% ของทุน)
+    manualRiskMaxPct: num(s.manualRiskMaxPct, 2, 2, 100),  // เพดานปุ่มกดเอง (2–100% ของทุน • 100 = ไม่มีการกั้นอีกต่อไป)
+    modifyAbsMaxPct: num(s.modifyAbsMaxPct, 10, 10, 100),  // เพดานสัมบูรณ์แก้ SL/คำสั่งรอ (10–100% ของทุน)
     minRR: num(s.minRR, 1.5, risk.HARD_MIN_RR, 10),
     minConfidence: num(s.minConfidence, 60, 0, 95),
     maxSignalsPerDay: Math.round(num(s.maxSignalsPerDay, 3, 1, 50)),
