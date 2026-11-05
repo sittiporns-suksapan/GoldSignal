@@ -504,10 +504,16 @@ function renderRealHistory(meta) {
       <div class="zh-score">ชนะ <b>${w}</b> • แพ้ <b>${l}</b> • รวม <b class="${total >= 0 ? 'up' : 'down'}">${money(total, acctCur, true)}</b></div>
       <div class="zh-rows">${lines.length ? lines.join('') : '<div class="empty sm">ยังไม่มี — เข้าไม้จริงฝั่งนี้แล้วจะเริ่มจด</div>'}</div></div>`;
   };
+  // จำ scrollTop ของแต่ละตู้ (เรียงเดิมเสมอ: ขาย • ซื้อ • สรุปรายวัน) — วาดใหม่ทุก snapshot แต่ห้ามเด้งกลับขึ้นบนเอง
+  const scrolled = [...box.querySelectorAll('.zh-rows, .rh-days')].map((el) => el.scrollTop);
   box.innerHTML =
     `<div class="zh">` + board('sell') + board('buy') +
     `<div class="zh-side zh-rounds"><h5>สรุปรายวัน (ทุกฝั่ง)</h5><div class="rh-days">${days || '<div class="empty sm">ยังไม่มีไม้ที่ปิดแล้ว</div>'}</div></div>` +
     `</div>`;
+  [...box.querySelectorAll('.zh-rows, .rh-days')].forEach((el, i) => {
+    const v = scrolled[i];
+    if (v != null && v > 0) el.scrollTop = v;
+  });
 }
 
 /* ---------- คำสั่งรอล่วงหน้า (pending limit/stop) ---------- */
