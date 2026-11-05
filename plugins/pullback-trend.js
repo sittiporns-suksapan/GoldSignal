@@ -9,7 +9,7 @@ module.exports = {
   name: 'ดีดกลับตามเทรนด์ (Pullback Trend)',
   description: 'รอราคาดีดเข้า EMA20 ฝั่ง M5 ในเทรนด์ที่ H1/M15 ตกลงกัน แล้วเข้าตามทิศเทรนด์ พร้อม SL หลังจังหวะดีด',
 
-  strategy({ analysis, candles, price, ind }) {
+  strategy({ analysis, candles, price, ind, settings, digits }) {
     if (!analysis || analysis.bias === 'neutral' || !price) return null;
     if (!candles.M5 || candles.M5.length < 70) return null;
     const side = analysis.bias === 'bull' ? 'buy' : 'sell';
@@ -19,6 +19,10 @@ module.exports = {
     const atrV = ind.lastNum(ind.atr(candles.M5, 14));
     const last = candles.M5[candles.M5.length - 1];
     if (!Number.isFinite(rsiV) || !Number.isFinite(e20) || !Number.isFinite(atrV) || atrV <= 0) return null;
+    // ระยะจุด SL/TP ที่ผู้ใช้ตั้ง = ลำดับแรกเสมอ (เท่ากัน/ต่างกันได้ตามช่อง) — ไม่ใช้ ATR และข้ามเกณฑ์ระยะแคบ
+    const pt = Math.pow(10, -(Number(digits ?? (settings && settings.digits)) || 2));
+    const userSl = Number(settings && settings.slDistPts) > 0 ? Number(settings.slDistPts) * pt : null;
+    const userTp = Number(settings && settings.tpDistPts) > 0 ? Number(settings.tpDistPts) * pt : null;
 
     let conf = 60;
     if (side === 'buy') {
@@ -28,6 +32,11 @@ module.exports = {
       if (rsiV < 34) conf += 12;
       else if (rsiV < 45) conf += 8;
       const entry = price;
+      if (userSl != null) {
+        const sl = side === 'buy' ? entry - userSl : entry + userSl;
+        const tp = userTp != null ? (side === 'buy' ? entry + userTp : entry - userTp) : entry + 2 * userSl;
+        return { side: 'buy', entry, sl, tp, confidence: Math.min(conf + (analysis.trendH1 === 'up' ? 10 : 0), 92), reason: `เทรนด์ขึ้นชัด (H1:${analysis.trendH1}/M15:${analysis.trendM15}) ราคาดีดใกล้ EMA20 ระดับ ${ind.round(e20, 2)} RSI ${ind.round(rsiV, 1)} • SL/TP ตามค่าตั้งจุด` };
+      }
       const sl = Math.min(last.l, e20) - 1.2 * atrV;
       if (entry - sl < atrV * 0.8) return null; // SL แคบไปเวอร์
       const tp = entry + 2 * (entry - sl);
@@ -40,6 +49,11 @@ module.exports = {
     if (rsiV > 66) conf += 12;
     else if (rsiV > 55) conf += 8;
     const entry = price;
+    if (userSl != null) {
+      const sl = entry + userSl;
+      const tp = userTp != null ? entry - userTp : entry - 2 * userSl;
+      return { side: 'sell', entry, sl, tp, confidence: Math.min(conf + (analysis.trendH1 === 'down' ? 10 : 0), 92), reason: `เทรนด์ลงชัด (H1:${analysis.trendH1}/M15:${analysis.trendM15}) ราคาเด้งใกล้ EMA20 ระดับ ${ind.round(e20, 2)} RSI ${ind.round(rsiV, 1)} • SL/TP ตามค่าตั้งจุด` };
+    }
     const sl = Math.max(last.h, e20) + 1.2 * atrV;
     if (sl - entry < atrV * 0.8) return null;
     const tp = entry - 2 * (sl - entry);

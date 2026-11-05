@@ -9,8 +9,12 @@ module.exports = {
   name: 'บีบแบนด์ทะลุ (Squeeze Breakout)',
   description: 'แบนด์บีบตัวแคบมากบน M15 แล้วราคาปิดทะลุขอบบน/ล่างบน M5 เข้าตามแรงแตก พร้อม SL ที่ขอบตรงข้าม',
 
-  strategy({ analysis, candles, price, ind }) {
+  strategy({ analysis, candles, price, ind, settings, digits }) {
     if (!analysis || !price || !candles.M15 || candles.M15.length < 90 || !candles.M5 || candles.M5.length < 70) return null;
+    // ระยะจุด SL/TP ที่ผู้ใช้ตั้ง = ใช้ก่อนเสมอ (เท่ากัน/ต่างกันได้)
+    const pt = Math.pow(10, -(Number(digits ?? (settings && settings.digits)) || 2));
+    const userSl = Number(settings && settings.slDistPts) > 0 ? Number(settings.slDistPts) * pt : null;
+    const userTp = Number(settings && settings.tpDistPts) > 0 ? Number(settings.tpDistPts) * pt : null;
 
     const cl15 = ind.closes(candles.M15);
     const bb = ind.bollinger(cl15, 20, 2);
@@ -33,6 +37,11 @@ module.exports = {
     if (range <= 0 || atrV <= 0) return null;
     let conf = 62;
     if (last5 > up && analysis.trendH1 !== 'down') {
+      if (userSl != null) {
+        const sl = price - userSl;
+        const tp = userTp != null ? price + userTp : price + 1.8 * userSl;
+        return { side: 'buy', entry: price, sl, tp, confidence: Math.min(conf, 90), reason: `แบนด์เพิ่งบีบตัว (เปอร์เซ็นไทล์ ${ind.round(bwPct, 0)}) แล้ว M5 ปิดทะลุขอบบน ${ind.round(up, 2)} • SL/TP ตามค่าตั้งจุด` };
+      }
       const sl = mid - range * 0.15;
       if (price - sl < atrV) return null;
       const tp = price + 1.8 * (price - sl);
@@ -41,6 +50,11 @@ module.exports = {
       return { side: 'buy', entry: price, sl, tp, confidence: Math.min(conf, 90), reason: `แบนด์เพิ่งบีบตัว (เปอร์เซ็นไทล์ ${ind.round(bwPct, 0)}) แล้ว M5 ปิดทะลุขอบบน ${ind.round(up, 2)} — แรงแตกทิศเดียวกับเทรนด์` };
     }
     if (last5 < lo && analysis.trendH1 !== 'up') {
+      if (userSl != null) {
+        const sl = price + userSl;
+        const tp = userTp != null ? price - userTp : price - 1.8 * userSl;
+        return { side: 'sell', entry: price, sl, tp, confidence: Math.min(conf, 90), reason: `แบนด์เพิ่งบีบตัว (เปอร์เซ็นไทล์ ${ind.round(bwPct, 0)}) แล้ว M5 ปิดทะลุขอบล่าง ${ind.round(lo, 2)} • SL/TP ตามค่าตั้งจุด` };
+      }
       const sl = mid + range * 0.15;
       if (sl - price < atrV) return null;
       const tp = price - 1.8 * (sl - price);
