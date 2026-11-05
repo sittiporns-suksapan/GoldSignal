@@ -18,6 +18,7 @@ let zoneLines = [];       // ราคาโซนปลอดภัยที่
 let zoneKey = '';         // วาดเส้นโซนใหม่เฉพาะเมื่อระดับราคาเปลี่ยน (ลดงาน DOM/canvas ทุกรอบ)
 let chartKey = '';        // setData ใหม่เฉพาะเมื่อแท่งเปลี่ยน
 let chartBars = [];       // แท่งที่แสดงอยู่ (สำหรับอัปเดตแท่งสุดท้ายแบบสด)
+let lastBarLive = null;   // OHLC แท่งสุดท้าย (paintTick ขยับให้ด้วย update() — ไม่แตะสเกล)
 let ZC = { up: '#2bc48a', down: '#f0616d', gold: '#d9b46a', warn: '#e8b84a' }; // สีโซน (อ่านจาก CSS ตอน initChart)
 // '#rrggbb' + ความโปร่ง → rgba() ให้เส้นโซนใช้สีชุดเดียวกับธีม
 const alpha = (hex, a) => { const n = parseInt(hex.replace('#', ''), 16); return Number.isFinite(n) ? `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})` : hex; };
@@ -112,6 +113,7 @@ function initChart() {
     updateChart = () => {};
     return;
   }
+  wirePriceScaleLock();
   const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const up = css('--up'), down = css('--down');
   ZC = { up, down, gold: css('--gold'), warn: css('--warn') };
@@ -134,9 +136,10 @@ function updateChart(candlesByTf, { fit = false } = {}) {
   if (!chartM || !candlesByTf) return;
   const candles = dataForTf(candlesByTf, currentTf);
   if (!Array.isArray(candles) || !candles.length) return;
-  // ข้อมูลเท่าเดิม (รอบวิเคราะห์ที่แท่งยังไม่เปลี่ยน) → ไม่ต้อง setData ใหม่ทั้งก้อน; tick สดอัปเดตแท่งสุดท้ายให้อยู่แล้ว
+  // ข้อมูลแท่งเท่าเดิม (แม้ราคาปิดแท่งสุดท้ายวิ่ง) → ไม่ยิง setData รัวทุกทิค (setData = สเกลราคาถูกรีฟิต = ซูมคุณหาย)
+  // ทางชาร์ตหายใจเอง: paintTick อัปเดตแท่งสุดท้ายด้วย update() ที่คงสเกลเดิม
   const lastC = candles[candles.length - 1];
-  const key = `${currentTf}|${candles.length}|${candles[0].t}|${lastC.t}|${lastC.c}`;
+  const key = `${currentTf}|${candles.length}|${candles[0].t}|${lastC.t}`;
   if (!fit && key === chartKey) { drawZones(lastSnap); return; }
   chartKey = key;
   $('chart-sub').textContent = `${currentTf} • ${candles.length} แท่ง`;
@@ -146,6 +149,7 @@ function updateChart(candlesByTf, { fit = false } = {}) {
   const lastOldT = chartBars.length ? chartBars[chartBars.length - 1].time : null;
   const atRight = before && lastOldT != null && Number(before.to) >= Number(lastOldT) - 1.5; // ดูอยู่ขอบขวา = อยากตามราคา
   chartBars = bars;
+  lastBarLive = { t: lastC.t, o: lastC.o, h: lastC.h, l: lastC.l, c: lastC.c };
   candleSeries.setData(bars);
   const cl = candles.map((c) => c.c);
   const toLine = (arr) => bars.map((b, i) => arr[i] != null ? ({ time: b.time, value: arr[i] }) : null).filter(Boolean).slice(1);
@@ -237,6 +241,35 @@ function syncLinesBtn() {
 }
 
 // ---------- toolbar ซูม (ปุ่มลัด: ชัวร์กว่าล้อเมาส์) ----------
+// ลากแกนราคา (แถบขวาของชาร์ต) = ผู้ใช้ซูมราคาเอง → ล็อก autoScale ปิดถาวร (setData ใหม่จะไม่รีฟิตราคา = ซูมคงอยู่)
+// ปลดล็อก = ปุ่ม "ฟิต" (z-fit): กลับ autoScale + จัดกรอบใหม่
+let priceScaleLocked = false;
+function wirePriceScaleLock() {
+  const el = $('chart');
+  const strip = (e) => {
+    const r = el.getBoundingClientRect();
+    return r.width - (e.clientX - r.left) <= 76; // ช่วงแถบแกนราคาขวา (รวมป้ายราคา)
+  };
+  el.addEventListener('pointerdown', (e) => {
+    if (priceScaleLocked || !candleSeries || !strip(e)) return;
+    let touched = 0;
+    const onMove = (ev) => { if (++touched >= 2) { finish(true); } };
+    const finish = (lock) => {
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerup', finish);
+      el.removeEventListener('pointercancel', finish);
+      if (lock && touched >= 2) { priceScaleLocked = true; candleSeries.priceScale().applyOptions({ autoScale: false }); }
+    };
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', finish);
+    el.addEventListener('pointercancel', finish);
+  });
+  // ปุ่ม "ฟิต" = ปลดล็อกกลับ autoScale + จัดเต็มกรอบ
+  $('z-fit').addEventListener('click', () => {
+    if (priceScaleLocked && candleSeries) { priceScaleLocked = false; candleSeries.priceScale().applyOptions({ autoScale: true }); }
+    fitWithGap();
+  });
+}
 function wireZoom() {
   const curSpacing = () => {
     const w = chartM.timeScale().width();
@@ -1576,6 +1609,18 @@ window.api.onTick((q) => {
 const FLASH_MS = 350;
 function paintTick(q) {
   const d = q.digits || 2;
+  // แท่งสุดท้ายหายใจสด: อัปเดตเฉพาะแท่งเดียวด้วย update() — ไม่ยิง setData ทั้งก้อน (สเกล/ซูมคงเดิม)
+  try {
+    if (chartM && candleSeries && lastBarLive && chartBars.length && chartBars[chartBars.length - 1].time === lastBarLive.t) {
+      const px = (q.bid + q.ask) / 2;
+      if (px > 0) {
+        lastBarLive.c = px;
+        if (px > lastBarLive.h) lastBarLive.h = px;
+        if (px < lastBarLive.l) lastBarLive.l = px;
+        candleSeries.update({ time: lastBarLive.t, open: lastBarLive.o, high: lastBarLive.h, low: lastBarLive.l, close: lastBarLive.c });
+      }
+    }
+  } catch { void 0; }
   const bidEl = $('t-bid'), askEl = $('t-ask'), priceEl = $('price');
   const oldBid = bidEl._v, oldAsk = askEl._v;
   bidEl.textContent = q.bid.toFixed(d);
