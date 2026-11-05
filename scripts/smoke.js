@@ -709,6 +709,22 @@ console.log('\n[7] Engine end-to-end');
     } finally { r.server.close(); }
   });
 
+  // พก dylib ของ node ไปกับสำเนาจำลอง "cloudflared" (brew node อ้าง @rpath/libnode*.dylib — คัดลอกตรง ๆ = เปิดไม่ได้แล้วตายเงียบ)
+  // วางสองจุดตามที่ dyld ลองจริง: หลังตัว fake เอง + แถบ ../lib (mkdtemp จะอยู่โฟลเดอร์พ่อเดียวกัน แชร์กันได้)
+  // node ที่เป็นไฟล์เดียว / ไม่มีโฟลเดอร์ lib = ข้ามชั้นนี้ไปเงียบ ๆ
+  function copyNodeLibsInto(dir) {
+    try {
+      const libSrc = path.join(path.dirname(process.execPath), '..', 'lib');
+      const libs = fs.readdirSync(libSrc).filter((n) => /^libnode.*\.dylib$/.test(n));
+      if (!libs.length) return;
+      for (const n of libs) {
+        fs.copyFileSync(path.join(libSrc, n), path.join(dir, n));
+        fs.mkdirSync(path.join(dir, '..', 'lib'), { recursive: true });
+        fs.copyFileSync(path.join(libSrc, n), path.join(dir, '..', 'lib', n));
+      }
+    } catch { void 0; }
+  }
+
   await ok('tunnel daemon: linger รอดปิดแอป • adopt เฉพาะ pid ที่เป็น cloudflared จริง • ปิดเอง = kill ตัวจริง (ไม่ฆ่าผิดตัว)', async () => {
     const { createTunnel } = require(path.join(root, 'src', 'main', 'tunnel'));
     const { spawn } = require('child_process');
@@ -717,6 +733,7 @@ console.log('\n[7] Engine end-to-end');
     // (สำเนา /bin/sleep ใช้ไม่ได้: macOS ฆ่า platform binary ที่ถูกคัดลอกออกนอกระบบทันที)
     const fake = path.join(dir, 'cloudflared');
     fs.copyFileSync(process.execPath, fake, fs.constants.COPYFILE_FICLONE); fs.chmodSync(fake, 0o755);
+    copyNodeLibsInto(dir); // brew-node = ไฟล์คู่ (main + libnode*.dylib ทาง @rpath) — ไม่พกไป = fake ตายทันที ทดสอบพังบนเครื่องที่ node แยกไลบรารี
     const d = spawn(fake, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
     await new Promise((r) => setTimeout(r, 400));
     const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -758,6 +775,7 @@ console.log('\n[7] Engine end-to-end');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsorph-'));
     const fake = path.join(dir, 'cloudflared');
     fs.copyFileSync(process.execPath, fake, fs.constants.COPYFILE_FICLONE); fs.chmodSync(fake, 0o755);
+    copyNodeLibsInto(dir); // ความแตกขนาดเดียวกับ daemon test แถวบน — ให้ copy ของ node วิ่งได้ทุกต้นทาง
     // แตก process ให้พ่อแม่ตาย (ppid → 1) เหมือนแอปปิดไปแล้ว + args แบบ cloudflared จริง
     const mk = (port) => { execFileSync('/bin/sh', ['-c', `"${fake}" -e "setTimeout(()=>{},30000)" tunnel --url http://localhost:${port} >/dev/null 2>&1 &`]); };
     mk(8999); mk(8998);
