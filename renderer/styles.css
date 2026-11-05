@@ -506,6 +506,8 @@ code { background: var(--inset); border: 1px solid var(--line-soft); padding: 1p
 .zh-all:hover { color: var(--gold); border-color: var(--gold-line); }
 .zh-line .res.TP { color: var(--up-text); } .zh-line .res.SL { color: var(--down-text); } .zh-line .res.TIME, .zh-line .res.open { color: var(--muted); }
 .zh-line .res.open.up { color: var(--up-text); } .zh-line .res.open.down { color: var(--down-text); }
+/* ปิดมือเอง (manual): บวก = เขียว / ลบ = แดง — สีตามเครื่องหมายของกำไร-ขาดทุน */
+.zh-line .res.manual.up { color: var(--up-text); } .zh-line .res.manual.down { color: var(--down-text); }
 
 /* มติสภา ณ จังหวะเปิดไม้จำลอง — ยาวแยกบรรทัดเดียวใต้แถว */
 .zh-line { flex-wrap: wrap; }

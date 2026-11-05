@@ -495,7 +495,7 @@ function renderRealHistory(meta) {
       ...open.map((p) => `<div class="zh-line"><span class="t">เปิดอยู่</span><span>${s === 'buy' ? 'BUY' : 'SELL'} ${fmtD(p.volume, 2)} ล็อต @ ${fmtD(p.open)} → TP ${fmtD(p.tp)}</span><span class="res open ${p.profit >= 0 ? 'up' : 'down'}">${money(p.profit, acctCur, true)}${(() => { const px = s === 'buy' ? Number(meta.bid) : Number(meta.ask); if (!Number.isFinite(px)) return ''; const d = (s === 'buy' ? px - p.open : p.open - px) / Math.pow(10, -(meta.digits || 2)); return ` (${d >= 0 ? '+' : ''}${Math.round(d)} จุด)`; })()}</span></div>`),
       ...perSide.slice(0, 12).map((h) => {
         const pl = h.profit;
-        const cls = h.reason === 'TP' ? 'TP' : h.reason === 'SL' ? 'SL' : pl === 0 ? 'open' : 'manual';
+        const cls = h.reason === 'TP' ? 'TP' : h.reason === 'SL' ? 'SL' : pl === 0 ? 'open' : `manual ${pl >= 0 ? 'up' : 'down'}`;
         return `<div class="zh-line"><span class="t">${Number.isFinite(h.time) ? stamp(h.time) : '—'}</span><span>${h.type === 'buy' ? 'BUY' : 'SELL'} ${fmtD(h.volume, 2)} ล็อต ${fmtD(h.open, 2)} → ${fmtD(h.close, 2)}</span><span class="res ${cls}">${esc(reasonTh[h.reason] || h.reason)} ${money(pl, acctCur, true)}</span></div>`;
       }),
     ];
