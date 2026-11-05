@@ -11,7 +11,7 @@ module.exports = {
   description: 'รวมคะแนนโหวตของเอเจนต์ 7 ฝ่าย เข้าไม้เฉพาะเมื่อทีมเห็นพ้องชัดเจนเกินเกณฑ์ที่ตั้งไว้',
 
   strategy(ctx) {
-    const { council, analysis, price, ind, settings, candles } = ctx;
+    const { council, analysis, price, ind, settings, candles, digits } = ctx;
     if (!council || council.side === 'none' || !price) return null;
     const minConf = settings.councilMin || 75;
     if (council.confidence < minConf) return null;
@@ -20,10 +20,16 @@ module.exports = {
     const atr = m15 && Number.isFinite(m15.atr) ? m15.atr : price * 0.0008;
     if (atr <= 0) return null;
     const buy = council.side === 'buy';
+    const pt = Math.pow(10, -(Number(digits ?? (settings && settings.digits)) || 2));
+    // ระยะที่ผู้ใช้ตั้งถาวร (จุด) = ชนะ ATR อัตโนมัติเสมอ (เจ้าของระบบเลือกเอง — กดยืนยันทุกไม้ตามเกตเดิม)
+    const userSl = Number(settings && settings.slDistPts) > 0 ? Number(settings.slDistPts) * pt : null;
+    const userTp = Number(settings && settings.tpDistPts) > 0 ? Number(settings.tpDistPts) * pt : null;
 
-    // พื้นที่ SL: หลังโครงสร้าง ไม่ต่ำกว่า 0.8×ATR
+    // พื้นที่ SL: หลังโครงสร้าง ไม่ต่ำกว่า 0.8×ATR (ยกเว้นผู้ใช้ตั้งระยะเอง)
     let sl;
-    if (buy) {
+    if (userSl != null) {
+      sl = buy ? price - userSl : price + userSl;
+    } else if (buy) {
       const sup = analysis.levels.supports[0];
       const byLevel = sup && Math.abs(price - sup) < atr * 1.2 ? sup - atr * 0.35 : null;
       sl = byLevel != null ? Math.min(byLevel, price - atr * 1.1) : price - atr * 1.8;
@@ -32,10 +38,12 @@ module.exports = {
       const byLevel = res && Math.abs(res - price) < atr * 1.2 ? res + atr * 0.35 : null;
       sl = byLevel != null ? Math.max(byLevel, price + atr * 1.1) : price + atr * 1.8;
     }
-    if (Math.abs(price - sl) < atr * 0.8) return null; // SL แคบเว่อร์ — ไม่เข้า
+    if (userSl == null && Math.abs(price - sl) < atr * 0.8) return null; // SL แคบเว่อร์ — ไม่เข้า (เมื่อไม่ได้ตั้งระยะเอง)
 
-    const rr = 2.2; // ทีมมั่นใจแน่นจึงเฟอร์เรียวขึ้น
-    const tp = buy ? price + rr * (price - sl) : price - rr * (sl - price);
+    // TP: ระยะที่ผู้ใช้ตั้งก่อน — ไม่มี = คิดจาก RR 2.2 ของระยะ SL จริง
+    const tp = userTp != null
+      ? (buy ? price + userTp : price - userTp)
+      : (buy ? price + 2.2 * (price - sl) : price - 2.2 * (sl - price));
 
     // สรุปเหตุผลจากเอเจนต์ที่โหวตด้วย (เรียกเฉพาะฝั่งมติ)
     const voters = (council.votes || []).filter((v) => v.side === council.side);

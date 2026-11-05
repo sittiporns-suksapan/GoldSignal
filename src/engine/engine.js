@@ -124,6 +124,7 @@ class AnalysisEngine extends EventEmitter {
         ...this.settings,
         ...(liveEquity ? { equity: liveEquity } : {}),
         ...(spec ? { ozPerLot: spec.contractSize } : {}),
+        ...(Number(data.digits) > 0 ? { digits: Number(data.digits) } : {}),
       };
       // 1) สภาทีมเอเจนต์ (น้ำหนักปรับด้วยสกิลของแต่ละคน + เรียกก่อน plugins)
       this.skills.processTick(price, Date.now());
