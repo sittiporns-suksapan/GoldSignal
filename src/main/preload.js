@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('api', {
   eaStatus: () => ipcRenderer.invoke('ea-status'),
   sendOrder: (req) => ipcRenderer.invoke('send-order', req),
   closePosition: (ticket) => ipcRenderer.invoke('close-position', ticket),
+  closePartial: (req) => ipcRenderer.invoke('close-partial', req),
   modifyPosition: (req) => ipcRenderer.invoke('modify-position', req),
   sendPending: (req) => ipcRenderer.invoke('send-pending', req),
   cancelPending: (ticket) => ipcRenderer.invoke('cancel-pending', ticket),

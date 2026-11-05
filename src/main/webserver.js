@@ -113,7 +113,7 @@ function startWebServer({ port = BASE_PORT, getSnapshot, logger = () => {}, hand
         if (!fn || blocked.has(ch)) return send(res, 404, { ok: false, reason: `คำสั่ง ${ch} ใช้จากเว็บไม่ได้` });
         let args = [];
         try { const j = JSON.parse(body || '{}'); args = Array.isArray(j.args) ? j.args : []; } catch { return send(res, 400, { ok: false, reason: 'ข้อมูลไม่ถูกต้อง' }); }
-        if (['send-order', 'send-pending', 'close-position', 'close-all', 'modify-position', 'modify-pending', 'cancel-pending'].includes(ch)) logger('web', `คำสั่ง ${ch} จากเว็บ (${local ? 'เครื่องนี้' : ip})`);
+        if (['send-order', 'send-pending', 'close-position', 'close-partial', 'close-all', 'modify-position', 'modify-pending', 'cancel-pending'].includes(ch)) logger('web', `คำสั่ง ${ch} จากเว็บ (${local ? 'เครื่องนี้' : ip})`);
         const result = await fn({ sender: null, web: true }, ...args);
         return send(res, 200, { ok: true, result: result === undefined ? null : result });
       }

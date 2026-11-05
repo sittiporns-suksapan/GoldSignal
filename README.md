@@ -49,7 +49,7 @@
 
 ## แหล่งข้อมูลราคา
 
-1. **MT5 ในเครื่อง (หลัก)** — EA `mt5-ea/JsonBridgeEA.mq5` (รุ่น 1.8) เขียนราคาทุกทิค + แท่งเทียน/บัญชี/ไม้ทุก ~3 วิ ลงโฟลเดอร์ `MQL5/Files`
+1. **MT5 ในเครื่อง (หลัก)** — EA `mt5-ea/JsonBridgeEA.mq5` (รุ่น 1.9) เขียนราคาทุกทิค + แท่งเทียน/บัญชี/ไม้ทุก ~3 วิ ลงโฟลเดอร์ `MQL5/Files`
    (`goldsignal_quotes.txt`, `goldsignal_bridge.json`, `goldsignal_commands.txt`, `goldsignal_results.txt`)
 2. **ข้อมูลฟรี COMEX GC=F (สำรอง)** — ใช้อัตโนมัติเมื่อ MT5 ไม่พร้อม (วิเคราะห์ได้ แต่ส่งออร์เดอร์ไม่ได้)
 

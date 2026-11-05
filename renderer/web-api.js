@@ -60,6 +60,7 @@
     eaStatus: () => call('ea-status'),
     sendOrder: (req) => call('send-order', req),
     closePosition: (ticket) => call('close-position', ticket),
+    closePartial: (req) => call('close-partial', req),
     modifyPosition: (req) => call('modify-position', req),
     sendPending: (req) => call('send-pending', req),
     cancelPending: (ticket) => call('cancel-pending', ticket),

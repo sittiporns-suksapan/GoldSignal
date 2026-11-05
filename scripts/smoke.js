@@ -293,6 +293,55 @@ ok('validatePendingModify: แก้คำสั่งรอ — ทิศรา
   assert.equal(risk.validatePendingModify({ ...P, side: 'sell', ptype: 'limit', curEntry: 3950, curSl: 3960, entry: 3940, sl: 3950 }).pass, false, 'SELL LIMIT ต่ำกว่าตลาด = ปฏิเสธ');
 });
 
+ok('allowOverCap: เกินเพดาน = ยืนยันเองได้ แต่ SL บังคับ/ฝั่งถูก ยังตรวจเสมอ', () => {
+  const S = { equity: 1000, realOrdersEnabled: true }; // เพดาน 2% = $20
+  // ไม้เปิด: BUY 0.01 @ 3950, SL เดิม 3940 (เสี่ยง $10) → SL 3925 เสี่ยง $25
+  const M = { side: 'buy', open: 3950, volume: 0.01, curSl: 3940, market: 3955, settings: S };
+  const over = risk.validateModify({ ...M, sl: 3925, tp: 3970 });
+  assert.equal(over.pass, false, 'เกินเพดาน ไม่มีธง = ปฏิเสธ');
+  assert.equal(over.overCap, true, 'บอก overCap ให้หน้าจอถามยืนยัน');
+  const forced = risk.validateModify({ ...M, sl: 3925, tp: 3970, allowOverCap: true });
+  assert.equal(forced.pass, true, 'มีธง allowOverCap = ผ่าน');
+  assert.equal(forced.metrics.riskUSD, 25);
+  assert.ok(/ห้ามลบ/.test(risk.validateModify({ ...M, sl: 0, allowOverCap: true }).reason), 'มีธงก็ลบ SL ไม่ได้');
+  assert.equal(risk.validateModify({ ...M, sl: 3956, allowOverCap: true }).pass, false, 'มีธงก็ห้าม SL ไม้ซื้อเหนือ BID');
+  assert.equal(risk.validateModify({ ...M, side: 'sell', curSl: 3960, market: 3955, sl: 3954, allowOverCap: true }).pass, false, 'มีธงก็ห้าม SL ไม้ขายต่ำกว่า ASK');
+  assert.equal(risk.validateModify({ ...M, sl: 3925, tp: 3954, allowOverCap: true }).pass, false, 'มีธงก็ห้าม TP ผิดฝั่ง');
+  // คำสั่งรอ: BUY LIMIT 0.01 เดิม 3930/SL 3920 (เสี่ยง $10) → 3932/SL 3900 เสี่ยง $32
+  const PM = { side: 'buy', ptype: 'limit', volume: 0.01, curEntry: 3930, curSl: 3920, market: 3945, settings: S };
+  const pOver = risk.validatePendingModify({ ...PM, entry: 3932, sl: 3900 });
+  assert.equal(pOver.pass, false, 'คำสั่งรอเกินเพดาน ไม่มีธง = ปฏิเสธ');
+  assert.equal(pOver.overCap, true);
+  assert.equal(risk.validatePendingModify({ ...PM, entry: 3932, sl: 3900, allowOverCap: true }).pass, true, 'คำสั่งรอ มีธง = ผ่าน');
+  assert.ok(/ห้ามลบ/.test(risk.validatePendingModify({ ...PM, entry: 3932, sl: 0, allowOverCap: true }).reason), 'คำสั่งรอ มีธงก็ลบ SL ไม่ได้');
+  assert.equal(risk.validatePendingModify({ ...PM, entry: 3932, sl: 3935, allowOverCap: true }).pass, false, 'คำสั่งรอ มีธงก็ห้าม SL ผิดฝั่งราคาเข้า');
+  assert.equal(risk.validatePendingModify({ ...PM, entry: 3950, sl: 3900, allowOverCap: true }).pass, false, 'คำสั่งรอ มีธงก็ห้ามทิศราคาผิดชนิด');
+  // เพดานสูงสุด 10% ($100): ยืนยันแล้วก็ไม่ผ่าน และไม่ส่ง overCap (หน้าจอจะไม่ถามยืนยัน)
+  const maxed = risk.validateModify({ ...M, sl: 3849, tp: 3970, allowOverCap: true }); // เสี่ยง $101
+  assert.equal(maxed.pass, false, 'เกิน 10% = ปฏิเสธแม้มีธง');
+  assert.notEqual(maxed.overCap, true, 'เกิน 10% ไม่ถามยืนยัน');
+  assert.ok(/สูงสุด 10%/.test(maxed.reason));
+  assert.equal(risk.validateModify({ ...M, sl: 3850, tp: 3970, allowOverCap: true }).pass, true, 'เท่ากับ 10% พอดี = ผ่านเมื่อยืนยัน');
+  assert.equal(risk.validatePendingModify({ ...PM, entry: 3932, sl: 3831, allowOverCap: true }).pass, false, 'คำสั่งรอเกิน 10% = ปฏิเสธแม้มีธง');
+  // ลดความเสี่ยงจากเดิมที่เกิน 10% อยู่แล้ว = ยังแก้ได้ (ขยับ SL เข้าใกล้ต้องทำได้เสมอ)
+  assert.equal(risk.validateModify({ ...M, curSl: 3800, sl: 3840, tp: 3970 }).pass, true, 'เดิมเกิน 10% แต่ลดลง = ผ่าน');
+});
+
+ok('validateModify: กันทุน (SL = ราคาเข้า) ผ่านเมื่อราคาวิ่งเลยจุดเข้าแล้ว', () => {
+  const S = { equity: 1000, realOrdersEnabled: true };
+  // BUY @ 3950, BID 3951 > ราคาเข้า → SL 3950 อยู่ใต้ BID = ผ่าน เสี่ยง 0
+  const b = risk.validateModify({ side: 'buy', open: 3950, volume: 0.01, curSl: 3940, sl: 3950, tp: 3970, market: 3951, settings: S });
+  assert.equal(b.pass, true, 'BUY กันทุน: BID > ราคาเข้า');
+  assert.equal(b.metrics.riskUSD, 0, 'SL ที่ราคาเข้า = เสี่ยง 0');
+  // SELL @ 3950, ASK 3949 < ราคาเข้า → SL 3950 อยู่เหนือ ASK = ผ่าน (TP ว่าง = ไม่ตั้ง)
+  const s = risk.validateModify({ side: 'sell', open: 3950, volume: 0.01, curSl: 3960, sl: 3950, tp: 0, market: 3949, settings: S });
+  assert.equal(s.pass, true, 'SELL กันทุน: ASK < ราคาเข้า');
+  assert.equal(s.metrics.riskUSD, 0);
+  // ราคายังไม่เลยจุดเข้า = กันทุนไม่ได้ (SL จะอยู่ผิดฝั่งราคาตลาด)
+  assert.equal(risk.validateModify({ side: 'buy', open: 3950, volume: 0.01, curSl: 3940, sl: 3950, tp: 0, market: 3949.5, settings: S }).pass, false, 'BUY ยังไม่กำไร = ปฏิเสธ');
+  assert.equal(risk.validateModify({ side: 'sell', open: 3950, volume: 0.01, curSl: 3960, sl: 3950, tp: 0, market: 3950.5, settings: S }).pass, false, 'SELL ยังไม่กำไร = ปฏิเสธ');
+});
+
 ok('validateManualOrder: กันเหนียว 3 ชั้นของปุ่มซื้อขายจริง', () => {
   const S = { equity: 10000, realOrdersEnabled: true, maxSignalsPerDay: 8, minRR: 1.5, councilEnabled: true };
   // 1) ปิดสวิตช์ = ปฏิเสธเสมอ
@@ -1009,6 +1058,45 @@ console.log('\n[7.5] ความปลอดภัยออร์เดอร�
     const bad = new MT5Connector();
     assert.throws(() => bad.requestCloseAll([1, 2]));
     assert.equal(bad.pending.size, 0, 'เขียนไม่ได้ = ถอนทั้งชุด');
+  });
+  ok('ปิดบางส่วน: คำสั่ง closepart ในไฟล์ (lot = ล็อตที่ปิด, ticket, exp) + ผล EA ไหลกลับพร้อม cmd', () => {
+    const c = new MT5Connector();
+    assert.throws(() => c.requestClosePartial(555, 0.05), 'ไม่มีโฟลเดอร์ bridge');
+    assert.equal(c.pending.size, 0, 'เขียนไม่ได้ = ไม่ค้างในคิว');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gspart-'));
+    c.bridgePath = path.join(dir, 'goldsignal_bridge.json');
+    const { id } = c.requestClosePartial(555, 0.05);
+    const line = fs.readFileSync(path.join(dir, 'goldsignal_commands.txt'), 'utf8').trim();
+    assert.ok(new RegExp(`^CMD id=${id} action=closepart side=- lot=0\\.05 price=0 sl=0 tp=0 ticket=555 exp=\\d+ comment=GoldSignal$`).test(line), line);
+    assert.equal(c.pending.get(id).action, 'closepart');
+    fs.writeFileSync(path.join(dir, 'goldsignal_results.txt'), `RES id=${id} ts=1700000000 status=ok retcode=10009 ticket=555 price=3920.50 vol=0.05 msg=done\r\n`);
+    const r = c.pollResults();
+    fs.rmSync(dir, { recursive: true, force: true });
+    assert.equal(r.length, 1);
+    assert.equal(r[0].status, 'ok');
+    assert.equal(r[0].price, 3920.5);
+    assert.equal(r[0].cmd.action, 'closepart', 'ผลผูกกับคำสั่งเดิม (แจ้งเตือน "ปิดบางส่วน")');
+    assert.equal(r[0].cmd.lot, 0.05);
+    assert.equal(c.pending.size, 0);
+  });
+  ok('ปิดบางส่วน: ตรวจล็อตตามสเปกโบรก (step/min/ต้องเหลือไม้)', () => {
+    const { checkPartialVolume } = require(path.join(root, 'src', 'engine', 'connectors', 'mt5'));
+    const S = { volMin: 0.01, volStep: 0.01 };
+    const half = checkPartialVolume({ ...S, volume: 0.05, posVolume: 0.1 });
+    assert.equal(half.ok, true, half.reason);
+    assert.equal(half.volume, 0.05);
+    assert.equal(half.remain, 0.05);
+    assert.equal(checkPartialVolume({ ...S, volume: 0.1 + 0.2, posVolume: 1 }).volume, 0.3, 'ทศนิยมลอย 0.30000000000000004 ถูกปัดเป็น 0.3');
+    assert.equal(checkPartialVolume({ ...S, volume: 0.01, posVolume: 0.02 }).ok, true, 'ไม้ 0.02 ปิด 0.01 เหลือ 0.01 ได้');
+    for (const bad of [0, -0.01, NaN, Infinity, 'x', null, undefined]) assert.equal(checkPartialVolume({ ...S, volume: bad, posVolume: 0.1 }).ok, false, `volume=${bad}`);
+    assert.equal(checkPartialVolume({ ...S, volume: 0.015, posVolume: 0.1 }).ok, false, 'ไม่ใช่ทวีคูณ step');
+    assert.equal(checkPartialVolume({ volMin: 0.1, volStep: 0.1, volume: 0.05, posVolume: 1 }).ok, false, 'ไม่ใช่ทวีคูณ step 0.1');
+    assert.equal(checkPartialVolume({ volMin: 0.1, volStep: 0.01, volume: 0.05, posVolume: 1 }).ok, false, 'ต่ำกว่า volMin');
+    assert.equal(checkPartialVolume({ ...S, volume: 0.1, posVolume: 0.1 }).ok, false, 'ปิดเท่าขนาดไม้ = ไม่ใช่บางส่วน');
+    assert.equal(checkPartialVolume({ ...S, volume: 0.2, posVolume: 0.1 }).ok, false, 'เกินขนาดไม้');
+    assert.equal(checkPartialVolume({ volMin: 0.1, volStep: 0.1, volume: 0.1, posVolume: 0.15 }).ok, false, 'เหลือ 0.05 < volMin 0.1');
+    assert.equal(checkPartialVolume({ ...S, volume: 0.01, posVolume: 0.01 }).ok, false, 'ไม้ขั้นต่ำแบ่งปิดไม่ได้');
+    assert.equal(checkPartialVolume({ ...S, volume: 0.01, posVolume: 0 }).ok, false, 'ไม่รู้ขนาดไม้');
   });
   ok('ผลจาก EA: ข้อความหลายคำอ่านครบ + ผลเก่าก่อนเปิดแอปไม่เด้งซ้ำ', () => {
     const c = new MT5Connector();

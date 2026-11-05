@@ -20,6 +20,8 @@
     <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M10 4a2 2 0 1 1 4 0v2h4v4h-2a2 2 0 1 0 0 4h2v4h-4v-2a2 2 0 1 0-4 0v2H6v-4h2a2 2 0 1 0 0-4H6V6h4Z" /></symbol>
     <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0ZM12 17v4" /></symbol>
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" /></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16Z" /><path d="m13.5 6.5 4 4" /></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M5.5 7l1 12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2l1-12M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7" /></symbol>
     <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" /></symbol>
     <symbol id="i-duplicate" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5" /><path d="M15 5.5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h1.5" /></symbol>
     <symbol id="i-chart" viewBox="0 0 24 24"><path d="M7 4v16M7 8h-2v6h2M7 8h2v6H7M17 6v14M17 10h-2v5h2M17 10h2v5h-2M12 3v18M12 7h-2v8h2M12 7h2v8h-2" /></symbol>
@@ -58,7 +60,7 @@
     <div class="topright">
       <div class="ticker" aria-live="polite">
         <span class="ticker-label">XAUUSD</span>
-        <span id="price">—</span>
+        <span id="price" class="copyable" title="คลิกเพื่อคัดลอกราคา">—</span>
         <span id="price-delta" class="delta"></span>
       </div>
       <div class="conn">
@@ -68,6 +70,7 @@
           <option value="mt5">MT5 เท่านั้น</option>
           <option value="yahoo">ข้อมูลฟรีเท่านั้น</option>
         </select>
+        <button id="btn-keys" class="icon-btn" type="button" title="คีย์ลัด (กด ?)" aria-label="ดูคีย์ลัด">?</button>
         <button id="btn-newwin" class="icon-btn" title="เปิดหน้าต่างใหม่ (จอรอง)" aria-label="เปิดหน้าต่างใหม่"><svg class="ic"><use href="#i-duplicate" /></svg></button>
         <button id="btn-refresh" class="icon-btn" title="อัปเดตทันที" aria-label="อัปเดตทันที"><svg class="ic"><use href="#i-refresh" /></svg></button>
       </div>
@@ -191,35 +194,90 @@
                 </label>
               </div>
             </div>
+            <div id="acct-line" class="acctline">—</div>
             <div id="trade-live" class="trade trade-new">
               <div class="traderow">
                 <button class="tside sell" id="t-sell"><small>SELL</small><span id="t-bid">—</span></button>
                 <div class="tmid">
-                  <label>ล็อต <input type="number" id="t-lot" min="0.01" step="0.01" value="0.01" /></label>
+                  <label>ล็อต <input type="number" id="t-lot" inputmode="decimal" min="0.01" step="0.01" value="0.01" /></label>
                 </div>
                 <button class="tside buy" id="t-buy"><small>BUY</small><span id="t-ask">—</span></button>
+              </div>
+              <div class="tquote">
+                <button type="button" class="qcopy" data-copy="bid" title="คัดลอกราคา BID (ราคาฝั่งขาย)">คัดลอก Bid</button>
+                <span class="tspread" title="ส่วนต่าง ASK − BID ตอนนี้">สเปรด <b id="t-spread">—</b> จุด</span>
+                <button type="button" class="qcopy" data-copy="ask" title="คัดลอกราคา ASK (ราคาฝั่งซื้อ)">คัดลอก Ask</button>
+              </div>
+              <div id="t-lot-chips" class="qchips lotchips" role="group" aria-label="ล็อตด่วน">
+                <span class="qlbl">ล็อตด่วน</span>
+                <button type="button" class="qchip" data-lot="0.01" aria-pressed="true">0.01</button>
+                <button type="button" class="qchip" data-lot="0.02" aria-pressed="false">0.02</button>
+                <button type="button" class="qchip" data-lot="0.05" aria-pressed="false">0.05</button>
+                <button type="button" class="qchip" data-lot="0.10" aria-pressed="false">0.10</button>
               </div>
               <div class="stoprow">
                 <div class="stopbox sl">
                   <div class="sb-head"><span>🛡 Stop Loss</span><span class="sb-sub">ตัดขาดทุน</span></div>
                   <div class="fld">
-                    <input type="number" id="t-sl" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = คิดจาก ATR ตามฝั่งที่กด — ดูราคาที่ระบบจะตั้งให้ใน hint ด้านล่าง" />
+                    <input type="number" id="t-sl" inputmode="decimal" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = คิดจาก ATR ตามฝั่งที่กด — ดูราคาที่ระบบจะตั้งให้ใน hint ด้านล่าง" />
                     <i class="unit">USD</i>
+                  </div>
+                  <div class="qchips" role="group" aria-label="ระยะ SL เป็นจุด">
+                    <button type="button" class="qchip" data-stop="sl" data-pts="" aria-pressed="true" title="อัตโนมัติจาก ATR">ออโต้</button>
+                    <button type="button" class="qchip" data-stop="sl" data-pts="200" aria-pressed="false" title="SL ห่างราคาเข้า 200 จุด">200</button>
+                    <button type="button" class="qchip" data-stop="sl" data-pts="300" aria-pressed="false" title="SL ห่างราคาเข้า 300 จุด">300</button>
+                    <button type="button" class="qchip" data-stop="sl" data-pts="500" aria-pressed="false" title="SL ห่างราคาเข้า 500 จุด">500</button>
+                    <button type="button" class="qchip" data-stop="sl" data-pts="1000" aria-pressed="false" title="SL ห่างราคาเข้า 1000 จุด">1000</button>
                   </div>
                   <small class="stop-hint" id="t-sl-hint">ว่าง = อัตโนมัติ</small>
                 </div>
                 <div class="stopbox tp">
                   <div class="sb-head"><span>🎯 Take Profit</span><span class="sb-sub">เก็บกำไร</span></div>
                   <div class="fld">
-                    <input type="number" id="t-tp" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = คิดจาก ATR ตามฝั่งที่กด — ใส่ 0 = ไม่ตั้ง TP" />
+                    <input type="number" id="t-tp" inputmode="decimal" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = คิดจาก ATR ตามฝั่งที่กด — ใส่ 0 = ไม่ตั้ง TP" />
                     <i class="unit">USD</i>
+                  </div>
+                  <div class="qchips" role="group" aria-label="ระยะ TP เป็นจุด">
+                    <button type="button" class="qchip" data-stop="tp" data-pts="" aria-pressed="true" title="อัตโนมัติจาก ATR">ออโต้</button>
+                    <button type="button" class="qchip" data-stop="tp" data-pts="500" aria-pressed="false" title="TP ห่างราคาเข้า 500 จุด">500</button>
+                    <button type="button" class="qchip" data-stop="tp" data-pts="1000" aria-pressed="false" title="TP ห่างราคาเข้า 1000 จุด">1000</button>
+                    <button type="button" class="qchip" data-stop="tp" data-pts="2000" aria-pressed="false" title="TP ห่างราคาเข้า 2000 จุด">2000</button>
+                    <button type="button" class="qchip" data-stop="tp" data-pts="none" aria-pressed="false" title="ไม่ตั้ง TP — ต้องปิดไม้เอง">ไม่ตั้ง</button>
                   </div>
                   <small class="stop-hint" id="t-tp-hint">ว่าง = อัตโนมัติ • ใส่ 0 = ไม่ตั้ง TP</small>
                 </div>
               </div>
               <div class="tradeinfo" id="t-info">—</div>
             </div>
-            <div id="acct-line" class="acctline">—</div>
+            <div id="pend-card" class="pend">
+              <div class="pend-head"><h5>คำสั่งรอล่วงหน้า (เตรียมไม้รอราคา)</h5><button id="pend-max" class="pmax" title="ขยายให้เต็มจอ / ย่อกลับ" aria-label="ขยายคำสั่งรอเต็มจอ / ย่อกลับ">⛶</button></div>
+              <div class="prow">
+                <label>ประเภท
+                  <select id="p-kind">
+                    <option value="buy-limit">BUY LIMIT — ซื้อถูกกว่าตลาด (รอย่อมาถึง)</option>
+                    <option value="sell-limit">SELL LIMIT — ขายแพงกว่าตลาด (รอเดินขึ้นมา)</option>
+                    <option value="buy-stop">BUY STOP — ซื้อเมื่อทะลุขึ้น (ตามแรงขาขึ้น)</option>
+                    <option value="sell-stop">SELL STOP — ขายเมื่อหลุดลง (ตามแรงขาลง)</option>
+                  </select>
+                </label>
+                <label>ล็อต <input type="number" id="p-lot" inputmode="decimal" min="0.01" step="0.01" value="0.01" /></label>
+              </div>
+              <div id="p-entry-chips" class="qchips pentry" role="group" aria-label="ตั้งราคาเข้าจากราคาตลาด (จุด)">
+                <span class="qlbl" id="p-entry-base">ราคาเข้า = ASK</span>
+                <button type="button" class="qchip" data-pts="100" aria-pressed="false">−100</button>
+                <button type="button" class="qchip" data-pts="200" aria-pressed="false">−200</button>
+                <button type="button" class="qchip" data-pts="500" aria-pressed="false">−500</button>
+                <span class="qlbl">จุด</span>
+              </div>
+              <div class="prow">
+                <label class="stopbox entry">ราคาเข้า <input type="number" id="p-entry" inputmode="decimal" step="0.01" placeholder="ราคาที่จะรอ" /></label>
+                <label class="stopbox sl">SL — ตัดขาดทุน <input type="number" id="p-sl" inputmode="decimal" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า ∓ ATR×1.8 ตามฝั่ง" /></label>
+                <label class="stopbox tp">TP — เก็บกำไร <input type="number" id="p-tp" inputmode="decimal" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า ± ATR×4.5 ตามฝั่ง (ใส่ 0 = ไม่ตั้ง TP)" /></label>
+                <button class="pgo" id="p-go">วางคำสั่งรอ</button>
+              </div>
+              <div id="pend-hint" class="pend-hint"></div>
+              <div id="pend-list" class="pend-list"></div>
+            </div>
             <div id="positions" class="positions"></div>
             <div id="closeall-row" class="closeall-row" hidden>
               <span id="closeall-hint" class="closeall-hint"></span>
@@ -235,23 +293,23 @@
               <div class="ac-group profit">
                 <div class="ac-gh">💰 เก็บกำไร</div>
                 <div class="ac-item " title="กำไรลอยตัวรวมทุกไม้ถึงเป้า = ปิดทุกไม้ทันที (ไม้ที่ติดลบก็ปิดด้วย)">
-                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-all" /><span></span></span></label>
+                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-all" aria-label="เปิด/ปิด ปิดทุกไม้เมื่อกำไรรวมถึงเป้า" /><span></span></span></label>
                   <div class="ac-main">
-                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ เมื่อกำไรรวม ≥</span><input type="number" id="ac-all-v" min="0.01" step="1" /><span class="ac-unit" id="ac-cur">THB</span></div>
+                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ เมื่อกำไรรวม ≥</span><input type="number" id="ac-all-v" inputmode="decimal" min="0.01" step="1" /><span class="ac-unit" id="ac-cur">THB</span></div>
                     <div class="ac-prog"><div class="ac-bar"><i id="ac-all-bar"></i></div><span id="ac-all-now" class="ac-now">—</span></div>
                   </div>
                 </div>
                 <div class="ac-item " title="เอาจุดของทุกไม้มารวมกัน (+200 กับ +100 = 300) ถึงเป้า = ปิดทุกไม้">
-                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-allpts" /><span></span></span></label>
+                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-allpts" aria-label="เปิด/ปิด ปิดทุกไม้เมื่อจุดรวมถึงเป้า" /><span></span></span></label>
                   <div class="ac-main">
-                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ เมื่อจุดรวม ≥</span><input type="number" id="ac-allpts-v" min="0.01" step="10" /><span class="ac-unit">จุด</span><span id="ac-allpts-px" class="ac-px"></span></div>
+                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ เมื่อจุดรวม ≥</span><input type="number" id="ac-allpts-v" inputmode="numeric" min="0.01" step="10" /><span class="ac-unit">จุด</span><span id="ac-allpts-px" class="ac-px"></span></div>
                     <div class="ac-prog"><div class="ac-bar"><i id="ac-allpts-bar"></i></div><span id="ac-allpts-now" class="ac-now">—</span></div>
                   </div>
                 </div>
                 <div class="ac-item " title="ไม้ใดบวกถึงจุดนี้ = ปิดไม้นั้นไม้เดียว">
-                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-pts" /><span></span></span></label>
+                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-pts" aria-label="เปิด/ปิด ปิดเฉพาะไม้ที่บวกถึงจุดที่ตั้ง" /><span></span></span></label>
                   <div class="ac-main">
-                    <div class="ac-line"><span class="ac-lbl">ปิดเฉพาะไม้ที่บวก ≥</span><input type="number" id="ac-pts-v" min="0.01" step="10" /><span class="ac-unit">จุด</span><span id="ac-pts-px" class="ac-px"></span></div>
+                    <div class="ac-line"><span class="ac-lbl">ปิดเฉพาะไม้ที่บวก ≥</span><input type="number" id="ac-pts-v" inputmode="numeric" min="0.01" step="10" /><span class="ac-unit">จุด</span><span id="ac-pts-px" class="ac-px"></span></div>
                     <div class="ac-prog"><div class="ac-bar"><i id="ac-pts-bar"></i></div><span id="ac-pts-now" class="ac-now">—</span></div>
                   </div>
                 </div>
@@ -259,36 +317,14 @@
               <div class="ac-group loss">
                 <div class="ac-gh">🛡 ตัดขาดทุน</div>
                 <div class="ac-item " title="ขาดทุนลอยตัวรวมถึงจำนวนนี้ = ปิดทุกไม้ทันที (ตรวจก่อนเป้ากำไรเสมอ)">
-                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-loss" /><span></span></span></label>
+                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-loss" aria-label="เปิด/ปิด ตัดขาดทุนรวบเมื่อขาดทุนรวมถึงค่าที่ตั้ง" /><span></span></span></label>
                   <div class="ac-main">
-                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ เมื่อขาดทุนรวม ≥</span><input type="number" id="ac-loss-v" min="0.01" step="1" /><span class="ac-unit" id="ac-loss-cur">THB</span></div>
+                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ เมื่อขาดทุนรวม ≥</span><input type="number" id="ac-loss-v" inputmode="decimal" min="0.01" step="1" /><span class="ac-unit" id="ac-loss-cur">THB</span></div>
                     <div class="ac-prog"><div class="ac-bar"><i id="ac-loss-bar"></i></div><span id="ac-loss-now" class="ac-now">—</span></div>
                   </div>
                 </div>
               </div>
               <div id="ac-status" class="ac-status"></div>
-            </div>
-            <div id="pend-card" class="pend">
-              <div class="pend-head"><h5>คำสั่งรอล่วงหน้า (เตรียมไม้รอราคา)</h5><button id="pend-max" class="pmax" title="ขยายให้เต็มจอ / ย่อกลับ">⛶</button></div>
-              <div class="prow">
-                <label>ประเภท
-                  <select id="p-kind">
-                    <option value="buy-limit">BUY LIMIT — ซื้อถูกกว่าตลาด (รอย่อมาถึง)</option>
-                    <option value="sell-limit">SELL LIMIT — ขายแพงกว่าตลาด (รอเดินขึ้นมา)</option>
-                    <option value="buy-stop">BUY STOP — ซื้อเมื่อทะลุขึ้น (ตามแรงขาขึ้น)</option>
-                    <option value="sell-stop">SELL STOP — ขายเมื่อหลุดลง (ตามแรงขาลง)</option>
-                  </select>
-                </label>
-                <label>ล็อต <input type="number" id="p-lot" min="0.01" step="0.01" value="0.01" /></label>
-              </div>
-              <div class="prow">
-                <label class="stopbox entry">ราคาเข้า <input type="number" id="p-entry" step="0.01" placeholder="ราคาที่จะรอ" /></label>
-                <label class="stopbox sl">SL — ตัดขาดทุน <input type="number" id="p-sl" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า ∓ ATR×1.8 ตามฝั่ง" /></label>
-                <label class="stopbox tp">TP — เก็บกำไร <input type="number" id="p-tp" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า ± ATR×4.5 ตามฝั่ง (ใส่ 0 = ไม่ตั้ง TP)" /></label>
-                <button class="pgo" id="p-go">วางคำสั่งรอ</button>
-              </div>
-              <div id="pend-hint" class="pend-hint"></div>
-              <div id="pend-list" class="pend-list"></div>
             </div>
           </div>
 
@@ -333,29 +369,42 @@
           <div class="card">
             <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-wallet" /></svg>เงินทุนและความเสี่ยง</h2><span class="ct-sub">แก้ได้</span></div>
             <label>ทุนที่ใช้คำนวณ (USD)
-              <input type="number" id="s-equity" min="0" step="10" />
+              <input type="number" id="s-equity" inputmode="decimal" min="0" step="10" />
             </label>
             <div class="row2">
               <label>ความเสี่ยงต่อไม้ % (เป้า)
-                <input type="number" id="s-riskpct" min="0.05" max="10" step="0.05" />
+                <input type="number" id="s-riskpct" inputmode="decimal" min="0.05" max="10" step="0.01" />
                 <small id="risk-note" class="muted">ล็อตจะถูกคำนวณให้ขาดทุนไม่เกิน % นี้แม้ราคาแตะ SL</small>
               </label>
               <label>เพดานเสี่ยงอัตโนมัติ % (2–10)
-                <input type="number" id="s-automax" min="2" max="10" step="0.5" />
-                <small class="muted">เพดานไม้ที่ระบบส่งเอง (สัญญาณ/เข้าอัตโนมัติ) — default 2% แนะนำ • ยกสูง = ยอมรับแพ้ติดกันใหญ่ขึ้น</small>
+                <input type="number" id="s-automax" inputmode="decimal" min="2" max="10" step="0.5" />
+                <small class="muted">เพดานไม้ที่ระบบส่งเอง (สัญญาณ/เข้าอัตโนมัติ) — ค่าแนะนำ 2% • ยกสูง = ยอมรับแพ้ติดกันใหญ่ขึ้น</small>
               </label>
             </div>
+            <!-- เครื่องคิดเลข: ล็อต + จุด SL ↔ ความเสี่ยง % (คำนวณบนหน้าอย่างเดียว ไม่ถูกส่งตอนบันทึก) -->
+            <div class="row2 row3" id="risk-calc">
+              <label>ล็อต
+                <input type="number" id="rc-lot" step="any" inputmode="decimal" placeholder="0.01" />
+              </label>
+              <label>จุด SL
+                <input type="number" id="rc-sl" step="any" inputmode="numeric" placeholder="เช่น 500" />
+              </label>
+              <label>จุด TP
+                <input type="number" id="rc-tp" step="any" inputmode="numeric" placeholder="เช่น 1000" />
+              </label>
+            </div>
+            <small id="rc-out" class="muted rc-out">ใส่ล็อต + จุด SL เพื่อคำนวณความเสี่ยง % ให้อัตโนมัติ (1 จุด = 0.01)</small>
             <label>เพดานเสี่ยงของปุ่มกดเอง % (2–10)
-              <input type="number" id="s-manualriskmax" min="2" max="10" step="0.5" />
-              <small class="muted">ใช้กับปุ่มซื้อ/ขาย/คำสั่งรอ/แก้ SL ที่คุณกดเอง — ตอนนี้ตั้ง 6% ให้ SL-ATR ผ่าน • ยิ่งสูงยิ่งยอมเสี่ยงเอง</small>
+              <input type="number" id="s-manualriskmax" inputmode="decimal" min="2" max="10" step="0.5" />
+              <small class="muted">ใช้กับปุ่มซื้อ/ขาย/คำสั่งรอ/แก้ SL ที่คุณกดเอง • SL จาก ATR กว้าง ต้องตั้งเพดานพอให้ผ่าน • ยิ่งสูงยิ่งยอมเสี่ยง</small>
             </label>
             <div id="calc-example" class="calc fx-result">ใส่ทุนแล้วดูตัวเลขจริงที่แท็บหน้าจอหลัก ในแต่ละบัตรสัญญาณ</div>
             <div class="row2">
               <label>RR ขั้นต่ำ (TP/SL)
-                <input type="number" id="s-minrr" min="1" max="10" step="0.1" />
+                <input type="number" id="s-minrr" inputmode="decimal" min="1" max="10" step="0.1" />
               </label>
               <label>ความมั่นใจขั้นต่ำ %
-                <input type="number" id="s-minconf" min="0" max="95" step="1" />
+                <input type="number" id="s-minconf" inputmode="numeric" min="0" max="95" step="1" />
               </label>
             </div>
           </div>
@@ -364,14 +413,14 @@
             <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-clock" /></svg>จังหวะและโหมดการทำงาน</h2></div>
             <div class="row2">
               <label>จำนวนไม้สูงสุด/วัน
-                <input type="number" id="s-maxday" min="1" max="50" step="1" />
+                <input type="number" id="s-maxday" inputmode="numeric" min="1" max="50" step="1" />
               </label>
               <label>คูลดาวน์สัญญาณเดิม (นาที)
-                <input type="number" id="s-cooldown" min="0" max="240" step="5" />
+                <input type="number" id="s-cooldown" inputmode="numeric" min="0" max="240" step="5" />
               </label>
             </div>
             <label>ความถี่วิเคราะห์ (วินาที, 5–60)
-              <input type="number" id="s-poll" min="5" max="60" step="5" />
+              <input type="number" id="s-poll" inputmode="numeric" min="5" max="60" step="5" />
             </label>
             <h4>โหมดการทำงาน</h4>
             <label class="toggle">
@@ -404,11 +453,11 @@
             </label>
             <div class="row2">
               <label>เอเจนต์เห็นพ้องขั้นต่ำ (2–6)
-                <input type="number" id="s-quorum" min="2" max="6" step="1" />
+                <input type="number" id="s-quorum" inputmode="numeric" min="2" max="6" step="1" />
                 <small id="quorum-note" class="muted">ค่าที่ใช้จริงรอบนี้จะแสดงตรงนี้</small>
               </label>
               <label>มั่นใจรวมขั้นต่ำออกไม้ % (50–95)
-                <input type="number" id="s-councilmin" min="50" max="95" step="1" />
+                <input type="number" id="s-councilmin" inputmode="numeric" min="50" max="95" step="1" />
               </label>
             </div>
             <label class="toggle">
@@ -578,14 +627,14 @@
               <ol class="steps tg-steps">
                 <li><a href="https://developers.line.biz/" target="_blank" class="wc-link-ext">developers.line.biz</a> → สร้าง <b>Provider + Messaging API channel</b></li>
                 <li>แท็บ <b>Messaging API</b> → <b>Channel access token (long-lived)</b> → Issue → คัดลอก</li>
-                <li>สัญญาณรหัส <b>userId</b>: แท็บ Basic settings → <code>Your user ID</code> (ขึ้นต้น U)</li>
+                <li>หา <b>userId</b>: แท็บ Basic settings → <code>Your user ID</code> (ขึ้นต้น U)</li>
                 <li>เพิ่มเพื่อนด้วย QR ในแท็บ Messaging API → กด <b>ส่งทดสอบ</b> เพื่อยืนยัน</li>
               </ol>
               <label class="wc-lbl" for="line-token">Channel access token</label>
-              <div class="wc-inline"><input type="password" id="line-token" autocomplete="off" placeholder="วาง channel access token (ยาว เช่น 209 ตัวอักษร)" /><button id="line-token-eye" class="wc-btn pico" title="แสดง/ซ่อน">👁</button><button id="line-token-save" class="wc-btn">บันทึก</button></div>
+              <div class="wc-inline"><input type="password" id="line-token" autocomplete="off" placeholder="วาง channel access token (ยาว เช่น 209 ตัวอักษร)" /><button id="line-token-eye" class="wc-btn pico" title="แสดง/ซ่อน" aria-label="แสดง/ซ่อน Channel access token">👁</button><button id="line-token-save" class="wc-btn">บันทึก</button></div>
               <div id="line-token-st" class="wc-hint"></div>
               <label class="wc-lbl" for="line-user">User ID</label>
-              <div class="wc-inline"><input type="password" id="line-user" autocomplete="off" placeholder="แตะ 👁 เพื่อดู (เช่น U99fc69b4…)" /><button id="line-user-eye" class="wc-btn pico" title="แสดง/ซ่อน">👁</button><button id="line-user-save" class="wc-btn">บันทึก</button></div>
+              <div class="wc-inline"><input type="password" id="line-user" autocomplete="off" placeholder="แตะ 👁 เพื่อดู (เช่น U99fc69b4…)" /><button id="line-user-eye" class="wc-btn pico" title="แสดง/ซ่อน" aria-label="แสดง/ซ่อน User ID">👁</button><button id="line-user-save" class="wc-btn">บันทึก</button></div>
               <div id="line-user-st" class="wc-hint"></div>
             </section>
             <section class="wc-sec">

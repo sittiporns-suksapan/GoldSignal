@@ -258,7 +258,8 @@ function wireZoom() {
     setTimeout(fitWithGap, 60);
   };
   $('z-max').addEventListener('click', () => setChartMax(!document.body.classList.contains('chart-max')));
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('chart-max') && !($('pend-card') && $('pend-card').classList.contains('max'))) setChartMax(false); });
+  // Esc ขณะหน้ายืนยันเปิด = ปิดแค่หน้ายืนยัน (ไม่ย่อชาร์ต) — ผูกแบบ capture ให้เช็กก่อนตัวปิด modal (ผูกไว้ก่อน wireZoom) จะซ่อน #modal
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('chart-max') && !($('pend-card') && $('pend-card').classList.contains('max')) && !$('modal').classList.contains('show')) setChartMax(false); }, true);
   $('z-live').addEventListener('click', followLatest);
   syncLinesBtn();
   $('z-lines').addEventListener('click', () => {
@@ -627,10 +628,10 @@ function renderPendings(snap) {
       dist = ` • ${d >= 0 ? 'ใกล้แล้ว' : 'ห่าง'} $${fmtD(Math.abs(d), 2)}`;
     }
     const editable = p.type !== 'other';
-    return `<div class="pend-line" data-t="${p.ticket}"><span style="font-weight:700">${label[p.type] || p.type}</span><span class="pend-info">ล็อต ${fmtD(p.volume, 2)} • ราคา ${fmtD(p.open)} • SL ${fmtD(p.sl)} • TP ${Number(p.tp) ? fmtD(p.tp) : '—'}</span><span class="muted">${dist}</span><span class="pend-act">${editable ? `<button class="pedit-p" data-t="${p.ticket}">แก้</button> ` : ''}<button class="pcancel" data-t="${p.ticket}">ยกเลิก</button></span></div>`;
+    return `<div class="pend-line" data-t="${p.ticket}"><span style="font-weight:700">${label[p.type] || p.type}</span><span class="pend-info">ล็อต ${fmtD(p.volume, 2)} • ราคา ${fmtD(p.open)} • SL ${fmtD(p.sl)} • TP ${Number(p.tp) ? fmtD(p.tp) : '—'}</span><span class="muted">${dist}</span><span class="pend-act">${editable ? `<button class="pedit-p picon" data-t="${p.ticket}" title="แก้คำสั่งรอ" aria-label="แก้คำสั่งรอ #${p.ticket}"><svg class="ic"><use href="#i-edit" /></svg></button> ` : ''}<button class="pcancel picon" data-t="${p.ticket}" title="ยกเลิกคำสั่งรอ" aria-label="ยกเลิกคำสั่งรอ #${p.ticket}"><svg class="ic"><use href="#i-trash" /></svg></button></span></div>`;
   }).join('');
   if (closingTicketsPending.size) {
-    box.querySelectorAll('.pcancel').forEach((b) => { if (closingTicketsPending.has(Number(b.dataset.t))) { b.disabled = true; b.textContent = 'กำลังยกเลิก...'; } });
+    box.querySelectorAll('.pcancel').forEach((b) => { if (closingTicketsPending.has(Number(b.dataset.t))) { b.disabled = true; b.title = 'กำลังยกเลิก...'; } });
   }
   box.querySelectorAll('.pcancel').forEach((b) => b.addEventListener('click', () => cancelPending(Number(b.dataset.t))));
   box.querySelectorAll('.pedit-p').forEach((b) => b.addEventListener('click', () => startEditPending(list.find((p) => Number(p.ticket) === Number(b.dataset.t)))));
@@ -642,7 +643,7 @@ function startEditPending(p) {
   if (!row) return;
   editingPending = Number(p.ticket);
   const val = (n) => (Number(n) ? Number(n).toFixed(2) : '');
-  row.querySelector('.pend-info').innerHTML = `ล็อต ${fmtD(p.volume, 2)} • ราคา <input class="pin" type="number" step="0.01" data-k="entry" value="${val(p.open)}"> • SL <input class="pin" type="number" step="0.01" data-k="sl" value="${val(p.sl)}"> • TP <input class="pin" type="number" step="0.01" data-k="tp" value="${val(p.tp)}" placeholder="ว่าง = ไม่มี">`;
+  row.querySelector('.pend-info').innerHTML = `ล็อต ${fmtD(p.volume, 2)} • ราคา <input class="pin" type="number" inputmode="decimal" step="0.01" data-k="entry" value="${val(p.open)}"> • SL <input class="pin" type="number" inputmode="decimal" step="0.01" data-k="sl" value="${val(p.sl)}"> • TP <input class="pin" type="number" inputmode="decimal" step="0.01" data-k="tp" value="${val(p.tp)}" placeholder="ว่าง = ไม่มี">`;
   row.querySelector('.pend-act').innerHTML = '<button class="psave">บันทึก</button> <button class="pcancel-edit">ยกเลิกแก้</button>';
   const done = () => { editingPending = null; if (lastSnap) renderPendings(lastSnap); };
   row.querySelector('.pcancel-edit').addEventListener('click', done);
@@ -653,7 +654,10 @@ function startEditPending(p) {
     if (same(get('entry'), p.open) && same(get('sl'), p.sl) && same(get('tp'), p.tp)) { toast('ไม่มีการเปลี่ยนแปลง — แก้ราคา/SL/TP ก่อนกดบันทึก'); return; }
     btn.disabled = true; btn.textContent = 'กำลังส่ง…';
     try {
-      const r = await window.api.modifyPending({ ticket: p.ticket, entry: get('entry'), sl: get('sl'), tp: get('tp') || 0 });
+      const req = { ticket: p.ticket, entry: get('entry'), sl: get('sl'), tp: get('tp') || 0 };
+      let r = await window.api.modifyPending(req);
+      // เกินเพดาน = กดแก้เองยืนยันได้ (กฎ SL บังคับ/ฝั่งถูก ยังตรวจที่ main เหมือนเดิม)
+      if (!r.ok && r.overCap && confirm(`${r.reason}\n\nยืนยันแก้คำสั่งรอ #${p.ticket} ทั้งที่เกินเพดาน?`)) r = await window.api.modifyPending({ ...req, allowOverCap: true });
       if (r.ok) { toast(`📤 ส่งคำสั่งแก้คำสั่งรอ #${p.ticket} แล้ว (เสี่ยง $${r.metrics.riskUSD}) — รอผลจาก MT5...`, 'ok'); done(); setTimeout(() => window.api.refreshNow(), 1500); return; }
       toast('✗ แก้ไม่ได้: ' + (r.reason || 'ไม่ทราบสาเหตุ'), 'err');
     } catch (e) { toast('✗ แก้ไม่ได้: ' + e.message, 'err'); }
@@ -753,6 +757,10 @@ function openPendingAt(ev) {
   $('p-entry').value = entry;
   $('p-sl').value = Number(sl.toFixed(d));
   $('p-tp').value = Number(tp.toFixed(d));
+  // ตั้งค่าตรงไม่ยิง event → อัปเดตป้าย/ปุ่มลัดราคาเข้าเอง (ราคาจากชาร์ต ไม่ใช่จากปุ่มลัด)
+  pendEntryPick = null;
+  syncPendKind();
+  syncPendChips(true);
   const el = $('pend-card');
   el.classList.add('max'); $('pend-max').textContent = '↘ ย่อ';
   setupPendDrag();
@@ -766,13 +774,13 @@ function renderLogs(snap) {
 }
 
 /* ---------- trading (คำสั่งซื้อขายจริงผ่าน MT5, กันเหนียว 3 ชั้น) ---------- */
-function toast(msg, cls = '') {
+function toast(msg, cls = '', ms = 8000) {
   const box = $('toasts');
   const el = document.createElement('div');
   el.className = 'toast ' + cls;
   el.textContent = msg;
   box.appendChild(el);
-  setTimeout(() => el.remove(), 8000);
+  setTimeout(() => el.remove(), ms);
 }
 
 const fmtD = (n, d) => Number.isFinite(n) ? n.toFixed(d) : '—';
@@ -785,10 +793,17 @@ function money(v, cur = acctCur, signed = false) {
   return !cur || cur === 'USD' ? `${sign}$${n}` : `${sign}${n} ${cur}`;
 }
 
-// SL/TP ของฝั่งที่จะกด: ช่องที่ผู้ใช้กรอก = ใช้ค่านั้น, ช่องว่าง = ATR(M15)×1.8 / ×4.5 จากราคาฝั่งนั้น
+// โหมดช่อง SL/TP ที่ว่าง (ปุ่มลัดใต้ช่อง): null = อัตโนมัติ ATR • ตัวเลข = ระยะจุดจากราคาฝั่งที่กด • 'none' = ไม่ตั้ง TP
+// อยู่ในตัวแปรโมดูล (renderTradePanel วาดใหม่ทุก snapshot) — ค้างจนผู้ใช้เปลี่ยนเอง ไม่บันทึกข้ามการเปิดแอป
+const stopPts = { sl: null, tp: null };
+const STOP_INPUT = { sl: 't-sl', tp: 't-tp' };
+const pointOf = (d) => Math.pow(10, -(d || 2));
+// SL/TP ของฝั่งที่จะกด: ช่องที่ผู้ใช้กรอก = ใช้ค่านั้น, ช่องว่าง = ระยะจุดที่เลือก หรือ ATR(M15)×1.8 / ×4.5 จากราคาฝั่งนั้น
 function stopsFor(side, snap) {
   const meta = (snap && snap.meta) || {};
-  const px = side === 'buy' ? meta.ask : meta.bid;
+  // ราคาฝั่งที่กด = ทิคสด (ตัวเลขบนปุ่ม BUY/SELL) • ไม่มีทิค = ราคาจาก snapshot (ช้ากว่าได้หลายวิ)
+  const lq = snap === lastSnap ? liveQuote() : null;
+  const px = lq ? (side === 'buy' ? lq.ask : lq.bid) : (side === 'buy' ? meta.ask : meta.bid);
   if (!Number.isFinite(px)) return null;
   const m15 = snap.analysis && snap.analysis.tf && snap.analysis.tf.M15;
   let atr = m15 && Number.isFinite(m15.atr) && m15.atr > 0 ? m15.atr : px * 0.0008;
@@ -802,8 +817,16 @@ function stopsFor(side, snap) {
   const capPct = clampPct(snap);
   const maxDist = eqUSD > 0 ? (eqUSD * capPct) / (lot * oz) / 100 : Infinity;
   if (atr * 1.8 > maxDist) atr = maxDist / 1.8;
-  const read = (id, auto) => ($(id).value.trim() !== '' ? Number($(id).value) : Number(auto.toFixed(d)));
-  return { sl: read('t-sl', px - dir * atr * 1.8), tp: read('t-tp', px + dir * atr * 4.5), px };
+  const pt = pointOf(d);
+  const read = (k, auto) => {
+    const el = $(STOP_INPUT[k]);
+    if (el.value.trim() !== '') return Number(el.value);
+    const m = stopPts[k];
+    if (k === 'tp' && m === 'none') return 0; // ไม่ตั้ง TP
+    if (typeof m === 'number' && m > 0) return Number((k === 'sl' ? px - dir * m * pt : px + dir * m * pt).toFixed(d));
+    return Number(auto.toFixed(d));
+  };
+  return { sl: read('sl', px - dir * atr * 1.8), tp: read('tp', px + dir * atr * 4.5), px };
 }
 
 // เพดาน % ตามกลุ่มคำสั่ง (ผู้ใช้ตั้ง 2–10) — ใช้ตรวจ hint ปุ่มกดเอง
@@ -821,14 +844,16 @@ function renderTradePanel(snap) {
   if (acct && acct.currency) acctCur = acct.currency;
   const eqLive = acct && Number.isFinite(acct.equityUSD) && acct.equityUSD > 0 ? acct.equityUSD : null;
   const eqUsed = eqLive || (Number(s.equity) || 0);
-  $('t-bid').textContent = live ? meta.bid.toFixed(d) : '—';
-  $('t-ask').textContent = live ? meta.ask.toFixed(d) : '—';
+  // ตัวเลขบนปุ่ม = ราคาเดียวกับที่ stopsFor/หน้ายืนยันใช้ (ทิคสด ถ้ามี) — snapshot ไม่ทับด้วยราคาที่ช้ากว่า
+  const lq = live && snap === lastSnap ? liveQuote() : null;
+  $('t-bid').textContent = live ? (lq ? lq.bid : meta.bid).toFixed(d) : '—';
+  $('t-ask').textContent = live ? (lq ? lq.ask : meta.ask).toFixed(d) : '—';
   // SL/TP ว่าง = คิดให้อัตโนมัติตามฝั่งที่กด (เดิมเติม SL ฝั่งซื้อไว้ช่องเดียว กด SELL แล้ว SL อยู่ผิดฝั่ง)
   const lotVal = Number($('t-lot').value);
   const riskOf = (side) => {
     if (!live || !Number.isFinite(lotVal)) return null;
     const st = stopsFor(side, snap);
-    return st && Number.isFinite(st.sl) ? (side === 'buy' ? meta.ask - st.sl : st.sl - meta.bid) : null;
+    return st && Number.isFinite(st.sl) ? (side === 'buy' ? st.px - st.sl : st.sl - st.px) : null;
   };
   const riskBuy = riskOf('buy'), riskSell = riskOf('sell');
   const capPct = clampPct(snap);
@@ -836,14 +861,34 @@ function renderTradePanel(snap) {
   const oz = (meta.spec && meta.spec.contractSize) || 100;
   const rb = riskBuy != null && riskBuy > 0 ? (riskBuy * lotVal * oz) : null;
   const rs = riskSell != null && riskSell > 0 ? (riskSell * lotVal * oz) : null;
-  // hint ช่อง SL/TP: แสดงราคาที่ระบบจะตั้งให้จริง ตามฝั่งที่จะกด (กรอกเองได้เสมอ)
-  if (live) {
-    const sB = stopsFor('buy', snap), sS = stopsFor('sell', snap);
-    if (sB && sS) {
-      $('t-sl-hint').innerHTML = `กรอกเองได้ • ซื้อ → <b>${sB.sl.toFixed(d)}</b> ขาย → <b>${sS.sl.toFixed(d)}</b>`;
-      $('t-tp-hint').innerHTML = `ซื้อ → <b>${sB.tp.toFixed(d)}</b> ขาย → <b>${sS.tp.toFixed(d)}</b> • ใส่ 0 = ไม่ตั้ง TP`;
+  // hint ช่อง SL/TP: แสดงราคาที่ระบบจะตั้งให้จริง ตามฝั่งที่จะกด (กรอกเองได้เสมอ) — เขียนที่นี่ที่เดียว (วาดทับทุก snapshot)
+  const sB = live ? stopsFor('buy', snap) : null, sS = live ? stopsFor('sell', snap) : null;
+  const both = !!(sB && sS);
+  const pt = pointOf(d);
+  const stopHint = (k) => {
+    const el = $(STOP_INPUT[k]);
+    const lbl = k === 'sl' ? 'SL' : 'TP';
+    const m = stopPts[k];
+    if (el.value.trim() !== '') {
+      const v = Number(el.value);
+      return k === 'tp' && v === 0 ? 'ใส่ 0 = ไม่ตั้ง TP — ต้องปิดไม้เอง' : `ใช้ราคาที่กรอก${Number.isFinite(v) ? ` <b>${v.toFixed(d)}</b>` : ''}`;
     }
-  }
+    if (k === 'tp' && m === 'none') return 'ไม่ตั้ง TP — ต้องปิดไม้เอง';
+    if (typeof m === 'number') {
+      const usd = Number.isFinite(lotVal) && lotVal > 0 ? m * pt * lotVal * oz : null;
+      return `ระยะ ${m} จุด${usd != null ? ` ($${fmtD(usd, 2)} ที่ล็อตนี้)` : ''}` +
+        (both ? ` • ซื้อ → ${lbl} <b>${sB[k].toFixed(d)}</b> • ขาย → ${lbl} <b>${sS[k].toFixed(d)}</b>` : '');
+    }
+    if (!both) return k === 'sl' ? 'ว่าง = อัตโนมัติ' : 'ว่าง = อัตโนมัติ • ใส่ 0 = ไม่ตั้ง TP';
+    return k === 'sl'
+      ? `กรอกเองได้ • ซื้อ → <b>${sB.sl.toFixed(d)}</b> ขาย → <b>${sS.sl.toFixed(d)}</b>`
+      : `ซื้อ → <b>${sB.tp.toFixed(d)}</b> ขาย → <b>${sS.tp.toFixed(d)}</b> • ใส่ 0 = ไม่ตั้ง TP`;
+  };
+  $('t-sl-hint').innerHTML = stopHint('sl');
+  $('t-tp-hint').innerHTML = stopHint('tp');
+  $('t-spread').textContent = live ? String(Math.round((meta.ask - meta.bid) * Math.pow(10, d))) : '—';
+  syncLotChips(meta);
+  syncPendChips(live);
   // สถานะสวิตช์จากฝั่ง MT5 จริง (EA + AutoTrading)
   const gateTxt = live && !meta.spec
     ? '⚠ EA ใน MT5 รุ่นเก่า ส่งไม้ไม่ได้ — แท็บ MT5 → ติดตั้ง EA แล้วลากลงชาร์ตใหม่'
@@ -867,6 +912,133 @@ function renderTradePanel(snap) {
   }
 }
 
+/* ---------- ปุ่มลัดแผงส่งคำสั่ง: ล็อตด่วน / ระยะ SL-TP (จุด) / คัดลอกราคา / ราคาเข้าคำสั่งรอ ----------
+   ทุกปุ่มแค่ "กรอกช่อง" — ยังต้องกด BUY/SELL/วางคำสั่งรอ + หน้ายืนยันเดิมเสมอ (ไม่ข้าม tryTrade/เกต) */
+const setAttrIf = (el, k, v) => { if (el.getAttribute(k) !== v) el.setAttribute(k, v); };
+// ราคาสด: ทิคล่าสุดที่ paintTick จดไว้ (_v) — ใช้เฉพาะตอน snapshot ยังมี bid/ask (MT5 หลุด = ไม่มีราคา)
+// ทิคเก่าเกิน 30 วิ (เช่น MT5 เพิ่งกลับมาเชื่อม ยังไม่มีทิคใหม่) = ใช้ราคา snapshot แทน
+const TICK_FRESH_MS = 30_000;
+function liveQuote() {
+  const m = (lastSnap && lastSnap.meta) || {};
+  if (!Number.isFinite(m.bid) || !Number.isFinite(m.ask)) return null;
+  const bEl = $('t-bid'), aEl = $('t-ask');
+  const fresh = Number.isFinite(bEl._v) && Number.isFinite(aEl._v) && Date.now() - (bEl._at || 0) < TICK_FRESH_MS;
+  return fresh ? { bid: bEl._v, ask: aEl._v, d: m.digits || 2 } : { bid: m.bid, ask: m.ask, d: m.digits || 2 };
+}
+
+function syncStopChips(k) {
+  const typed = $(STOP_INPUT[k]).value.trim() !== '';
+  const m = stopPts[k];
+  document.querySelectorAll(`.qchip[data-stop="${k}"]`).forEach((c) => {
+    const v = c.dataset.pts;
+    const on = !typed && (v === '' ? m == null : v === 'none' ? m === 'none' : Number(v) === m);
+    setAttrIf(c, 'aria-pressed', on ? 'true' : 'false');
+  });
+}
+document.querySelectorAll('.qchip[data-stop]').forEach((c) => c.addEventListener('click', () => {
+  const k = c.dataset.stop, v = c.dataset.pts;
+  stopPts[k] = v === '' ? null : v === 'none' ? 'none' : Number(v);
+  const el = $(STOP_INPUT[k]);
+  el.value = '';
+  el.placeholder = stopPts[k] == null ? 'อัตโนมัติ' : stopPts[k] === 'none' ? 'ไม่ตั้ง TP' : `ระยะ ${stopPts[k]} จุด`;
+  syncStopChips(k);
+  if (lastSnap) renderTradePanel(lastSnap);
+}));
+// พิมพ์ราคาเอง = เลิกโหมดจุด (ปุ่มลัดดับ) • ลบจนว่าง = กลับเป็นอัตโนมัติ
+for (const k of ['sl', 'tp']) {
+  $(STOP_INPUT[k]).addEventListener('input', () => {
+    if (stopPts[k] != null) { stopPts[k] = null; $(STOP_INPUT[k]).placeholder = 'อัตโนมัติ'; }
+    syncStopChips(k);
+    if (lastSnap) renderTradePanel(lastSnap);
+  });
+}
+
+// ล็อตด่วน: ปุ่มที่ต่ำกว่าล็อตขั้นต่ำของโบรกเกอร์ = aria-disabled (กดแล้วบอกเหตุผล)
+function syncLotChips(meta) {
+  const v = Number($('t-lot').value);
+  const spec = (meta && meta.spec) || {};
+  const vmin = Number(spec.volMin) > 0 ? Number(spec.volMin) : 0.01;
+  document.querySelectorAll('#t-lot-chips .qchip[data-lot]').forEach((c) => {
+    const lot = Number(c.dataset.lot);
+    setAttrIf(c, 'aria-pressed', Math.abs(lot - v) < 1e-9 ? 'true' : 'false');
+    if (lot < vmin - 1e-9) { setAttrIf(c, 'aria-disabled', 'true'); c.title = `ต่ำกว่าล็อตขั้นต่ำของโบรกเกอร์ (${vmin})`; }
+    else if (c.hasAttribute('aria-disabled')) { c.removeAttribute('aria-disabled'); c.title = ''; }
+  });
+}
+document.querySelectorAll('#t-lot-chips .qchip[data-lot]').forEach((c) => c.addEventListener('click', () => {
+  if (c.getAttribute('aria-disabled') === 'true') { toast(c.title || 'ใช้ล็อตนี้ไม่ได้', 'err'); return; }
+  $('t-lot').value = Number(c.dataset.lot).toFixed(2);
+  $('t-lot').dispatchEvent(new Event('input', { bubbles: true }));
+}));
+$('t-lot').addEventListener('input', () => {
+  syncLotChips(lastSnap && lastSnap.meta);
+  if (lastSnap) renderTradePanel(lastSnap);
+});
+
+// คัดลอก Bid/Ask (ปุ่มแยก — ไม่ผูกที่ตัวเลขในปุ่ม BUY/SELL กันกดพลาด)
+document.querySelectorAll('.qcopy[data-copy]').forEach((b) => b.addEventListener('click', () => {
+  const q = liveQuote();
+  const k = b.dataset.copy === 'ask' ? 'ask' : 'bid';
+  if (!q || !Number.isFinite(q[k])) { toast('ต้องเชื่อม MT5 ก่อน — ราคา bid/ask ยังไม่มา', 'err'); return; }
+  copyText(q[k].toFixed(q.d), k === 'ask' ? 'Ask' : 'Bid');
+}));
+$('price').addEventListener('click', () => {
+  const v = Number($('price').textContent);
+  if (!Number.isFinite(v) || v <= 0) return;
+  copyText(v.toFixed(priceDigits()), 'ราคา');
+});
+
+// คำสั่งรอ: ราคาเข้า = ราคาตลาด ± จุด ตามชนิด (BUY LIMIT ใต้ ASK • SELL LIMIT เหนือ BID • BUY STOP เหนือ ASK • SELL STOP ใต้ BID)
+const PEND_DIR = {
+  'buy-limit': { base: 'ask', sign: -1 }, 'sell-limit': { base: 'bid', sign: 1 },
+  'buy-stop': { base: 'ask', sign: 1 }, 'sell-stop': { base: 'bid', sign: -1 },
+};
+let pendEntryPick = null; // { pts, value } ที่ปุ่มลัดกรอกล่าสุด — ช่องยังเท่าค่านี้ = เปลี่ยนชนิดแล้วคิดใหม่ให้
+function syncPendKind() {
+  const dir = PEND_DIR[$('p-kind').value] || PEND_DIR['buy-limit'];
+  const sg = dir.sign < 0 ? '−' : '+';
+  $('p-entry-base').textContent = `ราคาเข้า = ${dir.base.toUpperCase()}`;
+  document.querySelectorAll('#p-entry-chips .qchip[data-pts]').forEach((c) => {
+    c.textContent = `${sg}${c.dataset.pts}`;
+    c.title = `ราคาเข้า = ${dir.base.toUpperCase()} ${sg} ${c.dataset.pts} จุด (อิงราคาตอนกด)`;
+  });
+}
+function syncPendChips(live) {
+  document.querySelectorAll('#p-entry-chips .qchip[data-pts]').forEach((c) => {
+    if (live) { if (c.hasAttribute('aria-disabled')) c.removeAttribute('aria-disabled'); }
+    else setAttrIf(c, 'aria-disabled', 'true');
+    setAttrIf(c, 'aria-pressed', pendEntryPick && Number(c.dataset.pts) === pendEntryPick.pts ? 'true' : 'false');
+  });
+}
+function fillPendEntry(pts) {
+  const q = liveQuote();
+  const dir = PEND_DIR[$('p-kind').value] || PEND_DIR['buy-limit'];
+  if (!q || !Number.isFinite(q[dir.base])) { toast('ต้องเชื่อม MT5 ก่อน', 'err'); return false; }
+  const base = q[dir.base];
+  const value = (base + dir.sign * pts * pointOf(q.d)).toFixed(q.d);
+  pendEntryPick = { pts, value };
+  $('p-entry').value = value;
+  $('p-entry').dispatchEvent(new Event('input', { bubbles: true }));
+  syncPendChips(true);
+  $('pend-hint').innerHTML = `ราคาเข้า <b>${value}</b> = ${dir.base.toUpperCase()} ${base.toFixed(q.d)} ${dir.sign < 0 ? '−' : '+'} ${pts} จุด • อิงราคาตอนกด`;
+  return true;
+}
+document.querySelectorAll('#p-entry-chips .qchip[data-pts]').forEach((c) => c.addEventListener('click', () => {
+  if (c.getAttribute('aria-disabled') === 'true') { toast('ต้องเชื่อม MT5 ก่อน', 'err'); return; }
+  fillPendEntry(Number(c.dataset.pts));
+}));
+$('p-kind').addEventListener('change', () => {
+  syncPendKind();
+  // ช่องราคาเข้ายังเป็นค่าจากปุ่มลัด = คิดใหม่ตามทิศของชนิดใหม่ (ระยะจุดเดิม)
+  if (pendEntryPick && $('p-entry').value === pendEntryPick.value && liveQuote()) fillPendEntry(pendEntryPick.pts);
+});
+$('p-entry').addEventListener('input', () => {
+  if (!pendEntryPick || $('p-entry').value === pendEntryPick.value) return;
+  pendEntryPick = null;
+  syncPendChips(!!liveQuote());
+});
+syncPendKind();
+
 // ขาดทุนลอยตัวรวมเกินเท่านี้ (% ของทุน) = ปุ่มปิดทุกไม้เรืองเตือน "ควรพิจารณาหยุด" (ไม่ปิดเอง — ผู้ใช้ตัดสินใจ)
 const STOP_HINT_PCT = 2;
 function renderCloseAll(meta, list) {
@@ -885,6 +1057,99 @@ function renderCloseAll(meta, list) {
     (alert ? ` — <b class="down">⚠ ขาดทุนเกิน ${STOP_HINT_PCT}% ของทุน: ถึงจุดควรพิจารณาหยุด</b>` : '');
 }
 
+/* ---------- กันทุน (SL → ราคาเข้า) / ปิดครึ่ง ต่อไม้ ---------- */
+const BE_MIN_PTS = 100; // ต้องกำไรอย่างน้อยเท่านี้ (จุด) ก่อนกันทุนได้ — กัน SL ชิดราคาจนโดนเด้งออกทันที
+// เทียบเวอร์ชัน EA (ตรรกะเดียวกับ eaBelow ใน src/main/main.js) — ว่าง/อ่านไม่ได้ = ถือว่าเก่ากว่า
+const eaBelow = (have, need) => {
+  const a = String(have || '').split('.').map(Number), b = String(need).split('.').map(Number);
+  if (!a.length || a.some((x) => !Number.isFinite(x))) return true;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) { const x = a[i] || 0, y = b[i] || 0; if (x !== y) return x < y; }
+  return false;
+};
+// กันกดซ้ำต่อไม้ (เหมือน closingTickets: หมดอายุ 20 วิ) — ปลดเร็วเมื่อ snapshot เห็นผลแล้ว (SL/ล็อตเปลี่ยน) หรือ MT5 ปฏิเสธ
+const rowBusy = new Map(); // ticket → { at, kind: 'be'|'half', sl, vol }
+function rowBusyOf(p) {
+  const t = Number(p.ticket), b = rowBusy.get(t);
+  if (!b) return null;
+  const landed = b.kind === 'half' ? Math.abs(Number(p.volume) - b.vol) > 1e-9 : Math.abs((Number(p.sl) || 0) - b.sl) > 1e-9;
+  if (Date.now() - b.at >= 20_000 || landed) { rowBusy.delete(t); return null; }
+  return b;
+}
+function beState(p, meta) {
+  const d = meta.digits || 2, pt = pointOf(d);
+  const open = Number(p.open), sl = Number(p.sl) || 0, buy = p.type === 'buy';
+  if (buy ? (sl > 0 && sl >= open - pt / 2) : (sl > 0 && sl <= open + pt / 2)) return { done: true, reason: `กันทุนแล้ว — SL ${fmtD(sl, d)} อยู่ที่ราคาเข้าหรือดีกว่า` };
+  const q = liveQuote() || meta;
+  const mkt = Number(buy ? q.bid : q.ask);
+  if (!Number.isFinite(mkt) || mkt <= 0 || !Number.isFinite(open) || open <= 0) return { reason: 'ยังไม่มีราคาสด — ต้องเชื่อม MT5 ก่อน' };
+  const gain = Math.floor((buy ? mkt - open : open - mkt) / pt + 1e-6);
+  if (gain < BE_MIN_PTS) return { reason: `ต้องกำไรอย่างน้อย ${BE_MIN_PTS} จุดก่อนกันทุน (ตอนนี้ ${gain >= 0 ? '+' : ''}${gain} จุด)`, gain, mkt };
+  return { ok: true, gain, mkt, side: buy ? 'BID' : 'ASK', title: `เลื่อน SL ไปที่ราคาเข้า ${fmtD(open, d)} (ตอนนี้ +${gain} จุด)` };
+}
+function halfState(p, meta) {
+  const spec = meta.spec || {};
+  const vmin = Number(spec.volMin) > 0 ? Number(spec.volMin) : 0.01;
+  const vstep = Number(spec.volStep) > 0 ? Number(spec.volStep) : 0.01;
+  const vol = Number(p.volume);
+  const dec = Math.max(2, (String(vstep).split('.')[1] || '').length);
+  const half = Number((Math.floor(vol / 2 / vstep + 1e-9) * vstep).toFixed(dec)); // ปัดลงตามขั้นล็อต
+  const rest = Number((vol - half).toFixed(dec));
+  if (!(half >= vmin - 1e-9) || !(rest >= vmin - 1e-9)) return { reason: `ล็อต ${fmtD(vol, 2)} แบ่งครึ่งไม่ได้ (ขั้นต่ำ ${vmin} ล็อต)` };
+  if (typeof window.api.closePartial !== 'function') return { reason: 'แอปรุ่นนี้ยังไม่รองรับปิดครึ่ง — อัปเดตแอปก่อน' };
+  if (eaBelow(meta.ea, '1.9')) return { reason: `ต้องใช้ EA v1.9 ขึ้นไป (ตอนนี้ v${meta.ea || '?'}) — แท็บ MT5 → ติดตั้ง EA ให้ฉันเอง แล้วลากลงชาร์ตใหม่` };
+  return { ok: true, half, rest, dec, title: `ปิด ${fmtD(half, 2)} ล็อต เหลือ ${fmtD(rest, 2)} ล็อต` };
+}
+// ใช้ไม้/ราคาล่าสุดตอนกด (ตารางอาจวาดไว้ก่อนหน้า ~1 snapshot)
+const freshPos = (p) => {
+  const mm = (lastSnap && lastSnap.meta) || {};
+  return { p: (mm.positions || []).find((x) => Number(x.ticket) === Number(p.ticket)) || p, m: mm };
+};
+async function breakEvenNow(p0, m0) {
+  const { p, m } = freshPos(p0);
+  const meta = m.digits ? m : m0;
+  const st = beState(p, meta);
+  if (!st.ok) { toast(st.reason, st.done ? 'ok' : 'err'); return; }
+  const d = meta.digits || 2, t = Number(p.ticket), open = Number(p.open);
+  const oldSl = Number(p.sl) ? fmtD(Number(p.sl), d) : 'ไม่มี';
+  if (!confirm(`กันทุนไม้ #${t}?\n${String(p.type).toUpperCase()} ${fmtD(Number(p.volume), 2)} ล็อต @ ${fmtD(open, d)}\nSL: ${oldSl} → ${fmtD(open, d)} (ราคาเข้า)\nตอนนี้ ${st.side} ${fmtD(st.mkt, d)} (+${st.gain} จุด)\nถ้าราคากลับมาแตะ = ปิดเสมอตัว (ไม่รวมคอมมิชชัน/สว็อป)`)) return;
+  rowBusy.set(t, { at: Date.now(), kind: 'be', sl: Number(p.sl) || 0, vol: Number(p.volume) });
+  if (lastSnap) renderPositions(lastSnap.meta);
+  try {
+    const r = await window.api.modifyPosition({ ticket: p.ticket, sl: open, tp: Number(p.tp) || 0 });
+    if (r.ok) { toast(`📤 ส่งคำสั่งกันทุนไม้ #${t} แล้ว (SL → ${fmtD(open, d)}) — รอผลจาก MT5...`, 'ok'); setTimeout(() => window.api.refreshNow(), 1200); return; }
+    toast('✗ กันทุนไม่ได้: ' + (r.reason || 'ไม่ทราบสาเหตุ'), 'err');
+  } catch (e) { toast('✗ กันทุนไม่ได้: ' + e.message, 'err'); }
+  rowBusy.delete(t);
+  if (lastSnap) renderPositions(lastSnap.meta);
+}
+async function closeHalfNow(p0, m0) {
+  const { p, m } = freshPos(p0);
+  const meta = m.digits ? m : m0;
+  const st = halfState(p, meta);
+  if (!st.ok) { toast(st.reason, 'err'); return; }
+  const t = Number(p.ticket);
+  const pl = Number.isFinite(Number(p.profit)) ? money(Number(p.profit), acctCur, true) : '—';
+  if (!confirm(`ปิดครึ่งไม้ #${t} ที่ราคาตลาดตอนนี้?\n${String(p.type).toUpperCase()} ${fmtD(Number(p.volume), 2)} ล็อต @ ${fmtD(Number(p.open), meta.digits || 2)} • ลอยตัว ${pl}\nปิด ${fmtD(st.half, 2)} ล็อต → เหลือ ${fmtD(st.rest, 2)} ล็อต (SL/TP เดิม)`)) return;
+  rowBusy.set(t, { at: Date.now(), kind: 'half', sl: Number(p.sl) || 0, vol: Number(p.volume) });
+  if (lastSnap) renderPositions(lastSnap.meta);
+  try {
+    const r = await window.api.closePartial({ ticket: t, volume: st.half });
+    if (r && r.ok) { toast(`📤 ส่งคำสั่งปิดครึ่งไม้ #${t} (${fmtD(st.half, 2)} ล็อต) แล้ว — รอผลจาก MT5...`, 'ok'); setTimeout(() => window.api.refreshNow(), 1200); return; }
+    toast('✗ ปิดไม่ได้: ' + ((r && r.reason) || 'ไม่ทราบสาเหตุ'), 'err');
+  } catch (e) { toast('✗ ปิดไม่ได้: ' + e.message, 'err'); }
+  rowBusy.delete(t);
+  if (lastSnap) renderPositions(lastSnap.meta);
+}
+// คลิกช่องราคาเข้า/SL/TP ในตาราง = คัดลอก (ผูกครั้งเดียว — ตารางวาดใหม่ทุก snapshot) • ข้ามปุ่ม/ช่องกรอก/แถวที่กำลังแก้
+$('positions').addEventListener('click', (e) => {
+  if (e.target.closest('input, button')) return;
+  const cell = e.target.closest('td.copyable[data-copy]');
+  if (!cell) return;
+  const tr = cell.closest('tr');
+  if (tr && editingTicket != null && Number(tr.dataset.row) === editingTicket) return;
+  copyText(cell.dataset.copy, cell.dataset.label || '');
+});
+
 // แก้ SL/TP: ระหว่างแก้ไม่วาดตารางใหม่ (กันช่องกรอกถูกล้างทุกรอบ snapshot)
 let editingTicket = null;
 function renderPositions(meta) {
@@ -894,15 +1159,52 @@ function renderPositions(meta) {
   renderAutoClose(meta, list);
   if (editingTicket != null && list.some((p) => Number(p.ticket) === editingTicket)) return;
   editingTicket = null;
-  if (!list.length) { box.innerHTML = '<div class="empty">ไม่มีออร์เดอร์ที่เปิดอยู่ (XAUUSD)</div>'; return; }
+  if (!list.length) { rowBusy.clear(); box.innerHTML = '<div class="empty">ไม่มีออร์เดอร์ที่เปิดอยู่ (XAUUSD)</div>'; return; }
+  for (const t of rowBusy.keys()) if (!list.some((p) => Number(p.ticket) === t)) rowBusy.delete(t);
+  const m = meta || {};
+  const d = m.digits || 2;
+  // ปุ่มกันทุน/ปิดครึ่ง: ใช้ไม่ได้ = aria-disabled + data-why (กดแล้วบอกเหตุผล) • กำลังส่ง = disabled ทั้งแถว
+  const actBtns = (p, lock, busy) => {
+    const tk = esc(p.ticket);
+    const be = beState(p, m), half = halfState(p, m);
+    const beTxt = busy && busy.kind === 'be' ? 'กำลังส่ง…' : be.done ? 'กันทุนแล้ว' : 'กันทุน';
+    const hfTxt = busy && busy.kind === 'half' ? 'กำลังส่ง…' : 'ปิดครึ่ง';
+    const attrs = (st, kind) => lock
+      ? ` disabled${busy && busy.kind === kind ? ' aria-busy="true"' : ''}`
+      : st.ok ? ` title="${esc(st.title || '')}"` : ` aria-disabled="true" title="${esc(st.reason)}" data-why="${esc(st.reason)}"`;
+    return `<button class="pact pbe${be.done ? ' is-done' : ''}" data-ticket="${tk}"${attrs(be, 'be')}>${beTxt}</button>` +
+      `<button class="pact phalf" data-ticket="${tk}"${attrs(half, 'half')}>${hfTxt}</button>`;
+  };
+  // ช่องราคาเข้า/SL/TP คลิกคัดลอกได้ (ตัวฟังผูกที่ #positions ครั้งเดียว — ดูด้านล่าง)
+  const cp = (cls, v, label) => (Number(v)
+    ? `class="${cls} copyable" data-copy="${Number(v).toFixed(d)}" data-label="${label}" title="คลิกเพื่อคัดลอก"`
+    : `class="${cls}"`);
   box.innerHTML = '<table><tr><th>ฝั่ง</th><th>ล็อต</th><th>เข้า</th><th>SL</th><th>TP</th><th>กำไร/ขาดทุน</th><th></th></tr>' +
-    list.map((p) => `<tr data-row="${esc(p.ticket)}">
+    list.map((p) => {
+      const busy = rowBusyOf(p);
+      const lock = isClosing(p.ticket) || !!busy;
+      return `<tr data-row="${esc(p.ticket)}">
       <td class="ptype ${p.type}">${p.type === 'buy' ? 'ซื้อ' : 'ขาย'}</td>
-      <td>${Number(p.volume).toFixed(2)}</td><td>${fmtD(p.open, 2)}</td><td class="c-sl">${Number(p.sl) ? fmtD(p.sl, 2) : '—'}</td><td class="c-tp">${Number(p.tp) ? fmtD(p.tp, 2) : '—'}</td>
+      <td>${Number(p.volume).toFixed(2)}</td><td ${cp('c-open', p.open, 'ราคาเข้า')}>${fmtD(p.open, 2)}</td><td ${cp('c-sl', p.sl, 'SL')}>${Number(p.sl) ? fmtD(p.sl, 2) : '—'}</td><td ${cp('c-tp', p.tp, 'TP')}>${Number(p.tp) ? fmtD(p.tp, 2) : '—'}</td>
       <td class="${p.profit >= 0 ? 'up' : 'down'}">${money(p.profit, acctCur, true)}</td>
-      <td class="c-act"><button class="pclose pedit" data-ticket="${esc(p.ticket)}"${isClosing(p.ticket) ? ' disabled' : ''}>แก้</button> <button class="pclose" data-ticket="${esc(p.ticket)}"${isClosing(p.ticket) ? ' disabled' : ''}>${isClosing(p.ticket) ? 'กำลังปิด…' : 'ปิด'}</button></td>
-    </tr>`).join('');
-  box.querySelectorAll('.pclose:not(.pedit)').forEach((b) => b.addEventListener('click', () => closeNow([Number(b.dataset.ticket)])));
+      <td class="c-act"><div class="pacts">${actBtns(p, lock, busy)}<button class="pclose pedit" data-ticket="${esc(p.ticket)}"${lock ? ' disabled' : ''}>แก้</button> <button class="pclose" data-ticket="${esc(p.ticket)}"${lock ? ' disabled' : ''}>${isClosing(p.ticket) ? 'กำลังปิด…' : 'ปิด'}</button></div></td>
+    </tr>`;
+    }).join('');
+  // กันทุน / ปิดครึ่ง — aria-disabled = แจ้งเหตุผล ไม่ส่งอะไร
+  box.querySelectorAll('.pact').forEach((b) => b.addEventListener('click', () => {
+    if (b.getAttribute('aria-disabled') === 'true') { toast(b.dataset.why || b.title || 'ใช้ไม่ได้ตอนนี้', b.classList.contains('is-done') ? 'ok' : 'err'); return; }
+    const p = list.find((x) => Number(x.ticket) === Number(b.dataset.ticket));
+    if (!p) return;
+    if (b.classList.contains('pbe')) breakEvenNow(p, m); else closeHalfNow(p, m);
+  }));
+  // ปิดรายไม้: ยืนยันก่อนส่ง (ปุ่มเล็ก กดพลาดง่ายบนมือถือ)
+  box.querySelectorAll('.pclose:not(.pedit)').forEach((b) => b.addEventListener('click', () => {
+    const p = list.find((x) => Number(x.ticket) === Number(b.dataset.ticket));
+    const pl = p && Number.isFinite(Number(p.profit)) ? ` • ลอยตัว ${money(Number(p.profit), acctCur)}` : '';
+    const what = p ? `${String(p.type).toUpperCase()} ${fmtD(Number(p.volume), 2)} ล็อต @ ${fmtD(Number(p.open), 2)}${pl}` : '';
+    if (!confirm(`ปิดไม้ #${b.dataset.ticket} ที่ราคาตลาดตอนนี้?\n${what}`)) return;
+    closeNow([Number(b.dataset.ticket)]);
+  }));
   box.querySelectorAll('.pedit').forEach((b) => b.addEventListener('click', () => startEdit(list.find((p) => Number(p.ticket) === Number(b.dataset.ticket)))));
 }
 
@@ -912,8 +1214,8 @@ function startEdit(p) {
   if (!row) return;
   editingTicket = Number(p.ticket);
   const val = (n) => (Number(n) ? Number(n).toFixed(2) : '');
-  row.querySelector('.c-sl').innerHTML = `<input class="pin" type="number" step="0.01" data-k="sl" value="${val(p.sl)}" placeholder="SL">`;
-  row.querySelector('.c-tp').innerHTML = `<input class="pin" type="number" step="0.01" data-k="tp" value="${val(p.tp)}" placeholder="TP (ว่าง = ไม่มี)">`;
+  row.querySelector('.c-sl').innerHTML = `<input class="pin" type="number" inputmode="decimal" step="0.01" data-k="sl" value="${val(p.sl)}" placeholder="SL">`;
+  row.querySelector('.c-tp').innerHTML = `<input class="pin" type="number" inputmode="decimal" step="0.01" data-k="tp" value="${val(p.tp)}" placeholder="TP (ว่าง = ไม่มี)">`;
   row.querySelector('.c-act').innerHTML = '<button class="pclose psave">บันทึก</button> <button class="pclose pcancel">ยกเลิก</button>';
   const done = () => { editingTicket = null; if (lastSnap) renderPositions(lastSnap.meta); };
   row.querySelector('.pcancel').addEventListener('click', done);
@@ -925,7 +1227,8 @@ function startEdit(p) {
     if (same(sl, p.sl) && same(tp, p.tp)) { toast('ไม่มีการเปลี่ยนแปลง — แก้ SL/TP ก่อนกดบันทึก'); return; }
     btn.disabled = true; btn.textContent = 'กำลังส่ง…';
     try {
-      const r = await window.api.modifyPosition({ ticket: p.ticket, sl, tp });
+      let r = await window.api.modifyPosition({ ticket: p.ticket, sl, tp });
+      if (!r.ok && r.overCap && confirm(`${r.reason}\n\nยืนยันแก้ SL/TP ไม้ #${p.ticket} ทั้งที่เกินเพดาน?`)) r = await window.api.modifyPosition({ ticket: p.ticket, sl, tp, allowOverCap: true });
       if (r.ok) { toast(`📤 ส่งคำสั่งแก้ไม้ #${p.ticket} แล้ว (เสี่ยง $${r.metrics.riskUSD}) — รอผลจาก MT5...`, 'ok'); done(); return; }
       toast('✗ แก้ไม่ได้: ' + (r.reason || 'ไม่ทราบสาเหตุ'), 'err');
     } catch (e) { toast('✗ แก้ไม่ได้: ' + e.message, 'err'); }
@@ -1029,7 +1332,9 @@ function openConfirm(req) {
   const v = lastSnap && lastSnap.council ? lastSnap.council : null;
   const digits = meta.digits || 2;
   const buy = req.action === 'buy';
-  const entry = buy ? meta.ask : meta.bid;
+  // ราคาเดียวกับที่ใช้คิด SL/TP ตอนกด (req.px จาก stopsFor) — ล็อกไว้ตั้งแต่เปิดหน้านี้ ตัวเลขที่เห็น = ที่ส่ง
+  const lq = liveQuote();
+  const entry = Number.isFinite(req.px) ? req.px : lq ? (buy ? lq.ask : lq.bid) : (buy ? meta.ask : meta.bid);
   const sl = Number(req.sl), tp = Number(req.tp) || 0, lot = Number(req.lot);
   const slDist = Math.abs(entry - sl);
   const oz = (meta.spec && meta.spec.contractSize) || 100;
@@ -1115,14 +1420,20 @@ function renderAutoClose(meta, list) {
   $('ac-cur').textContent = acctCur || '';
   $('ac-loss-cur').textContent = acctCur || '';
   const digits = (meta && meta.digits) || 2;
-  const pxOf = (v) => (v > 0 ? `= ราคา ${(v * Math.pow(10, -digits)).toFixed(digits)}` : '');
+  // จุด → เงินสกุลบัญชี (เช่น THB): จุด × ขนาดจุด × 100 oz × ล็อต × อัตราแลก (equity ÷ equityUSD)
+  // ล็อต: ไม้ที่เปิดอยู่ (ถ้าขนาดเท่ากันทุกไม้) ไม่งั้นใช้ช่องล็อตของการ์ดส่งคำสั่ง
+  const acct = (meta && meta.account) || null;
+  const fx = acct && acct.equityUSD > 0 && acct.equity > 0 ? acct.equity / acct.equityUSD : 1;
+  const lots = [...new Set((list || []).map((p) => Number(p.volume)).filter((v) => v > 0))];
+  const lotRef = lots.length === 1 ? lots[0] : (Number($('t-lot').value) || 0.01);
+  const pxOf = (v) => (v > 0 ? `≈ ${fmtD(v * Math.pow(10, -digits) * ((appSettings && Number(appSettings.ozPerLot)) || 100) * lotRef * fx, 2)} ${acctCur || 'USD'} (ล็อต ${lotRef})` : '');
   const val = (id) => Number($(id).value);
   $('ac-pts-px').textContent = pxOf(val('ac-pts-v'));
   $('ac-allpts-px').textContent = pxOf(val('ac-allpts-v'));
   // สรุปบนหัว: เปิดอยู่กี่ตัว
   const ids = ['ac-all', 'ac-allpts', 'ac-pts', 'ac-loss'];
   const nOn = ids.filter((id) => $(id).checked).length;
-  $('ac-active').textContent = nOn ? `เปิดอยู่ ${nOn}/4` : 'ปิดทั้งหมด';
+  $('ac-active').textContent = nOn ? `เปิดอยู่ ${nOn}/4` : 'ยังไม่เปิดใช้';
   $('ac-active').classList.toggle('on', nOn > 0);
   // ความคืบหน้าถึงเป้า (แถบ + ตัวเลขตอนนี้/เป้า)
   const bar = (id, now, target, fmt) => {
@@ -1204,20 +1515,34 @@ function tryTrade(side) {
   const buy = side === 'buy';
   if (buy ? sl >= st.px : sl <= st.px) { toast(`SL ต้องอยู่${buy ? 'ต่ำกว่า' : 'สูงกว่า'}ราคา ${buy ? 'ASK' : 'BID'} สำหรับไม้${buy ? 'ซื้อ' : 'ขาย'} — ล้างช่อง SL เพื่อให้คิดอัตโนมัติ`, 'err'); return; }
   if (tp > 0 && (buy ? tp <= st.px : tp >= st.px)) { toast(`TP ต้องอยู่${buy ? 'สูงกว่า' : 'ต่ำกว่า'}ราคา สำหรับไม้${buy ? 'ซื้อ' : 'ขาย'} — ล้างช่อง TP เพื่อให้คิดอัตโนมัติ`, 'err'); return; }
-  openConfirm({ action: side, side, lot, sl, tp: Number.isFinite(tp) ? tp : 0 });
+  openConfirm({ action: side, side, lot, sl, tp: Number.isFinite(tp) ? tp : 0, px: st.px });
 }
 
+// รหัสข้อผิดพลาดจาก EA (msg=...) → ข้อความไทย • รหัสอื่นแสดงตามเดิม
+const EA_ERR_TH = {
+  HEDGING_ONLY: 'ปิดครึ่งได้เฉพาะบัญชีแบบ hedging — บัญชีนี้เป็น netting',
+  REMAIN_BELOW_MIN: 'ล็อตที่เหลือต่ำกว่าขั้นต่ำโบรก',
+  LOT_BELOW_MIN: 'ล็อตที่จะปิดต่ำกว่าขั้นต่ำโบรก',
+  POSITION_NOT_FOUND: 'ไม่พบไม้นี้ใน MT5 แล้ว',
+};
+const eaErrTh = (msg) => EA_ERR_TH[String(msg || '').trim()] || msg;
 window.api.onOrderResult((r) => {
   const isClose = r.cmd && r.cmd.action === 'close';
+  const isPart = r.cmd && r.cmd.action === 'closepart';
   const isModify = r.cmd && (r.cmd.action === 'modify' || r.cmd.action === 'pmodify');
+  const pxTxt = Number.isFinite(r.price) && r.price ? ' @ ' + r.price.toFixed(2) : '';
   if (isClose && r.status !== 'ok') { closingTickets.delete(Number(r.cmd.ticket)); if (lastSnap) renderPositions(lastSnap.meta); }
+  // กันทุน/ปิดครึ่งที่ MT5 ไม่รับ = ปลดล็อกปุ่มแถวนั้นทันที (สำเร็จ = รอ snapshot เห็นผลค่อยปลด กันกดซ้ำด้วยล็อตเก่า)
+  if (r.cmd && r.status !== 'ok' && rowBusy.delete(Number(r.cmd.ticket)) && lastSnap) renderPositions(lastSnap.meta);
   toast(r.status === 'ok'
     ? isModify ? `✅ แก้${r.cmd.action === 'pmodify' ? 'คำสั่งรอ' : ' SL/TP ไม้'} #${r.cmd.ticket} แล้ว`
-    : isClose ? `✅ ปิดไม้ #${r.ticket} แล้ว${Number.isFinite(r.price) && r.price ? ' @ ' + r.price.toFixed(2) : ''}`
-    : `✅ MT5 รับไม้แล้ว — ticket ${r.ticket}${Number.isFinite(r.price) && r.price ? ' @ ' + r.price.toFixed(2) : ''}`
+    : isClose ? `✅ ปิดไม้ #${r.ticket} แล้ว${pxTxt}`
+    : isPart ? `✂️ ปิดบางส่วนไม้ #${r.cmd.ticket} แล้ว (${fmtD(Number(r.cmd.lot), 2)} ล็อต${pxTxt})`
+    : `✅ MT5 รับไม้แล้ว — ticket ${r.ticket}${pxTxt}`
     : r.status === 'stale'
     ? `⏳ ${r.msg}`
-    : `❌ MT5 ปฏิเสธ: ${r.msg} (retcode ${r.retcode})`, r.status === 'ok' ? 'ok' : r.status === 'stale' ? '' : 'err');
+    : isPart ? `❌ ปิดครึ่งไม้ #${r.cmd.ticket} ไม่ได้: ${eaErrTh(r.msg)} (retcode ${r.retcode})`
+    : `❌ MT5 ปฏิเสธ: ${eaErrTh(r.msg)} (retcode ${r.retcode})`, r.status === 'ok' ? 'ok' : r.status === 'stale' ? '' : 'err');
   if (r.status === 'ok') setTimeout(() => window.api.refreshNow(), 800);
 });
 
@@ -1248,7 +1573,10 @@ function paintTick(q) {
   const oldBid = bidEl._v, oldAsk = askEl._v;
   bidEl.textContent = q.bid.toFixed(d);
   askEl.textContent = q.ask.toFixed(d);
-  bidEl._v = q.bid; askEl._v = q.ask;
+  bidEl._v = q.bid; askEl._v = q.ask; bidEl._at = Date.now();
+  // สเปรดเป็นจุด (ASK − BID) / จุด = 10^-digits — เขียนเฉพาะเมื่อค่าเปลี่ยน
+  const spEl = $('t-spread');
+  if (spEl && Number.isFinite(q.ask)) { const sp = String(Math.round((q.ask - q.bid) * Math.pow(10, d))); if (spEl.textContent !== sp) spEl.textContent = sp; }
   // ตัวเลขกระพริบตามทิศ (เหมือน MT5) — 1 timer ต่อช่อง ทิคใหม่ล้าง timer เก่า
   const blink = (el, now, before) => {
     if (!Number.isFinite(before) || now === before) return;
@@ -1436,14 +1764,16 @@ function zoneHistoryHtml(snap) {
 document.addEventListener('click', (e) => { if (e.target.closest('[data-open-history]')) window.api.openHistoryWindow(); });
 
 /* ---------- แผงระยะไกล (เว็บควบคุมเต็ม) — ตั้งค่าได้เฉพาะในแอปบนเครื่อง ---------- */
-async function copyText(u) {
+// label ไม่ส่ง = คัดลอกลิงก์ (ข้อความเดิม) • ส่ง label (เช่น 'Bid', 'SL') = คัดลอกราคา ทอสต์สั้นลง
+async function copyText(u, label) {
   try { await navigator.clipboard.writeText(u); }
   catch {
     const t = document.createElement('textarea');
     t.value = u; t.style.position = 'fixed'; t.style.opacity = '0';
-    document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();
+    document.body.appendChild(t); t.select(); t.setSelectionRange(0, 99999); document.execCommand('copy'); t.remove();
   }
-  toast('📋 คัดลอกลิงก์แล้ว: ' + u, 'ok');
+  if (label === undefined) toast('📋 คัดลอกลิงก์แล้ว: ' + u, 'ok');
+  else toast(`📋 คัดลอกแล้ว: ${label ? label + ' ' : ''}${u}`, 'ok', 2500);
 }
 // แถวลิงก์: ชื่อช่องทาง + ที่อยู่ + ปุ่มคัดลอก/เปิด
 const linkRow = (kind, u, main = false) => `<div class="wc-link${main ? ' main' : ''}">
@@ -1897,8 +2227,70 @@ async function loadSettingsToForm() {
   $('bridge-path').textContent = s.mt5BridgePath ? 'ไฟล์: ' + s.mt5BridgePath : '';
   updateCalcExample(s);
   appSettings = s;
+  rcFromPct(); // เครื่องคิดเลข: ล็อตคงที่ → เติมจุด SL จาก % ที่โหลดมา (ไม่แก้ % ตอนโหลด)
   return s;
 }
+
+/* ---------- เครื่องคิดเลขความเสี่ยง: ล็อต / จุด SL / จุด TP ↔ ความเสี่ยงต่อไม้ % ----------
+   คำนวณบนหน้าอย่างเดียว ไม่แตะลอจิกส่งคำสั่ง — ตอนบันทึกส่งแค่ riskPct ตามเดิม
+   1 จุด = 10^-digits (แบบเดียวกับปิดอัตโนมัติ: XAUUSD digits 2 → 0.01)
+   $ = จุด × ขนาดจุด × oz/ล็อต × ล็อต • % = $ ÷ ทุน × 100 */
+const RC_KEY = 'gs.riskCalc', RC_MIN = 0.05, RC_MAX = 10;
+const rcNum = (id) => { const v = Number($(id).value); return Number.isFinite(v) && v > 0 ? v : 0; };
+function rcEnv() {
+  const m = (lastSnap && lastSnap.meta) || {};
+  const point = Math.pow(10, -(Number(m.digits) || 2));
+  const oz = Number(appSettings && appSettings.ozPerLot) || 100; // OZ_PER_LOT (src/engine/risk.js)
+  return { point, oz, equity: rcNum('s-equity') };
+}
+function rcInfo(note) {
+  const { point, oz, equity } = rcEnv();
+  const lot = rcNum('rc-lot'), sl = rcNum('rc-sl'), tp = rcNum('rc-tp');
+  const perPt = point * oz * lot; // $ ต่อ 1 จุด
+  const parts = [];
+  if (!(equity > 0)) parts.push('ใส่ทุนก่อน');
+  if (!(lot > 0)) parts.push('ใส่ล็อตเพื่อคำนวณ');
+  else {
+    if (sl > 0) parts.push(`SL $${r2(sl * perPt, 2)}`);
+    if (tp > 0) parts.push(`TP $${r2(tp * perPt, 2)}`);
+    if (sl > 0 && tp > 0) parts.push(`RR 1:${r2(tp / sl, 2)}`);
+    if (!parts.length) parts.push(`1 จุด = $${r2(perPt, 2)}`);
+  }
+  $('rc-out').textContent = (note ? note + ' • ' : '') + parts.join(' • ');
+  $('rc-out').classList.toggle('down', !!note);
+}
+// แก้ล็อต / จุด SL → เขียน % ใหม่ (ปัด 2 ตำแหน่ง, บีบในกรอบ 0.05–10) • แก้ทุนไม่แตะ % (ใช้ rcFromPct)
+function rcFromLotSl() {
+  const { point, oz, equity } = rcEnv();
+  const lot = rcNum('rc-lot'), sl = rcNum('rc-sl');
+  let note = '';
+  if (lot > 0 && sl > 0 && equity > 0) {
+    const raw = Number(((sl * point * oz * lot) / equity * 100).toFixed(2));
+    const pct = Math.min(RC_MAX, Math.max(RC_MIN, raw));
+    $('s-riskpct').value = pct;
+    if (pct !== raw) note = `คิดได้ ${r2(raw, 2)}% ${raw > RC_MAX ? 'เกินเพดาน' : 'ต่ำกว่าขั้นต่ำ'} — ตั้งเป็น ${pct}%`;
+  }
+  rcInfo(note);
+}
+// แก้ % → คำนวณจุด SL ใหม่ (ล็อตคงที่, ปัดเป็นจุดเต็ม)
+function rcFromPct() {
+  const { point, oz, equity } = rcEnv();
+  const lot = rcNum('rc-lot'), pct = rcNum('s-riskpct');
+  if (lot > 0 && pct > 0 && equity > 0) $('rc-sl').value = Math.max(1, Math.round((equity * pct / 100) / (point * oz * lot)));
+  rcInfo('');
+}
+const rcSave = () => store.set(RC_KEY, JSON.stringify({ lot: $('rc-lot').value, tp: $('rc-tp').value }));
+(() => {
+  let saved = null;
+  try { saved = JSON.parse(store.get(RC_KEY, 'null')); } catch { saved = null; }
+  $('rc-lot').value = saved && saved.lot ? saved.lot : '0.01';
+  $('rc-tp').value = saved && saved.tp ? saved.tp : '';
+})();
+$('rc-lot').addEventListener('input', () => { rcFromLotSl(); rcSave(); });
+$('rc-sl').addEventListener('input', rcFromLotSl);
+$('rc-tp').addEventListener('input', () => { rcInfo(''); rcSave(); });
+$('s-equity').addEventListener('input', rcFromPct); // แก้ทุน = คงค่า % ที่ตั้งไว้ คิดจุด SL ใหม่ (เดิมเขียนทับ % เงียบๆ)
+$('s-riskpct').addEventListener('input', rcFromPct);
 
 function updateCalcExample(s) {
   const eff = Math.min(Number(s.riskPct) || 1, Number(s.autoRiskMaxPct) || 2);
@@ -1977,6 +2369,50 @@ $('btn-refresh').addEventListener('click', () => { $('conn-badge').textContent =
 $('btn-newwin').addEventListener('click', async () => {
   if (window.GS_WEB) return;
   try { await window.api.openNewWindow(); toast('🗔 เปิดหน้าต่างใหม่แล้ว — ข้อมูลสดเท่าเดิม', 'ok'); } catch (err) { toast('✗ ' + err.message, 'err'); }
+});
+
+/* ---------- คีย์ลัด (เฉพาะเครื่องที่มีเมาส์/คีย์บอร์ด) — ไม่มีคีย์ไหนส่งคำสั่งซื้อขายเด็ดขาด ---------- */
+function openKeysHelp() {
+  if ($('modal').classList.contains('show')) return; // ไม่ทับหน้ายืนยันที่เปิดอยู่
+  $('mbox').innerHTML = `
+    <h3>คีย์ลัด</h3>
+    <div class="mline"><span>สลับแท็บ ภาพรวม / ความเสี่ยง / กลยุทธ์ / MT5 / บันทึก</span><b><kbd>1</kbd>–<kbd>5</kbd></b></div>
+    <div class="mline"><span>อัปเดตทันที</span><b><kbd>R</kbd></b></div>
+    <div class="mline"><span>เปิดหน้านี้</span><b><kbd>?</kbd></b></div>
+    <div class="mline"><span>ปิดหน้าต่าง / ย่อชาร์ต-คำสั่งรอ</span><b><kbd>Esc</kbd></b></div>
+    <div class="mline"><span>เลื่อนราคาในช่อง SL/TP/ราคาเข้า (Shift = 0.1 • Alt = 1)</span><b><kbd>↑</kbd><kbd>↓</kbd></b></div>
+    <div class="mline"><span>คัดลอกราคา: คลิกราคาบนแถบบน / ปุ่มคัดลอก Bid-Ask / ช่องเข้า-SL-TP ในตาราง</span><b>คลิก</b></div>
+    <div class="mwarn">⚠ คีย์ลัดไม่มีคำสั่งซื้อขาย — ต้องกด BUY/SELL แล้วยืนยันเสมอ</div>
+    <div class="mbtns"><button class="mcancel" id="m-cancel">ปิด</button></div>`;
+  $('modal').classList.add('show');
+  $('m-cancel').focus();
+  $('m-cancel').addEventListener('click', closeModal);
+}
+if ($('btn-keys')) $('btn-keys').addEventListener('click', openKeysHelp);
+const keysMq = window.matchMedia ? window.matchMedia('(hover: hover) and (pointer: fine)') : null;
+let lastKeyRefresh = 0;
+document.addEventListener('keydown', (e) => {
+  if (!keysMq || !keysMq.matches) return;
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  const el = document.activeElement;
+  if (el && (el.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName))) return;
+  if ($('modal').classList.contains('show')) return;
+  // e.code = ตำแหน่งปุ่มจริง (คีย์บอร์ดไทยก็ใช้ได้)
+  const dm = /^(?:Digit|Numpad)([1-5])$/.exec(e.code);
+  if (dm && !e.shiftKey) {
+    if (document.body.classList.contains('chart-max') || ($('pend-card') && $('pend-card').classList.contains('max'))) return;
+    const btn = document.querySelectorAll('#tabs button')[Number(dm[1]) - 1];
+    if (btn) { e.preventDefault(); btn.click(); }
+    return;
+  }
+  if (e.code === 'KeyR' && !e.shiftKey) {
+    e.preventDefault();
+    if (Date.now() - lastKeyRefresh < 1500) return; // กันกดรัว
+    lastKeyRefresh = Date.now();
+    $('btn-refresh').click();
+    return;
+  }
+  if (e.key === '?' || (e.shiftKey && e.code === 'Slash')) { e.preventDefault(); openKeysHelp(); }
 });
 // ตรวจอัปเดต (ปุ่มบนการ์ดบันทึก) — เจอรุ่นใหม่ = แจ้ง + ลิงก์ดาวน์โหลดในหน้าจอและ log
 const btnUpdateCheck = $('btn-update-check');

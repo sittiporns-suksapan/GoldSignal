@@ -13,6 +13,7 @@ const ind = require('./indicators');
 const HARD_MAX_RISK_PCT = 2.0;   // เพดานสัมบูรณ์
 const HARD_MIN_RR = 1.0;         // RR ต่ำสุดสัมบูรณ์ (ส่วนใหญ่ตั้ง 1.5)
 const MIN_LOT = 0.01;
+const OVERCAP_MAX_PCT = 10;      // แก้ SL/คำสั่งรอแบบยืนยันเกินเพดาน: ยังห้ามเกิน % นี้ของทุนเสมอ
 const OZ_PER_LOT = 100;          // XAUUSD มาตรฐาน: 1 ล็อต = 100 ออนซ์ ($1 ต่อ ล็อต = $100)
 
 function clamp(n, min, max) { return Math.min(max, Math.max(min, n)); }
@@ -158,7 +159,7 @@ function validateManualOrder({ side, lot, entry, sl, tp, settings, manualToday =
 
 // แก้ SL/TP ของไม้ที่เปิดอยู่: SL ห้ามลบ + ต้องอยู่ฝั่งถูกของราคาปิดปัจจุบัน + ขาดทุนที่ SL ใหม่ไม่เกินเพดาน 2%
 // (ยกเว้นการขยับที่ลดความเสี่ยงลงจากเดิม — เลื่อน SL เข้าใกล้ต้องทำได้เสมอ)
-function validateModify({ side, open, volume, curSl = 0, sl, tp, market, settings }) {
+function validateModify({ side, open, volume, curSl = 0, sl, tp, market, settings, allowOverCap = false }) {
   const equity = Number(settings.equity) || 0;
   const ozPerLot = Number(settings.ozPerLot) || OZ_PER_LOT;
   const base = { pass: false, reason: null, metrics: {} };
@@ -177,8 +178,15 @@ function validateModify({ side, open, volume, curSl = 0, sl, tp, market, setting
   const capPctMod = jointCapPct(settings);
   const hardMax = (equity * capPctMod) / 100;
   const metrics = { riskUSD: ind.round(riskUSD, 2), hardMax: ind.round(hardMax, 2) };
-  if (riskUSD > hardMax * 1.001 && riskUSD > curRisk + 1e-9) return {
+  // เพดานสูงสุด 10%: ยืนยันแล้วก็ห้าม (ตรวจก่อน เพื่อไม่ถามยืนยันในเคสที่ยังไงก็ไม่ผ่าน)
+  const absMax = (equity * OVERCAP_MAX_PCT) / 100;
+  if (riskUSD > absMax * 1.001 && riskUSD > curRisk + 1e-9) return {
     ...base, metrics,
+    reason: `SL ใหม่เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดานสูงสุด ${OVERCAP_MAX_PCT}% ของทุน ($${ind.round(absMax, 2)}) — แก้ไม่ได้แม้ยืนยัน ขยับ SL ใกล้ขึ้น`,
+  };
+  // เกินเพดานที่ตั้ง: ผู้ใช้กดยืนยันเอง (allowOverCap) = แก้ได้ — SL ยังบังคับและต้องอยู่ฝั่งถูกเสมอ
+  if (riskUSD > hardMax * 1.001 && riskUSD > curRisk + 1e-9 && !allowOverCap) return {
+    ...base, metrics, overCap: true,
     reason: `SL ใหม่เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดาน ${capPctMod}% ของทุน ($${ind.round(hardMax, 2)}) — ขยับ SL ใกล้ขึ้น`,
   };
   return { pass: true, reason: null, metrics };
@@ -186,7 +194,7 @@ function validateModify({ side, open, volume, curSl = 0, sl, tp, market, setting
 
 // แก้คำสั่งรอ (limit/stop): ราคาเข้าต้องถูกทิศตามชนิด + SL บังคับฝั่งถูกของราคาเข้า + เพดาน 2%
 // (ยกเว้นการแก้ที่ลดความเสี่ยงลงจากเดิม)
-function validatePendingModify({ side, ptype, volume, entry, sl, tp, curEntry = 0, curSl = 0, market, settings }) {
+function validatePendingModify({ side, ptype, volume, entry, sl, tp, curEntry = 0, curSl = 0, market, settings, allowOverCap = false }) {
   const equity = Number(settings.equity) || 0;
   const ozPerLot = Number(settings.ozPerLot) || OZ_PER_LOT;
   const base = { pass: false, reason: null, metrics: {} };
@@ -207,8 +215,13 @@ function validatePendingModify({ side, ptype, volume, entry, sl, tp, curEntry = 
   const hardMax = (equity * capPctPend) / 100;
   const rr = Number.isFinite(tp) && tp > 0 ? ind.round(Math.abs(tp - entry) / Math.abs(entry - sl), 2) : null;
   const metrics = { riskUSD: ind.round(riskUSD, 2), hardMax: ind.round(hardMax, 2), rr };
-  if (riskUSD > hardMax * 1.001 && riskUSD > curRisk + 1e-9) return {
+  const absMax = (equity * OVERCAP_MAX_PCT) / 100;
+  if (riskUSD > absMax * 1.001 && riskUSD > curRisk + 1e-9) return {
     ...base, metrics,
+    reason: `คำสั่งรอนี้เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดานสูงสุด ${OVERCAP_MAX_PCT}% ของทุน ($${ind.round(absMax, 2)}) — แก้ไม่ได้แม้ยืนยัน ขยับ SL ใกล้ขึ้น`,
+  };
+  if (riskUSD > hardMax * 1.001 && riskUSD > curRisk + 1e-9 && !allowOverCap) return {
+    ...base, metrics, overCap: true,
     reason: `คำสั่งรอนี้เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดาน ${capPctPend}% ของทุน ($${ind.round(hardMax, 2)}) — ขยับ SL ใกล้ขึ้น`,
   };
   return { pass: true, reason: null, metrics };

@@ -71,6 +71,25 @@ async function compileEA(expertsDir, logger = () => {}) {
   return { ok: ex5, msg: ex5 ? 'คอมไพล์ .ex5 สำเร็จ' : `คอมไพล์ล้มเหลว — ${summary || 'ลองใน MetaEditor (F7) แล้วบอกข้อความ error'}` };
 }
 
+// ตรวจล็อตปิดบางส่วนตามสเปกโบรก (ก่อนเขียนคำสั่ง closepart): > 0 • ทวีคูณ volStep • ≥ volMin • < ขนาดไม้ • เหลือ ≥ volMin
+// คืน { ok: true, volume } (ปัดเป็นทศนิยมตาม step — กันเลขทศนิยมลอยในบรรทัด CMD) หรือ { ok: false, reason }
+function checkPartialVolume({ volume, posVolume, volMin, volStep } = {}) {
+  const v = Number(volume), pv = Number(posVolume);
+  if (!Number.isFinite(v) || v <= 0) return { ok: false, reason: 'ใส่จำนวนล็อตที่จะปิดให้ถูกต้อง (ต้องมากกว่า 0)' };
+  if (!Number.isFinite(pv) || pv <= 0) return { ok: false, reason: 'ไม่รู้ขนาดไม้ปัจจุบัน — รอข้อมูลจาก MT5 แล้วลองใหม่' };
+  const step = Number(volStep) > 0 ? Number(volStep) : 0.01;
+  const min = Number(volMin) > 0 ? Number(volMin) : step;
+  const dec = Math.max(0, Math.ceil(-Math.log10(step) - 1e-9));
+  const k = v / step;
+  if (Math.abs(k - Math.round(k)) > 1e-6) return { ok: false, reason: `ล็อตต้องเป็นทวีคูณของ ${step} (โบรกรับทีละ ${step} ล็อต)` };
+  const vol = Number((Math.round(k) * step).toFixed(dec));
+  if (vol < min - 1e-9) return { ok: false, reason: `ปิดได้ขั้นต่ำ ${min} ล็อต` };
+  if (vol >= pv - 1e-9) return { ok: false, reason: `ล็อตที่ปิดต้องน้อยกว่าขนาดไม้ (${pv} ล็อต) — ปิดทั้งไม้ให้ใช้ปุ่มปิด` };
+  const remain = Number((pv - vol).toFixed(dec));
+  if (remain < min - 1e-9) return { ok: false, reason: `ปิดแล้วต้องเหลือไม้อย่างน้อย ${min} ล็อต (จะเหลือ ${remain})` };
+  return { ok: true, volume: vol, remain };
+}
+
 // ค้นหาโฟลเดอร์ MQL5/Experts ของ MetaTrader ในเครื่อง (สำหรับติดตั้ง EA ให้ผู้ใช้โดยอัตโนมัติ)
 function findMql5ExpertsDir() {
   const bases = MT5Connector.candidateDirs();
@@ -250,6 +269,13 @@ class MT5Connector {
   requestClose(ticket) {
     const id = this._enqueue({ action: 'close', side: '-', lot: 0, sl: 0, tp: 0, ticket });
     this.logger('mt5', `ส่งคำสั่งปิดไม้ ticket=${ticket} (id=${id})`);
+    return { id };
+  }
+
+  // ปิดบางส่วน (ปิดครึ่ง) — ต้องมี EA v1.9 (action closepart, lot = ล็อตที่จะปิด) • ตรวจล็อตด้วย checkPartialVolume ก่อนเรียก
+  requestClosePartial(ticket, volume) {
+    const id = this._enqueue({ action: 'closepart', side: '-', lot: volume, sl: 0, tp: 0, ticket });
+    this.logger('mt5', `ส่งคำสั่งปิดบางส่วน ticket=${ticket} ล็อต ${volume} (id=${id})`);
     return { id };
   }
 
@@ -519,4 +545,4 @@ class MT5Connector {
   }
 }
 
-module.exports = { MT5Connector, BRIDGE_FILENAME, findMql5ExpertsDir, compileEA, findWine };
+module.exports = { MT5Connector, BRIDGE_FILENAME, findMql5ExpertsDir, compileEA, findWine, checkPartialVolume };

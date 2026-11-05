@@ -9,7 +9,7 @@ require('dns').setDefaultResultOrder('ipv4first');
 
 const { AnalysisEngine } = require('../engine/engine');
 const { PluginLoader } = require('../engine/plugins');
-const { MT5Connector, findMql5ExpertsDir, compileEA } = require('../engine/connectors/mt5');
+const { MT5Connector, findMql5ExpertsDir, compileEA, checkPartialVolume } = require('../engine/connectors/mt5');
 const { YahooConnector } = require('../engine/connectors/yahoo');
 const { gateSignal, AGENTS } = require('../engine/council');
 const risk = require('../engine/risk');
@@ -214,7 +214,20 @@ function boot() {
   const tg = createTelegram({ file: path.join(app.getPath('userData'), 'telegram.json'), logger: engine.pushLog, fetchImpl: (u, o) => net.fetch(u, o) });
   // แจ้งเตือน LINE (token/userId อยู่ไฟล์แยก เหมือน Telegram)
   const line = createLine({ file: path.join(app.getPath('userData'), 'line.json'), logger: engine.pushLog, fetchImpl: (u, o) => net.fetch(u, o) });
-  const notify = (ev, text) => { tg.notify(ev, text); line.notify(ev, text); };
+  // ไม่มีช่องทางไหนรับ (ยังไม่ตั้ง Telegram/LINE หรือปิดเหตุการณ์นี้) → เตือนใน log ครั้งเดียวต่อเหตุการณ์ต่อรอบเปิดแอป (เดิมเงียบ)
+  const notifySkipWarned = new Set();
+  const notify = (ev, text) => {
+    const sent = [tg.notify(ev, text), line.notify(ev, text)].some(Boolean);
+    // ลิงก์ (นาน ๆ ครั้ง) เตือนทุกครั้ง • เหตุการณ์อื่นเตือนครั้งเดียวต่อรอบเปิดแอป
+    if (!sent && (ev === 'link' || !notifySkipWarned.has(ev))) {
+      notifySkipWarned.add(ev);
+      const v = tg.view();
+      const why = v.tokenSet && v.chatId && !v.enabled ? 'สวิตช์ "เปิดแจ้งเตือน" ของ Telegram ปิดอยู่'
+        : v.enabled ? `เหตุการณ์ "${ev}" ถูกปิดในรายการแจ้งเตือน Telegram`
+        : 'ยังไม่ได้ใส่ token / chat id ของ Telegram (หรือ LINE)';
+      engine.pushLog('notify', `ไม่ได้ส่งแจ้งเตือน "${ev}" — ${why} • ตั้งที่แท็บ MT5 → การ์ด Telegram`, 'warn');
+    }
+  };
   handle('tg-get', () => tg.view());
   handle('tg-set', (_e, p) => tg.set(p || {}));
   handle('tg-detect', (_e, token) => tg.detectChat(token));
@@ -675,8 +688,9 @@ function boot() {
     if (eaBelow(g.snap.meta.ea, '1.8')) return { ok: false, reason: EA_PMODIFY };
     if ([...mt5.pending.values()].some((c) => Number(c.ticket) === ticket)) return { ok: false, reason: `คำสั่งรอ #${ticket} มีคำสั่งค้างอยู่ — รอผลจาก MT5` };
     const entry = Number(req.entry), sl = Number(req.sl), tp = Number(req.tp) || 0;
-    const v = risk.validatePendingModify({ side, ptype, volume: Number(po.volume), entry, sl, tp, curEntry: Number(po.open), curSl: Number(po.sl), market: g.quote, settings: g.effSettings });
-    if (!v.pass) { engine.pushLog('order', `ปฏิเสธแก้คำสั่งรอ #${ticket}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, metrics: v.metrics }; }
+    const v = risk.validatePendingModify({ side, ptype, volume: Number(po.volume), entry, sl, tp, curEntry: Number(po.open), curSl: Number(po.sl), market: g.quote, settings: g.effSettings, allowOverCap: req.allowOverCap === true });
+    if (!v.pass) { engine.pushLog('order', `ปฏิเสธแก้คำสั่งรอ #${ticket}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, metrics: v.metrics, overCap: v.overCap === true }; }
+    if (req.allowOverCap === true && v.metrics.riskUSD > v.metrics.hardMax) engine.pushLog('order', `แก้คำสั่งรอ #${ticket} เกินเพดาน (เสี่ยง $${v.metrics.riskUSD} > $${v.metrics.hardMax}) — ผู้ใช้ยืนยันเอง`, 'warn');
     try {
       const { id } = mt5.requestModifyPending(ticket, entry, sl, tp);
       engine.pushLog('order', `แก้คำสั่งรอ #${ticket} id=${id}: ราคา ${fmtPrice(Number(po.open))} → ${fmtPrice(entry)} • SL ${fmtPrice(Number(po.sl))} → ${fmtPrice(sl)} • TP ${Number(po.tp) ? fmtPrice(Number(po.tp)) : '-'} → ${tp ? fmtPrice(tp) : '-'} • เสี่ยง $${v.metrics.riskUSD}`);
@@ -711,6 +725,31 @@ function boot() {
     try { const r = mt5.requestClose(ticket); engine.pushLog('order', `ส่งคำสั่งปิดไม้ ticket=${ticket}`); return { ok: true, ...r }; }
     catch (err) { return { ok: false, reason: err.message }; }
   });
+  // ปิดบางส่วน (ปิดครึ่ง): เกตเดียวกับปิดไม้รายตัว (ไม่ผูกสวิตช์ส่งออร์เดอร์จริง — ลดความเสี่ยง) + EA 1.9 + ล็อตตามสเปกโบรก
+  const EA_CLOSEPART = 'ปิดครึ่งต้องมี EA รุ่น 1.9 บนชาร์ต — แท็บ MT5 → กด "ติดตั้ง EA ให้ฉันเอง" แล้วลาก EA ลงชาร์ตใหม่';
+  handle('close-partial', (_e, req) => {
+    const mt5 = engine.connectors.mt5;
+    // ticket ต้องเป็นเลขจำนวนเต็มของไม้ที่เปิดอยู่จริง (กันข้อความแปลกปลอมถูกเขียนต่อท้ายบรรทัด CMD)
+    const ticket = Number(req && req.ticket);
+    const liveMeta = mt5.latest && mt5.latest.meta;
+    const positions = (liveMeta && liveMeta.positions) || [];
+    const pos = Number.isSafeInteger(ticket) && ticket > 0 ? positions.find((p) => Number(p.ticket) === ticket) : null;
+    if (!pos) return { ok: false, reason: `ไม่พบไม้ ticket ${req && req.ticket} ที่เปิดอยู่` };
+    if (!mt5.isLive()) return { ok: false, reason: 'MT5 ไม่ได้อัปเดตข้อมูล — ตรวจว่า MT5 เปิดอยู่และ EA อยู่บนชาร์ต' };
+    if (!(liveMeta && liveMeta.spec)) return { ok: false, reason: EA_OUTDATED };
+    if (eaBelow(liveMeta.ea, '1.9')) return { ok: false, reason: EA_CLOSEPART };
+    if ([...mt5.pending.values()].some((c) => (c.action === 'close' || c.action === 'closepart') && Number(c.ticket) === ticket)) return { ok: false, reason: `กำลังปิดไม้ #${ticket} อยู่แล้ว — รอผลจาก MT5` };
+    const cv = checkPartialVolume({ volume: req.volume, posVolume: pos.volume, volMin: liveMeta.spec.volMin, volStep: liveMeta.spec.volStep });
+    if (!cv.ok) { engine.pushLog('order', `ปฏิเสธปิดบางส่วน #${ticket}: ${cv.reason}`, 'warn'); return { ok: false, reason: cv.reason }; }
+    try {
+      const r = mt5.requestClosePartial(ticket, cv.volume);
+      engine.pushLog('order', `ส่งคำสั่งปิดบางส่วน ticket=${ticket} ล็อต ${cv.volume} จาก ${pos.volume} (เหลือ ${cv.remain}) id=${r.id}`);
+      return { ok: true, ...r };
+    } catch (err) {
+      engine.pushLog('order', `ปิดบางส่วนไม่ได้: ${err.message}`, 'err');
+      return { ok: false, reason: err.message };
+    }
+  });
   // แก้ SL/TP ไม้ที่เปิดอยู่ — ผ่านเกตเดียวกับการส่งไม้ (สวิตช์จริง/ข้อมูลสด/EA) แต่ไม่นับโควตา
   handle('modify-position', (_e, req) => {
     const ticket = Number(req && req.ticket);
@@ -724,8 +763,9 @@ function boot() {
     if (!g.ok) return g;
     if ([...mt5.pending.values()].some((c) => Number(c.ticket) === ticket)) return { ok: false, reason: `ไม้ #${ticket} มีคำสั่งค้างอยู่ — รอผลจาก MT5` };
     const sl = Number(req.sl), tp = Number(req.tp) || 0;
-    const v = risk.validateModify({ side, open: Number(pos.open), volume: Number(pos.volume), curSl: Number(pos.sl), sl, tp, market: g.quote, settings: g.effSettings });
-    if (!v.pass) { engine.pushLog('order', `ปฏิเสธแก้ไม้ #${ticket}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, metrics: v.metrics }; }
+    const v = risk.validateModify({ side, open: Number(pos.open), volume: Number(pos.volume), curSl: Number(pos.sl), sl, tp, market: g.quote, settings: g.effSettings, allowOverCap: req.allowOverCap === true });
+    if (!v.pass) { engine.pushLog('order', `ปฏิเสธแก้ไม้ #${ticket}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, metrics: v.metrics, overCap: v.overCap === true }; }
+    if (req.allowOverCap === true && v.metrics.riskUSD > v.metrics.hardMax) engine.pushLog('order', `แก้ไม้ #${ticket} เกินเพดาน (เสี่ยง $${v.metrics.riskUSD} > $${v.metrics.hardMax}) — ผู้ใช้ยืนยันเอง`, 'warn');
     try {
       const { id } = mt5.requestModify(ticket, sl, tp);
       engine.pushLog('order', `แก้ไม้ #${ticket} id=${id}: SL ${fmtPrice(Number(pos.sl))} → ${fmtPrice(sl)} • TP ${Number(pos.tp) ? fmtPrice(Number(pos.tp)) : '-'} → ${tp ? fmtPrice(tp) : '-'} • เสี่ยง $${v.metrics.riskUSD}`);
@@ -931,9 +971,10 @@ function boot() {
       engine.pushLog('order', `ผล id=${r.id}: ${r.status === 'ok' ? '✅ ทำสำเร็จ' : '❌ ล้มเหลว — ' + r.msg} (retcode ${r.retcode}, ticket ${r.ticket || '-'})`, r.status === 'ok' ? 'info' : 'err');
       send('order-result', r);
       const a = r.cmd && r.cmd.action;
-      if (r.status !== 'ok') notify('orderFail', `❌ คำสั่ง ${a || '-'} ล้มเหลว: ${r.msg} (retcode ${r.retcode})${r.cmd && r.cmd.ticket ? ' • ticket #' + r.cmd.ticket : ''}\n${thTime()}`);
+      if (r.status !== 'ok') notify('orderFail', `❌ คำสั่ง ${a === 'closepart' ? 'ปิดบางส่วน' : a || '-'} ล้มเหลว: ${r.msg} (retcode ${r.retcode})${r.cmd && r.cmd.ticket ? ' • ticket #' + r.cmd.ticket : ''}\n${thTime()}`);
       else if (a === 'limit' || a === 'stop') notify('pending', `⏳ วางคำสั่งรอ ${String(r.cmd.side).toUpperCase()} ${a.toUpperCase()} ล็อต ${r.cmd.lot} @ ${px(r.cmd.entry)} • SL ${px(r.cmd.sl)} • TP ${px(r.cmd.tp)}\nticket #${r.ticket || '-'} • ${thTime()}`);
       else if (a === 'cancel') notify('pending', `🗑 ยกเลิกคำสั่งรอ #${r.cmd.ticket}\n${thTime()}`);
+      else if (a === 'closepart') notify('realClose', `✂️ ปิดบางส่วน ${r.cmd.lot} ล็อต @ ${px(r.price)}\nticket #${r.cmd.ticket} • ${thTime()}`);
       else if (a === 'pmodify' || a === 'modify') notify('pending', `✏️ แก้${a === 'pmodify' ? 'คำสั่งรอ' : ' SL/TP ไม้'} #${r.cmd.ticket}: SL ${px(r.cmd.sl)} • TP ${px(r.cmd.tp)}${a === 'pmodify' ? ' • ราคา ' + px(r.cmd.entry) : ''}\n${thTime()}`);
     }
   }

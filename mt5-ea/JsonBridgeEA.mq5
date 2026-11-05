@@ -1,5 +1,6 @@
 //+------------------------------------------------------------------+
-//| JsonBridgeEA.mq5 — GoldSignal Bridge v1.8 (pending limit/stop + modify + cancel)                       |
+//| JsonBridgeEA.mq5 — GoldSignal Bridge v1.9 (pending limit/stop + modify + cancel)                       |
+//| v1.9: ปิดบางส่วน (action closepart: ปิด lot ของไม้ ticket — บัญชี hedging) |
 //| v1.6: ราคาสดทันทุกทิค (ไม่ทิ้งราคาล่าสุด, timer 100ms) • หยิบคำสั่งทุก 0.1 วิ |
 //| v1.5: จองคำสั่งแบบ atomic + ทำงานทีละ EA เดียว • ส่งสถานะเชื่อมเซิร์ฟเวอร์/เวลา GMT |
 //| v1.4: คำสั่งหมดอายุ 15 วิ • หยิบไฟล์คำสั่งแบบ atomic • กันรันซ้ำข้ามรีสตาร์ท |
@@ -13,7 +14,7 @@
 //| วิธีติดตั้ง: แอป GoldSignal → แท็บ เชื่อม MT5 → ปุ่มติดตั้งอัตโนมัติ |
 //+------------------------------------------------------------------+
 #property copyright "GoldSignal"
-#property version   "1.80"
+#property version   "1.90"
 #property strict
 
 input int    InpIntervalSec  = 3;     // เขียนไฟล์แท่งเทียน (bridge หลัก) ทุกกี่วินาที
@@ -293,6 +294,24 @@ void ExecuteCommand(long id, string action, string side, double lot, double sl, 
                    StringFormat("retcode=%d ticket=%I64d price=%.2f msg=%s", (int)trade.ResultRetcode(), ticket, trade.ResultPrice(), trade.ResultRetcodeDescription()));
       return;
      }
+   if(action == "closepart")
+     {
+      // ปิดบางส่วน (v1.9): lot = ล็อตที่จะปิด • ต้องเหลือไม้ ≥ ขั้นต่ำโบรก (ปิดหมดให้ใช้ action close)
+      if(ticket <= 0 || !PositionSelectByTicket(ticket)) { AppendResult(id, "error", "retcode=0 ticket=0 price=0 msg=POSITION_NOT_FOUND"); return; }
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) { AppendResult(id, "error", "retcode=0 ticket=0 price=0 msg=SYMBOL_MISMATCH"); return; }
+      // CTrade::PositionClosePartial ทำงานเฉพาะบัญชี hedging (netting คืน false โดยไม่ล้างผลเก่า) — ปฏิเสธเองให้ชัด
+      if((ENUM_ACCOUNT_MARGIN_MODE)AccountInfoInteger(ACCOUNT_MARGIN_MODE) != ACCOUNT_MARGIN_MODE_RETAIL_HEDGING) { AppendResult(id, "error", "retcode=0 ticket=0 price=0 msg=HEDGING_ONLY"); return; }
+      if(lot <= 0) { AppendResult(id, "error", "retcode=0 ticket=0 price=0 msg=BAD_LOT"); return; }
+      double vol = NormalizeLot(lot);   // ปัดลงตาม SYMBOL_VOLUME_STEP • ต่ำกว่า VOLUME_MIN = 0
+      if(vol <= 0) { AppendResult(id, "error", "retcode=0 ticket=0 price=0 msg=LOT_BELOW_MIN"); return; }
+      double vmin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+      double posVol = PositionGetDouble(POSITION_VOLUME);
+      if(posVol - vol < vmin - 1e-9) { AppendResult(id, "error", "retcode=0 ticket=0 price=0 msg=REMAIN_BELOW_MIN"); return; }
+      bool res = trade.PositionClosePartial((ulong)ticket, vol);
+      AppendResult(id, res ? "ok" : "error",
+                   StringFormat("retcode=%d ticket=%I64d price=%.2f vol=%.2f msg=%s", (int)trade.ResultRetcode(), ticket, trade.ResultPrice(), vol, trade.ResultRetcodeDescription()));
+      return;
+     }
    if(action == "modify")
      {
       if(ticket <= 0 || !PositionSelectByTicket(ticket)) { AppendResult(id, "error", "retcode=0 ticket=0 price=0 msg=POSITION_NOT_FOUND"); return; }
@@ -437,7 +456,7 @@ void WriteSnapshot()
                  ",\"srv\":" + IntegerToString((long)TimeTradeServer()) +
                  ",\"symbol\":\"" + _Symbol + "\"" +
                  ",\"digits\":" + IntegerToString(_Digits);
-   json += ",\"ea\":\"1.8\"";
+   json += ",\"ea\":\"1.9\"";
    if(hasTick)
      {
       json += StringFormat(",\"bid\":%.5f,\"ask\":%.5f,\"spreadPts\":%d", tick.bid, tick.ask,
