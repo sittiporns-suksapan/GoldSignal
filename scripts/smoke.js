@@ -281,6 +281,21 @@ ok('validateModify: แก้ SL/TP — ห้ามลบ SL / ฝั่งถ�
   assert.equal(risk.validateModify({ ...P, side: 'sell', curSl: 3960, market: 3955, sl: 3958, tp: 3930 }).pass, true);
 });
 
+ok('เพดานสัมบูรณ์แก้ SL: modifyAbsMaxPct ยกได้ 10–50% — เคสระเบียบกะทัด $12.34/$11.64 ของทุนจริง', () => {
+  const S = { equity: 1000, realOrdersEnabled: true };
+  const P = { side: 'buy', open: 1200, volume: 0.01, curSl: 1100, market: 1205, settings: S, allowOverCap: true };
+  // SL ห่าง $110 = 11% > เพดานยืนยัน default (10% = $100) → ปฏิเสธขาด (เหมือนจอที่ผู้ใช้เจอ)
+  const hard = risk.validateModify({ ...P, sl: 1090 });
+  assert.equal(hard.pass, false);
+  assert.ok(/เพดานสูงสุด/.test(hard.reason));
+  // ยกเพดานสัมบูรณ์เป็น 20% + กดยืนยัน (ผ่าน 2 เพดานเลือก) = $110 ผ่านจริง
+  const S2 = { ...S, modifyAbsMaxPct: 20, manualRiskMaxPct: 10 };
+  assert.equal(risk.validateModify({ ...P, sl: 1090, settings: S2, allowOverCap: true }).pass, true, 'ยก abs 20% + ยืนยัน = ผ่าน');
+  // ตั้ง 99 → บีบที่ 50% เสมอ ($500) — ไม่มีทางตั้งให้ทุเลาเกินครึ่งทุน
+  const S3 = { ...S, modifyAbsMaxPct: 99 };
+  assert.equal(risk.validateModify({ ...P, sl: 430, settings: S3, allowOverCap: true }).pass, false, '$770 เกินเพดาน 50% =ปฏิเสธ');
+});
+
 ok('validatePendingModify: แก้คำสั่งรอ — ทิศราคาตามชนิด / SL บังคับ / เพดาน 2%', () => {
   const S = { equity: 1000, realOrdersEnabled: true };
   const P = { side: 'buy', ptype: 'limit', volume: 0.01, curEntry: 3930, curSl: 3920, market: 3945, settings: S };

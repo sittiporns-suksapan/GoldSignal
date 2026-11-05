@@ -13,7 +13,7 @@ const ind = require('./indicators');
 const HARD_MAX_RISK_PCT = 2.0;   // เพดานสัมบูรณ์
 const HARD_MIN_RR = 1.0;         // RR ต่ำสุดสัมบูรณ์ (ส่วนใหญ่ตั้ง 1.5)
 const MIN_LOT = 0.01;
-const OVERCAP_MAX_PCT = 10;      // แก้ SL/คำสั่งรอแบบยืนยันเกินเพดาน: ยังห้ามเกิน % นี้ของทุนเสมอ
+const OVERCAP_MAX_PCT = 10;      // แก้ SL/คำสั่งรอแบบยืนยันเกินเพดาน: ค่าตั้งต้นของเพดานสัมบูรณ์ (ผู้ใช้ยกได้ 10–50%)
 const OZ_PER_LOT = 100;          // XAUUSD มาตรฐาน: 1 ล็อต = 100 ออนซ์ ($1 ต่อ ล็อต = $100)
 
 function clamp(n, min, max) { return Math.min(max, Math.max(min, n)); }
@@ -57,6 +57,10 @@ function manualCapPct(settings = {}) {
 }
 function jointCapPct(settings = {}) {   // คำสั่งที่มาทางใดทางหนึ่งใช้เพดานกว้างกว่า (ผู้ใช้เลือกทั้งคู่เอง)
   return Math.max(autoCapPct(settings), manualCapPct(settings));
+}
+// เพดานสัมบูรณ์ของการแก้ SL/คำสั่งรอแบบกดเอง: default 10% — ผู้ใช้ยกได้ถึง 50% ของทุน (ยืนยันทุกครั้งตามเดิม)
+function absOvercapPct(settings = {}) {
+  return clamp(Number(settings.modifyAbsMaxPct) || OVERCAP_MAX_PCT, OVERCAP_MAX_PCT, 50);
 }
 
 // คำนวณขนาดล็อตตาม % ความเสี่ยง
@@ -178,11 +182,12 @@ function validateModify({ side, open, volume, curSl = 0, sl, tp, market, setting
   const capPctMod = jointCapPct(settings);
   const hardMax = (equity * capPctMod) / 100;
   const metrics = { riskUSD: ind.round(riskUSD, 2), hardMax: ind.round(hardMax, 2) };
-  // เพดานสูงสุด 10%: ยืนยันแล้วก็ห้าม (ตรวจก่อน เพื่อไม่ถามยืนยันในเคสที่ยังไงก็ไม่ผ่าน)
-  const absMax = (equity * OVERCAP_MAX_PCT) / 100;
+  // เพดานสัมบูรณ์ (ผู้ใช้ตั้งได้): ยืนยันแล้วก็ห้ามเกิน; ตรวจก่อน เพื่อไม่ถามยืนยันในเคสที่ยังไงก็ไม่ผ่าน
+  const absPct = absOvercapPct(settings);
+  const absMax = (equity * absPct) / 100;
   if (riskUSD > absMax * 1.001 && riskUSD > curRisk + 1e-9) return {
     ...base, metrics,
-    reason: `SL ใหม่เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดานสูงสุด ${OVERCAP_MAX_PCT}% ของทุน ($${ind.round(absMax, 2)}) — แก้ไม่ได้แม้ยืนยัน ขยับ SL ใกล้ขึ้น`,
+    reason: `SL ใหม่เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดานสูงสุด ${absPct}% ของทุน ($${ind.round(absMax, 2)}) — แก้ไม่ได้แม้ยืนยัน ขยับ SL ใกล้ขึ้น (ยกเพดานได้ในแท็บตั้งค่า)`,
   };
   // เกินเพดานที่ตั้ง: ผู้ใช้กดยืนยันเอง (allowOverCap) = แก้ได้ — SL ยังบังคับและต้องอยู่ฝั่งถูกเสมอ
   if (riskUSD > hardMax * 1.001 && riskUSD > curRisk + 1e-9 && !allowOverCap) return {
@@ -215,10 +220,11 @@ function validatePendingModify({ side, ptype, volume, entry, sl, tp, curEntry = 
   const hardMax = (equity * capPctPend) / 100;
   const rr = Number.isFinite(tp) && tp > 0 ? ind.round(Math.abs(tp - entry) / Math.abs(entry - sl), 2) : null;
   const metrics = { riskUSD: ind.round(riskUSD, 2), hardMax: ind.round(hardMax, 2), rr };
-  const absMax = (equity * OVERCAP_MAX_PCT) / 100;
+  const absPctPend = absOvercapPct(settings);
+  const absMax = (equity * absPctPend) / 100;
   if (riskUSD > absMax * 1.001 && riskUSD > curRisk + 1e-9) return {
     ...base, metrics,
-    reason: `คำสั่งรอนี้เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดานสูงสุด ${OVERCAP_MAX_PCT}% ของทุน ($${ind.round(absMax, 2)}) — แก้ไม่ได้แม้ยืนยัน ขยับ SL ใกล้ขึ้น`,
+    reason: `คำสั่งรอนี้เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดานสูงสุด ${absPctPend}% ของทุน ($${ind.round(absMax, 2)}) — แก้ไม่ได้แม้ยืนยัน ขยับ SL ใกล้ขึ้น (ยกเพดานได้ในแท็บตั้งค่า)`,
   };
   if (riskUSD > hardMax * 1.001 && riskUSD > curRisk + 1e-9 && !allowOverCap) return {
     ...base, metrics, overCap: true,
@@ -230,5 +236,5 @@ function validatePendingModify({ side, ptype, volume, entry, sl, tp, curEntry = 
 module.exports = {
   HARD_MAX_RISK_PCT, HARD_MIN_RR, MIN_LOT, OZ_PER_LOT,
   clamp, normalizeSignal, calcPosition, evaluateSignal, validateManualOrder, validateModify, validatePendingModify, riskScore,
-  autoCapPct, manualCapPct, jointCapPct,
+  autoCapPct, manualCapPct, jointCapPct, absOvercapPct,
 };

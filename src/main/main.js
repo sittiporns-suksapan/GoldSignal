@@ -45,6 +45,7 @@ const DEFAULT_SETTINGS = {
   equity: 1000,
   riskPct: 1,                // เปอร์เซ็นต์ต่อไม้ — ถูกบีบด้วย HARD_MAX_RISK_PCT เสมอ
   manualRiskMaxPct: 2,       // เพดานของปุ่มกดเองเท่านั้น (2–10) — ปรับสูงได้โดยผู้ใช้รับความเสี่ยงเอง; อัตโนมัติยังล็อก 2%
+  modifyAbsMaxPct: 10,       // เพดานสัมบูรณ์ของการแก้ SL/คำสั่งรอแบบกดเอง (ยืนยันแล้วห้ามเกินค่านี้; 10–50% ของทุน)
   minRR: 1.5,                // HARD_MIN_RR คือพื้น 1.0
   minConfidence: 60,
   maxSignalsPerDay: 3,   // โควตาไม้ต่อวัน (สัญญาณ + ปุ่มคำสั่งจริงนับรวม) — ผู้ใช้เลือกได้ในแท็บตั้งค่า
@@ -100,6 +101,7 @@ function sanitizeSettings(input) {
     riskPct: num(s.riskPct, 1, 0.05, 10),        // % เป้า (calcPosition บีบด้วยเพดานอัตโนมัติจริงอีกชั้น)
     autoRiskMaxPct: num(s.autoRiskMaxPct, 2, 2, 10),   // เพดานไม้อัตโนมัติ (2–10%) — default 2% แนะนำ
     manualRiskMaxPct: num(s.manualRiskMaxPct, 2, 2, 10),  // เพดานของปุ่มกดเอง/คำสั่งรอ/แก้ SL (2–10%)
+    modifyAbsMaxPct: num(s.modifyAbsMaxPct, 10, 10, 50),  // เพดานสัมบูรณ์แก้ SL/คำสั่งรอ: กดยืนยันเกินได้จนถึงค่านี้ (default 10% • สูงสุด 50% ของทุน)
     minRR: num(s.minRR, 1.5, risk.HARD_MIN_RR, 10),
     minConfidence: num(s.minConfidence, 60, 0, 95),
     maxSignalsPerDay: Math.round(num(s.maxSignalsPerDay, 3, 1, 50)),
