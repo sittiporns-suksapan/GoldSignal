@@ -566,14 +566,21 @@ function pendStops(kind, entry, snap) {
   const lot = Number($('p-lot').value) || 0.01;
   const oz = (meta.spec && meta.spec.contractSize) || 100;
   const eqUSD = (meta.account && Number.isFinite(meta.account.equityUSD) && meta.account.equityUSD > 0) ? meta.account.equityUSD : (Number((snap && snap.risk && snap.risk.equity)) || 0);
-  const maxDist = eqUSD > 0 ? (eqUSD * 0.02) / (lot * oz) : Infinity;
+  // เพดานผ่านเกตจริงตามที่ผู้ใช้ตั้ง (manualRiskMaxPct — ไม่ใช่ 2% แข็งเดิม)
+  const capPct = clampPct(snap);
+  const maxDist = eqUSD > 0 ? (eqUSD * capPct) / (lot * oz) : Infinity;
   if (atrv * 1.8 > maxDist) atrv = maxDist / 1.8;
   const dir = side === 'buy' ? 1 : -1;
   const d = meta.digits || 2;
+  const pt = pointOf(d);
+  // ระยะที่ผู้ใช้ตั้งถาวรใน settings (จุด) เป็นทางเลือกก่อน ATR อัตโนมัติ
+  const setPts = (snap.risk && snap.risk) || {};
+  const slPts = Number(setPts.slDistPts) > 0 ? Number(setPts.slDistPts) : null;
+  const tpPts = Number(setPts.tpDistPts) > 0 ? Number(setPts.tpDistPts) : null;
   const read = (id, auto) => ($(id).value.trim() !== '' ? Number($(id).value) : Number(auto.toFixed(d)));
   return {
-    sl: read('p-sl', side === 'buy' ? entry - atrv * 1.8 : entry + atrv * 1.8),
-    tp: read('p-tp', side === 'buy' ? entry + atrv * 4.5 : entry - atrv * 4.5),
+    sl: read('p-sl', side === 'buy' ? entry - (slPts != null ? slPts * pt : atrv * 1.8) : entry + (slPts != null ? slPts * pt : atrv * 1.8)),
+    tp: read('p-tp', side === 'buy' ? entry + (tpPts != null ? tpPts * pt : atrv * 4.5) : entry - (tpPts != null ? tpPts * pt : atrv * 4.5)),
     side, ptype,
   };
 }
@@ -858,6 +865,8 @@ function stopsFor(side, snap) {
   const maxDist = eqUSD > 0 ? (eqUSD * capPct) / (lot * oz) / 100 : Infinity;
   if (atr * 1.8 > maxDist) atr = maxDist / 1.8;
   const pt = pointOf(d);
+  const rUsr = (snap && snap.risk) || {};
+  const uSl = Number(rUsr.slDistPts), uTp = Number(rUsr.tpDistPts);
   const read = (k, auto) => {
     const el = $(STOP_INPUT[k]);
     if (el.value.trim() !== '') return Number(el.value);
@@ -866,13 +875,17 @@ function stopsFor(side, snap) {
     if (typeof m === 'number' && m > 0) return Number((k === 'sl' ? px - dir * m * pt : px + dir * m * pt).toFixed(d));
     return Number(auto.toFixed(d));
   };
-  return { sl: read('sl', px - dir * atr * 1.8), tp: read('tp', px + dir * atr * 4.5), px };
+  return {
+    sl: read('sl', uSl > 0 ? px - dir * uSl * pt : px - dir * atr * 1.8),
+    tp: read('tp', uTp > 0 ? px + dir * uTp * pt : px + dir * atr * 4.5),
+    px,
+  };
 }
 
-// เพดาน % ตามกลุ่มคำสั่ง (ผู้ใช้ตั้ง 2–10) — ใช้ตรวจ hint ปุ่มกดเอง
+// เพดาน % ตามกลุ่มคำสั่ง (ผู้ใช้ตั้ง 2–100; 100 = ไม่มีดัก) — ใช้ตรวจ hint ปุ่มกดเอง
 function clampPct(snap) {
   const r = (snap && snap.risk) || {};
-  return Math.max(2, Math.min(10, Number(r.manualRiskMaxPct) || 2));
+  return Math.max(2, Math.min(100, Number(r.manualRiskMaxPct) || 2));
 }
 function renderTradePanel(snap) {
   const meta = snap.meta || {};
@@ -2260,6 +2273,9 @@ async function loadSettingsToForm() {
   $('s-webpush-url').value = s.remoteDashboardUrl || '';
   $('s-webpush-token').value = s.remoteDashboardToken || '';
   $('s-modifyabsmax').value = s.modifyAbsMaxPct != null ? s.modifyAbsMaxPct : 10;
+  // "จุด SL/จุด TP" = ค่าตั้งจริงของระบบ (ทุกกลยุทธ์/คำสั่งรอดึงใช้) — ว่าง = อัตโนมัติ ATR
+  $('rc-sl').value = Number(s.slDistPts) > 0 ? Number(s.slDistPts) : '';
+  $('rc-tp').value = Number(s.tpDistPts) > 0 ? Number(s.tpDistPts) : '';
   $('t-auto').checked = !!s.autoEnter;
   $('t-real').checked = !!s.realOrdersEnabled;
   $('ac-all').checked = !!s.autoCloseAll;
@@ -2331,16 +2347,29 @@ function rcFromPct() {
   if (lot > 0 && pct > 0 && equity > 0) $('rc-sl').value = Math.max(1, Math.round((equity * pct / 100) / (point * oz * lot)));
   rcInfo('');
 }
-const rcSave = () => store.set(RC_KEY, JSON.stringify({ lot: $('rc-lot').value, tp: $('rc-tp').value }));
+const rcSave = () => store.set(RC_KEY, JSON.stringify({ lot: $('rc-lot').value }));
+// จุด SL/จุด TP ที่พิมพ์ = ค่าตั้งจริง (settings.json) — ทุกแผน/คำสั่งรอ/อัตโนมัติจะดึงมาใช้
+const rcPushSettings = () => {
+  const sl = Number($('rc-sl').value), tp = Number($('rc-tp').value);
+  try {
+    window.api.saveSettings({
+      slDistPts: Number.isFinite(sl) && sl > 0 ? Math.round(sl) : 0,
+      tpDistPts: Number.isFinite(tp) && tp > 0 ? Math.round(tp) : 0,
+    });
+  } catch { void 0; }
+};
 (() => {
+  // migrate: ค่าจุด SL/TP ที่เคยจำใน localStorage (ก่อนมี settings) → ย้ายเป็นค่าตั้งจริงครั้งเดียว
   let saved = null;
   try { saved = JSON.parse(store.get(RC_KEY, 'null')); } catch { saved = null; }
+  const ls = (saved && appSettings && Number(appSettings.slDistPts) === 0) ? Number(saved.slPts) : 0;
+  const lt = (saved && appSettings && Number(appSettings.tpDistPts) === 0) ? Number(saved.tp) : 0;
   $('rc-lot').value = saved && saved.lot ? saved.lot : '0.01';
-  $('rc-tp').value = saved && saved.tp ? saved.tp : '';
+  if (Number.isFinite(ls) && ls > 0) { $('rc-sl').value = ls; rcPushSettings(); store.set(RC_KEY, JSON.stringify({ lot: saved.lot, slPts: ls, tp: saved.tp })); }
 })();
 $('rc-lot').addEventListener('input', () => { rcFromLotSl(); rcSave(); });
-$('rc-sl').addEventListener('input', rcFromLotSl);
-$('rc-tp').addEventListener('input', () => { rcInfo(''); rcSave(); });
+$('rc-sl').addEventListener('input', () => { rcFromLotSl(); rcPushSettings(); });
+$('rc-tp').addEventListener('input', () => { rcInfo(''); rcPushSettings(); });
 $('s-equity').addEventListener('input', rcFromPct); // แก้ทุน = คงค่า % ที่ตั้งไว้ คิดจุด SL ใหม่ (เดิมเขียนทับ % เงียบๆ)
 $('s-riskpct').addEventListener('input', rcFromPct);
 

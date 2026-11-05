@@ -46,6 +46,8 @@ const DEFAULT_SETTINGS = {
   riskPct: 1,                // เปอร์เซ็นต์ต่อไม้ — ถูกบีบด้วย HARD_MAX_RISK_PCT เสมอ
   manualRiskMaxPct: 2,       // เพดานของปุ่มกดเองเท่านั้น (2–10) — ปรับสูงได้โดยผู้ใช้รับความเสี่ยงเอง; อัตโนมัติยังล็อก 2%
   modifyAbsMaxPct: 10,       // เพดานสัมบูรณ์ของการแก้ SL/คำสั่งรอแบบกดเอง (ยืนยันแล้วห้ามเกินค่านี้; 10–50% ของทุน)
+  slDistPts: 0,              // ระยะ SL ที่ผู้ใช้ตั้ง (จุด) — 0 = อัตโนมัติ ATR×1.8 • >0 = ใช้ตามที่ตั้งทุกสาย (เว้นแต่กรอกในช่องตรวจแปะเอง)
+  tpDistPts: 0,              // ระยะ TP (จุด) — 0 = อัตโนมัติ ATR×4.5 • >0 = ใช้ตามที่ตั้ง
   minRR: 1.5,                // HARD_MIN_RR คือพื้น 1.0
   minConfidence: 60,
   maxSignalsPerDay: 3,   // โควตาไม้ต่อวัน (สัญญาณ + ปุ่มคำสั่งจริงนับรวม) — ผู้ใช้เลือกได้ในแท็บตั้งค่า
@@ -102,6 +104,8 @@ function sanitizeSettings(input) {
     autoRiskMaxPct: num(s.autoRiskMaxPct, 2, 2, 10),   // เพดานไม้อัตโนมัติ (2–10%) — default 2% แนะนำ
     manualRiskMaxPct: num(s.manualRiskMaxPct, 2, 2, 100),  // เพดานปุ่มกดเอง (2–100% ของทุน • 100 = ไม่มีการกั้นอีกต่อไป)
     modifyAbsMaxPct: num(s.modifyAbsMaxPct, 10, 10, 100),  // เพดานสัมบูรณ์แก้ SL/คำสั่งรอ (10–100% ของทุน)
+    slDistPts: num(s.slDistPts, 0, 0, 50000),     // จุด SL ที่ผู้ใช้ตั้ง (0 = อัตโนมัติ ATR)
+    tpDistPts: num(s.tpDistPts, 0, 0, 50000),     // จุด TP ที่ผู้ใช้ตั้ง (0 = อัตโนมัติ ATR)
     minRR: num(s.minRR, 1.5, risk.HARD_MIN_RR, 10),
     minConfidence: num(s.minConfidence, 60, 0, 95),
     maxSignalsPerDay: Math.round(num(s.maxSignalsPerDay, 3, 1, 50)),
