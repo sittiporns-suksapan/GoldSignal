@@ -419,7 +419,7 @@ function noSignalHtml(snap) {
   const budget = (eq * effPct) / 100;
   const minRisk = Number.isFinite(atr) ? atr * 0.01 * oz : null; // 0.01 ล็อต กับ SL ระยะ 1 ATR(M15)
   const small = minRisk != null && budget > 0 && budget < minRisk
-    ? `<div class="nosig-cap">⚠ ทุนที่ใช้คิด $${fmtD(eq, 0)} × ${fmtD(effPct, 2)}% = เสี่ยงได้ $${fmtD(budget, 2)}/ไม้ (ตั้ง "เพดานอัตโนมัติ ${fmtD(autoMax, 1)}%") แต่ 0.01 ล็อตกับ SL แค่ 1 ATR ($${fmtD(atr, 2)}) ก็เสี่ยง $${fmtD(minRisk, 2)} แล้ว — เพดานอัตโนมัติที่จะออกไม้ได้ต้อง ≥ $${fmtD(atr, 2)} (ตั้งได้ 2–10% ในแท็บความเสี่ยง) • ทางออก: (1) เพิ่มทุนจริง (2) กดเองด้วยเพดานปุ่มกด (3) ยอมข้ามรอบ</div>`
+    ? `<div class="nosig-cap">⚠ ทุนที่ใช้คิด $${fmtD(eq, 0)} × ${fmtD(effPct, 2)}% = เสี่ยงได้ $${fmtD(budget, 2)}/ไม้ (ตั้ง "เพดานอัตโนมัติ ${fmtD(autoMax, 1)}%") แต่ 0.01 ล็อตกับ SL แค่ 1 ATR ($${fmtD(atr, 2)}) ก็เสี่ยง $${fmtD(minRisk, 2)} แล้ว — เพดานอัตโนมัติที่จะออกไม้ได้ต้อง ≥ $${fmtD(atr, 2)} (ตั้งได้ 2–100%: 100 = โค้งไม่ตัด — ที่แท็บความเสี่ยง) • ทางออก: (1) เพิ่มทุนจริง (2) กดเองด้วยเพดานปุ่มกด (3) ยอมข้ามรอบ</div>`
     : '';
   let last = null;
   try { last = JSON.parse(localStorage.getItem('gs.lastSignal') || 'null'); } catch { last = null; }
@@ -604,7 +604,7 @@ function tryPending() {
       || (st.ptype === 'stop' && st.side === 'buy' && !(entry > px))
       || (st.ptype === 'stop' && st.side === 'sell' && !(entry < px));
     const oz = (meta.spec && meta.spec.contractSize) || 100;
-    const capP = Math.max(2, Math.min(10, Number(lastSnap.risk && lastSnap.risk.manualRiskMaxPct) || 2));
+    const capP = Math.max(2, Math.min(100, Number(lastSnap.risk && lastSnap.risk.manualRiskMaxPct) || 2));
     const riskUSD = Math.abs(entry - st.sl) * lot * oz;
     $('pend-hint').innerHTML = `<span class="${bad ? 'down' : 'muted'}">ตอนนี้: ${fmtD(px)} </span>• เสี่ยงถ้าแตะ SL: <b>$${fmtD(riskUSD, 2)}</b> / เพดานปุ่มกด $${fmtD((((meta.account && meta.account.equityUSD) || (lastSnap.risk && lastSnap.risk.equity) || 0) * capP) / 100, 2)} (${fmtD(capP, 1)}%) • R:R 1:${fmtD(Math.abs((Number(st.tp) || entry) - entry) / (Math.abs(entry - st.sl) || 1e-9), 2)}${bad ? ' <b class="down">— ทิศราคาผิดตามชนิดที่เลือก (รายละเอียดเมื่อกด)</b>' : ''}`;
     hint = bad ? 'ทิศผิด' : 'ok';
@@ -620,7 +620,7 @@ function openConfirmPending(req) {
   const riskUSD = Math.abs(req.entry - req.sl) * req.lot * oz;
   // เพดานปุ่มกดเอง — เกิน = แสดงเหตุผล + ปิดปุ่ม (ตรงกับที่ main จะปฏิเสธ)
   const capEq = (meta.account && meta.account.equityUSD > 0 ? meta.account.equityUSD : (Number(lastSnap && lastSnap.risk && lastSnap.risk.equity) || 0));
-  const capPctP = Math.max(2, Math.min(10, Number(lastSnap && lastSnap.risk && lastSnap.risk.manualRiskMaxPct) || 2));
+  const capPctP = Math.max(2, Math.min(100, Number(lastSnap && lastSnap.risk && lastSnap.risk.manualRiskMaxPct) || 2));
   const capP2 = capEq * capPctP / 100;
   const overP = capP2 > 0 && riskUSD > capP2 * 1.001;
   $('mbox').innerHTML = `
@@ -630,7 +630,7 @@ function openConfirmPending(req) {
     <div class="mline"><span>Stop Loss</span><b class="down">${fmtD(req.sl, digits)}</b></div>
     ${Number(req.tp) > 0 ? `<div class="mline"><span>Take Profit</span><b class="up">${fmtD(req.tp, digits)}</b></div>` : '<div class="mwarn">⚠ ไม่มี TP — ต้องปิดไม้เองด้วยมือ</div>'}
     <div class="mline"><span>เงินเสี่ยงถ้าแตะ SL</span><b class="gold">$${fmtD(riskUSD, 2)}</b></div>
-    ${overP ? `<div class="merr">✗ เสี่ยง $${fmtD(riskUSD, 2)} เกินเพดานปุ่มกด ${fmtD(capPctP, 1)}% ของทุน ($${fmtD(capP2, 2)}) — วางไม่ได้: ลดล็อต / SL ใกล้ขึ้น (ยกเพดาน 2–10% ที่แท็บความเสี่ยง)</div>` : ''}
+    ${overP ? `<div class="mwarn">⚠ เสี่ยง $${fmtD(riskUSD, 2)} = ${fmtD(capEq > 0 ? riskUSD / capEq * 100 : 0, 1)}% ของทุน — เกินเพดานกลางที่ตั้ง (${fmtD(capPctP, 1)}% = $${fmtD(capP2, 2)}) — คุณยืนยันด้วยตัวเอง</div>` : ''}
     <div class="mwarn">⚠ กดยืนยัน = วางคำสั่งรอบน MT5 — เมื่อราคาถึง ระบบจะเปิดไม้เองพร้อม SL/TP ตามนี้ (โควตานับเป็น 1 ไม้)</div>
     <div class="merr" id="m-err"></div>
     <div class="mbtns">
@@ -641,7 +641,7 @@ function openConfirmPending(req) {
   $('m-cancel').focus();
   // ผูกปุ่มยกเลิก "เสมอ" (กดออกได้ทุกสถานะ) — ปุ่มวางปิดเฉพาะเมื่อเกินเพดาน
   $('m-cancel').addEventListener('click', closeModal);
-  if (overP) { $('m-go').disabled = true; return; }
+  // เกินเพดานกลาง = ปุ่มยังกดได้ (ผู้ใช้ยืนยันเอง) — เกตจริงอยู่ฝั่ง main (เพดานของผู้ใช้)
   $('m-go').addEventListener('click', async () => {
     $('m-go').disabled = true;
     $('m-go').textContent = 'กำลังวาง...';
@@ -793,7 +793,7 @@ function openPendingAt(ev) {
   const entry = Number(px.toFixed(d));
   // SL ให้ผ่านเกตจริง: ระยะ SL จำกัดตามเพดานปุ่มกด/ล็อต (ถ้า ATR กว้างเกิน = บีบ, TP ยึด RR 2.5 ตามระยะใหม่)
   const lot = Math.max(0.01, Number($('p-lot').value) || 0.01);
-  const capPct = Math.max(2, Math.min(10, Number(snap.risk && snap.risk.manualRiskMaxPct) || 2));
+  const capPct = clampPct(snap);
   const eqReal = (meta.account && Number.isFinite(meta.account.equityUSD)) ? meta.account.equityUSD : (Number(snap.risk && snap.risk.equity) || 0);
   const maxSlDist = eqReal > 0 ? (eqReal * capPct) / (lot * 100) : Infinity;
   const slDist = Math.min(atr * 1.8, maxSlDist);
@@ -1395,7 +1395,7 @@ function openConfirm(req) {
   // เพดานปุ่มกดเอง (manualRiskMaxPct) — เตือนก่อนกด + ปุ่มส่งจริงปิดตายเมื่อเกิน (ฝั่ง main ปฏิเสธอยู่แล้ว ผู้ใช้รู้ตั้งแต่หน้านี้)
   const acct = meta.account;
   const capEq = acct && acct.equityUSD > 0 ? acct.equityUSD : Number(lastSnap && lastSnap.risk && lastSnap.risk.equity) || 0;
-  const capPctC = Math.max(2, Math.min(10, Number((lastSnap && lastSnap.risk && lastSnap.risk.manualRiskMaxPct) || (appSettings && appSettings.manualRiskMaxPct)) || 2));
+  const capPctC = Math.max(2, Math.min(100, Number((lastSnap && lastSnap.risk && lastSnap.risk.manualRiskMaxPct) || (appSettings && appSettings.manualRiskMaxPct)) || 2));
   const cap = capEq * capPctC / 100;
   const overCap = cap > 0 && riskUSD > cap * 1.001;
   const goTxt = buy ? 'ส่งไม้ซื้อจริง' : 'ส่งไม้ขายจริง';
@@ -1411,7 +1411,7 @@ function openConfirm(req) {
     <div class="mline"><span>เงินเสี่ยงถ้าแตะ SL</span><b class="gold">$${fmtD(riskUSD, 2)}</b></div>
     ${tp ? `<div class="mline"><span>R:R</span><b>1:${fmtD(Math.abs(tp - entry) / (slDist || 1e-9), 2)}</b></div>` : ''}
     ${councilLine}
-    ${overCap ? `<div class="merr">✗ เสี่ยง $${fmtD(riskUSD, 2)} เกินเพดานปุ่มกด ${fmtD(capPctC, 1)}% ของทุน ($${fmtD(cap, 2)}) — ระบบปฏิเสธมากลับแน่: ลดล็อต / ใกล้ SL (ยกเพดานได้ 2–10% ที่แท็บความเสี่ยง)</div>` : ''}
+    ${overCap ? `<div class="mwarn">⚠ เสี่ยง $${fmtD(riskUSD, 2)} = ${fmtD(capEq > 0 ? riskUSD / capEq * 100 : 0, 1)}% ของทุน — เกินเพดานกลาง (${fmtD(capPctC, 1)}% = $${fmtD(cap, 2)}) — ส่งได้ถ้าคุณยืนยัน</div>` : ''}
     ${g.newsStop ? '<div class="mwarn">⚠ โหมดหยุดช่วงข่าวเปิดอยู่ — ไม้นี้มาจากความตั้งใจของคุณ ไม่ใช่สัญญาณระบบ</div>' : ''}
     ${!tp ? '<div class="mwarn">⚠ ไม่มี TP — ต้องปิดไม้เองด้วยมือ</div>' : ''}
     <div class="mwarn">⚠ กดยืนยัน = ลำดับ MARKET จะไปบัญชี MT5 ของคุณทันที</div>
@@ -1422,7 +1422,7 @@ function openConfirm(req) {
     </div>`;
   $('modal').classList.add('show');
   $('m-cancel').focus(); // ปุ่มที่โฟกัสก่อน = ยกเลิก (กด Enter พลาดไม่ส่งไม้)
-  if (overCap) $('m-go').disabled = true;   // เกินเพดาน = ปิดปุ่มส่ง (บอกเหตุผลในหน้าจอแล้ว)
+  // เกินเพดานกลาง = ปุ่มยังกดได้ (ผู้ใช้ยืนยันเอง) — เกตจริงอยู่ฝั่ง main (เพดานของผู้ใช้)
   $('m-cancel').addEventListener('click', closeModal);
   $('m-go').addEventListener('click', async () => {
     $('m-go').disabled = true;
