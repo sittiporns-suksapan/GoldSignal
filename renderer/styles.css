@@ -660,6 +660,8 @@ button.danger:hover { color: #fff; filter: brightness(1.1); }
 .autoclose .ac-line input[type=number] { width: 84px; padding: 4px 8px; font-size: 12.5px; background: var(--inset); border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font-num); }
 .autoclose .ac-line input[type=number]:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-bg); }
 .autoclose .ac-unit { font-size: 12px; color: var(--muted); }
+.autoclose .ac-usel { background: var(--inset); border: 1px solid var(--line); color: var(--text-2); border-radius: 8px; padding: 5px 6px; font-size: 11.5px; cursor: pointer; flex: none; }
+.autoclose .ac-usel:hover, .autoclose .ac-usel:focus { border-color: var(--gold-line); outline: none; }
 .autoclose .ac-px { font-size: 11px; color: var(--faint); }
 .autoclose .ac-prog { display: flex; align-items: center; gap: 8px; }
 .autoclose .ac-bar { flex: 1; height: 5px; border-radius: 99px; background: var(--line); overflow: hidden; }
