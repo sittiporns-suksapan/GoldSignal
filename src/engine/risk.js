@@ -59,8 +59,9 @@ function jointCapPct(settings = {}) {   // คำสั่งที่มาท�
   return Math.max(autoCapPct(settings), manualCapPct(settings));
 }
 // เพดานสัมบูรณ์ของการแก้ SL/คำสั่งรอแบบกดเอง: default 10% — ผู้ใช้ยกได้ถึง 100% ของทุน (ยืนยันทุกครั้งตามเดิม)
+// เพดานสัมบูรณ์ของการแก้ SL/คำสั่งรอ: ต้อง ≥ เพดานกลุ่มเสมอ (กันเพดานบนต่ำกว่าข้างล่าง = กดไม่ได้แม้ยืนยัน)
 function absOvercapPct(settings = {}) {
-  return clamp(Number(settings.modifyAbsMaxPct) || OVERCAP_MAX_PCT, OVERCAP_MAX_PCT, 100);
+  return clamp(Math.max(Number(settings.modifyAbsMaxPct) || OVERCAP_MAX_PCT, jointCapPct(settings)), OVERCAP_MAX_PCT, 100);
 }
 
 // คำนวณขนาดล็อตตาม % ความเสี่ยง
