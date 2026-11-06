@@ -575,26 +575,30 @@ code { background: var(--inset); border: 1px solid var(--line-soft); padding: 1p
 .trade-card::before { left: 0; right: 0; background: linear-gradient(90deg, transparent, var(--gold), transparent); opacity: .55; }
 .trade-card:has(#t-real:checked) { border-color: var(--down-line); }
 .trade-card:has(#t-real:checked)::before { background: linear-gradient(90deg, transparent, var(--down), transparent); }
-.traderow { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: stretch; }
+.traderow { display: grid; grid-template-columns: 1fr 96px 1fr; gap: 14px; align-items: stretch; }
+.tside-wrap { display: grid; gap: 5px; }
+.tside-hint { text-align: center; color: var(--faint); font-size: 9.5px; letter-spacing: .3px; }
 .tside {
-  border: none; border-radius: 14px; color: #fff; padding: 14px 8px;
+  border: none; border-radius: 14px; color: #fff; padding: 16px 8px;
   display: flex; flex-direction: column; gap: 3px; align-items: center; justify-content: center;
+  min-height: 72px; cursor: pointer; transition: filter .15s, transform .08s;
   box-shadow: 0 1px 0 rgba(255, 255, 255, .22) inset, 0 -1px 0 rgba(0, 0, 0, .25) inset, 0 14px 28px -16px var(--glow);
 }
+.tside:active { transform: scale(.96); }
 .tside small { font: 700 11px/1 var(--font-num); letter-spacing: 3px; opacity: .85; }
 .tside span { font-size: 22px; font-weight: 600; letter-spacing: -.2px; }
 .tside.sell { --glow: rgba(216, 72, 88, .9); background: linear-gradient(180deg, var(--sell-a), var(--sell-b)); }
 .tside.buy { --glow: rgba(47, 111, 228, .9); background: linear-gradient(180deg, var(--buy-a), var(--buy-b)); }
-.tside:hover { filter: brightness(1.1) saturate(1.05); color: #fff; }
+.tside:hover { filter: brightness(1.12) saturate(1.05); color: #fff; }
 /* กระพริบแบบสลับ class (ค้างสี ~0.35 วิ แล้วคืน) — paint แค่ 2 ครั้ง/ทิค
    เดิม animate color+text-shadow ทุกเฟรม 0.5 วิ: วัดจริงกิน CPU renderer+GPU ~20% ตอนตลาดวิ่ง */
 .flash-up, #price.flash-up { color: #3ce495; }
 .flash-down, #price.flash-down { color: #ff6573; }
 /* บนปุ่ม BUY/SELL พื้นสีอยู่แล้ว — กระพริบด้วยแสงขาวแทนเปลี่ยนสีตัวอักษร (เดิมแดงบนแดงอ่านไม่ออก) */
 .tside .flash-up, .tside .flash-down { color: #fff; text-shadow: 0 0 8px rgba(255, 255, 255, .9); }
-.tmid { display: grid; gap: 6px; align-content: center; }
-.tmid label { display: grid; gap: 3px; color: var(--muted); font-size: 11px; letter-spacing: .5px; }
-.tmid input { width: 112px; border-radius: 8px; padding: 8px 6px; text-align: center; font-size: 15px; font-weight: 600; }
+.tmid { display: grid; gap: 6px; align-content: center; justify-items: center; }
+.tmid label { display: grid; gap: 3px; color: var(--muted); font-size: 10.5px; letter-spacing: .5px; text-align: center; width: 100%; }
+.tmid input { width: 96px; border-radius: 10px; padding: 9px 4px; text-align: center; font-size: 16px; font-weight: 700; }
 
 /* ---------- SL / TP แยกเด่นสองกล่อง ---------- */
 .stoprow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }

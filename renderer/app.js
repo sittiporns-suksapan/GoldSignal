@@ -633,53 +633,6 @@ function tryPending() {
   }).catch((e) => toast('✗ ผิดพลาด: ' + e.message, 'err'));
 }
 
-function openConfirmPending(req) {
-  const { side, ptype } = pendParts(req.kind);
-  const meta = lastSnap && lastSnap.meta ? lastSnap.meta : {};
-  const digits = meta.digits || 2;
-  const oz = (meta.spec && meta.spec.contractSize) || 100;
-  const riskUSD = Math.abs(req.entry - req.sl) * req.lot * oz;
-  // เพดานปุ่มกดเอง — เกิน = แสดงเหตุผล + ปิดปุ่ม (ตรงกับที่ main จะปฏิเสธ)
-  const capEq = (meta.account && meta.account.equityUSD > 0 ? meta.account.equityUSD : (Number(lastSnap && lastSnap.risk && lastSnap.risk.equity) || 0));
-  const capPctP = Math.max(2, Math.min(100, Number(lastSnap && lastSnap.risk && lastSnap.risk.manualRiskMaxPct) || 2));
-  const capP2 = capEq * capPctP / 100;
-  const overP = capP2 > 0 && riskUSD > capP2 * 1.001;
-  $('mbox').innerHTML = `
-    <h3>ยืนยันวางคำสั่งรอ — ${side === 'buy' ? 'BUY' : 'SELL'} ${ptype.toUpperCase()}</h3>
-    <div class="mline"><span>ราคาเข้า (รอ trigger)</span><b>${fmtD(req.entry, digits)}</b></div>
-    <div class="mline"><span>ล็อต</span><b>${fmtD(req.lot, 2)}</b></div>
-    <div class="mline"><span>Stop Loss</span><b class="down">${fmtD(req.sl, digits)}</b></div>
-    ${Number(req.tp) > 0 ? `<div class="mline"><span>Take Profit</span><b class="up">${fmtD(req.tp, digits)}</b></div>` : '<div class="mwarn">⚠ ไม่มี TP — ต้องปิดไม้เองด้วยมือ</div>'}
-    <div class="mline"><span>เงินเสี่ยงถ้าแตะ SL</span><b class="gold">$${fmtD(riskUSD, 2)}</b></div>
-    ${overP ? `<div class="mwarn">⚠ เสี่ยง $${fmtD(riskUSD, 2)} = ${fmtD(capEq > 0 ? riskUSD / capEq * 100 : 0, 1)}% ของทุน — เกินเพดานกลางที่ตั้ง (${fmtD(capPctP, 1)}% = $${fmtD(capP2, 2)}) — คุณยืนยันด้วยตัวเอง</div>` : ''}
-    <div class="mwarn">⚠ กดยืนยัน = วางคำสั่งรอบน MT5 — เมื่อราคาถึง ระบบจะเปิดไม้เองพร้อม SL/TP ตามนี้ (โควตานับเป็น 1 ไม้)</div>
-    <div class="merr" id="m-err"></div>
-    <div class="mbtns">
-      <button class="mcancel" id="m-cancel">ยกเลิก</button>
-      <button class="mgo ${side}" id="m-go">${overP ? 'ส่งแม้เกินเพดาน (ยืนยันเอง)' : 'วางคำสั่งรอจริง'}</button>
-    </div>`;
-  $('modal').classList.add('show');
-  $('m-cancel').focus();
-  // ผูกปุ่มยกเลิก "เสมอ" (กดออกได้ทุกสถานะ) — ปุ่มวางปิดเฉพาะเมื่อเกินเพดาน
-  $('m-cancel').addEventListener('click', closeModal);
-  // เกินเพดานกลาง = ปุ่มยังกดได้ (ผู้ใช้ยืนยันเอง — รอบแรก main คืน overCap → confirm อีกชั้น → ส่งแบบ allowOverCap)
-  $('m-go').addEventListener('click', async () => {
-    $('m-go').disabled = true;
-    $('m-go').textContent = 'กำลังวาง...';
-    try {
-      let r = await window.api.sendPending({ side, ptype, lot: req.lot, entry: req.entry, sl: req.sl, tp: req.tp });
-      if (!r.ok && r.overCap) {
-        if (confirm(`เสี่ยง $${fmtD(riskUSD, 2)} เกินเพดานปุ่มกด (${fmtD(capPctP, 1)}% = $${fmtD(capP2, 2)})\n\nวางคำสั่งรอทั้งที่เกินเพดาน — ยืนยันเอง?`)) {
-          r = await window.api.sendPending({ side, ptype, lot: req.lot, entry: req.entry, sl: req.sl, tp: req.tp, allowOverCap: true });
-        }
-      }
-      if (r.ok) { closeModal(); toast(`⏱ วางคำสั่งรอแล้ว (id ${r.id}) — รอราคา trigger (เห็นในรายการคำสั่งรอ)`, 'ok'); setTimeout(() => window.api.refreshNow(), 1500); }
-      else if (!$('m-err').textContent) { $('m-err').textContent = '✗ ' + (r.reason || 'วางไม่ได้'); $('m-go').disabled = false; $('m-go').textContent = 'วางคำสั่งรอจริง'; }
-      else { $('m-go').disabled = false; $('m-go').textContent = 'วางคำสั่งรอจริง'; }
-    } catch (e) { $('m-err').textContent = '✗ ผิดพลาด: ' + e.message; $('m-go').disabled = false; $('m-go').textContent = 'วางคำสั่งรอจริง'; }
-  });
-}
-
 // แก้คำสั่งรอ: ระหว่างแก้ไม่วาดรายการใหม่ (กันช่องกรอกถูกล้างทุกรอบ snapshot)
 let editingPending = null;
 function renderPendings(snap) {

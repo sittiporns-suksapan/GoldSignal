@@ -198,11 +198,17 @@
             <div id="acct-line" class="acctline">—</div>
             <div id="trade-live" class="trade trade-new">
               <div class="traderow">
-                <button class="tside sell" id="t-sell"><small>SELL</small><span id="t-bid">—</span></button>
+                <div class="tside-wrap">
+                  <button class="tside sell" id="t-sell"><small>SELL</small><span id="t-bid">—</span></button>
+                  <small class="tside-hint">กดเข้าเลย — ไม่มีหน้ายืนยัน</small>
+                </div>
                 <div class="tmid">
                   <label>ล็อต <input type="number" id="t-lot" inputmode="decimal" min="0.01" step="0.01" value="0.01" /></label>
                 </div>
-                <button class="tside buy" id="t-buy"><small>BUY</small><span id="t-ask">—</span></button>
+                <div class="tside-wrap">
+                  <button class="tside buy" id="t-buy"><small>BUY</small><span id="t-ask">—</span></button>
+                  <small class="tside-hint">กดเข้าเลย — ไม่มีหน้ายืนยัน</small>
+                </div>
               </div>
               <div class="tquote">
                 <button type="button" class="qcopy" data-copy="bid" title="คัดลอกราคา BID (ราคาฝั่งขาย)">คัดลอก Bid</button>
