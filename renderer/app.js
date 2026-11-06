@@ -1567,7 +1567,7 @@ function acSyncInputs() {
   for (const row of AC_ROWS) {
     const thb = appSettings ? Number(appSettings[row.valKey]) || 0 : 0;
     const th = $(row.th), pi = $(row.p);
-    if (th && document.activeElement !== th) th.value = thb ? (Math.round(thb * 100) / 100) : '';
+    if (th && document.activeElement !== th) th.value = thb ? Math.round(thb) : '';
     if (pi && document.activeElement !== pi) pi.value = thb && per ? Math.round(thb / per) : '';
   }
 }
@@ -2329,19 +2329,19 @@ async function loadSettingsToForm() {
   $('t-auto').checked = !!s.autoEnter;
   $('t-real').checked = !!s.realOrdersEnabled;
   $('ac-all').checked = !!s.autoCloseAll;
-  $('ac-all-th').value = Number(s.autoCloseAllProfit) > 0 ? s.autoCloseAllProfit : '';
+  $('ac-all-th').value = Number(s.autoCloseAllProfit) > 0 ? Math.round(s.autoCloseAllProfit) : '';
   $('ac-all-p').value = Number(s.autoCloseAllProfit) > 0 ? Math.round(s.autoCloseAllProfit / (acMoneyPerPoint().per || 1)) : '';
   $('ac-loss').checked = !!s.autoCloseLoss;
-  $('ac-loss-th').value = Number(s.autoCloseLossValue) > 0 ? s.autoCloseLossValue : '';
+  $('ac-loss-th').value = Number(s.autoCloseLossValue) > 0 ? Math.round(s.autoCloseLossValue) : '';
   $('ac-loss-p').value = Number(s.autoCloseLossValue) > 0 ? Math.round(s.autoCloseLossValue / (acMoneyPerPoint().per || 1)) : '';
   if ($('ac-lossonly')) $('ac-lossonly').checked = !!s.autoCloseLosingOnly;
-  if ($('ac-lossonly-th')) $('ac-lossonly-th').value = Number(s.autoCloseLosingOnlyValue) > 0 ? s.autoCloseLosingOnlyValue : '';
+  if ($('ac-lossonly-th')) $('ac-lossonly-th').value = Number(s.autoCloseLosingOnlyValue) > 0 ? Math.round(s.autoCloseLosingOnlyValue) : '';
   if ($('ac-lossonly-p')) $('ac-lossonly-p').value = Number(s.autoCloseLosingOnlyValue) > 0 ? Math.round(s.autoCloseLosingOnlyValue / (acMoneyPerPoint().per || 1)) : '';
   $('ac-allpts').checked = !!s.autoCloseAllPts;
-  $('ac-allpts-th').value = Number(s.autoCloseAllPtsValue) > 0 ? s.autoCloseAllPtsValue : '';
+  $('ac-allpts-th').value = Number(s.autoCloseAllPtsValue) > 0 ? Math.round(s.autoCloseAllPtsValue) : '';
   $('ac-allpts-p').value = Number(s.autoCloseAllPtsValue) > 0 ? Math.round(s.autoCloseAllPtsValue / (acMoneyPerPoint().per || 1)) : '';
   $('ac-pts').checked = !!s.autoClosePoints;
-  $('ac-pts-th').value = Number(s.autoClosePointsValue) > 0 ? s.autoClosePointsValue : '';
+  $('ac-pts-th').value = Number(s.autoClosePointsValue) > 0 ? Math.round(s.autoClosePointsValue) : '';
   $('ac-pts-p').value = Number(s.autoClosePointsValue) > 0 ? Math.round(s.autoClosePointsValue / (acMoneyPerPoint().per || 1)) : '';
   $('s-councilon').checked = s.councilEnabled !== false;
   $('s-councilstrict').checked = s.councilStrict !== false;
