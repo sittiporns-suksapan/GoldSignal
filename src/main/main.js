@@ -66,6 +66,8 @@ const DEFAULT_SETTINGS = {
   autoCloseAllProfit: 100,
   autoCloseLoss: false,       // ตัดขาดทุนรวบอัตโนมัติเมื่อขาดทุนลอยตัวรวม ≥ autoCloseLossValue (สกุลเงินบัญชี)
   autoCloseLossValue: 100,
+  autoCloseLosingOnly: false, // ตัดขาดทุน "เฉพาะไม้แดง": ขาดทุนรวม ≥ autoCloseLosingOnlyValue → ปิดแค่ฝั่งติดลบ เก็บไม้ที่บวกไว้
+  autoCloseLosingOnlyValue: 100,
   autoCloseAllPts: false,     // ปิดรวบอัตโนมัติเมื่อจุดของทุกไม้รวมกัน ≥ autoCloseAllPtsValue
   autoCloseAllPtsValue: 300,
   autoClosePoints: false,     // ปิดรายไม้อัตโนมัติเมื่อไม้บวก ≥ autoClosePointsValue จุด
@@ -135,6 +137,8 @@ function sanitizeSettings(input) {
     autoCloseAllProfit: num(s.autoCloseAllProfit, 100, 0.01, 1e9),
     autoCloseLoss: s.autoCloseLoss === true,
     autoCloseLossValue: num(s.autoCloseLossValue, 100, 0.01, 1e9),
+    autoCloseLosingOnly: s.autoCloseLosingOnly === true,
+    autoCloseLosingOnlyValue: num(s.autoCloseLosingOnlyValue, 100, 0.01, 1e9),
     autoCloseAllPts: s.autoCloseAllPts === true,
     autoCloseAllPtsValue: Math.round(num(s.autoCloseAllPtsValue, 300, 1, 1e6)),
     autoClosePoints: s.autoClosePoints === true,
@@ -854,7 +858,7 @@ function boot() {
   let keepAwakeId = null;
   function syncKeepAwake() {
     const s = engine.settings;
-    const need = (s.realOrdersEnabled === true && s.autoEnter === true) || s.autoCloseAll === true || s.autoCloseLoss === true || s.autoCloseAllPts === true || s.autoClosePoints === true;
+    const need = (s.realOrdersEnabled === true && s.autoEnter === true) || s.autoCloseAll === true || s.autoCloseLoss === true || s.autoCloseAllPts === true || s.autoClosePoints === true || s.autoCloseLosingOnly === true;
     const on = keepAwakeId != null && powerSaveBlocker.isStarted(keepAwakeId);
     if (need && !on) { keepAwakeId = powerSaveBlocker.start('prevent-app-suspension'); engine.pushLog('app', 'กันเครื่องหลับ: เปิด (ระบบอัตโนมัติทำงานอยู่ — จอดับได้ แต่เครื่องไม่หลับ)'); }
     else if (!need && on) { powerSaveBlocker.stop(keepAwakeId); keepAwakeId = null; engine.pushLog('app', 'กันเครื่องหลับ: ปิด (ไม่มีระบบอัตโนมัติเปิดอยู่)'); }
@@ -866,7 +870,7 @@ function boot() {
   const autoCloseBusy = new Map(); // ticket → เวลาที่ส่งคำสั่งปิด
   function autoCloseCheck() {
     const s = engine.settings;
-    if (s.autoCloseAll !== true && s.autoCloseLoss !== true && s.autoCloseAllPts !== true && s.autoClosePoints !== true) return;
+    if (s.autoCloseAll !== true && s.autoCloseLoss !== true && s.autoCloseAllPts !== true && s.autoClosePoints !== true && s.autoCloseLosingOnly !== true) return;
     const mt5 = engine.connectors.mt5;
     const meta = mt5.latest && mt5.latest.meta;
     if (!meta || !meta.spec || !(meta.positions || []).length || !mt5.isLive()) return;
@@ -894,10 +898,12 @@ function boot() {
       for (const x of p.singles) {
         mt5.requestClose(x.ticket);
         autoCloseBusy.set(x.ticket, now);
-        const msg = `ปิดไม้ #${x.ticket} อัตโนมัติ: บวก ${Math.round(x.pts)} จุด ถึงเป้า ${s.autoClosePointsValue} จุด (≈ ${x.profit.toFixed(2)} ${cur})`;
+        const msg = p.trigger === 'lossonly'
+          ? `ตัดขาดทุนเฉพาะไม้แดง: ขาดทุนรวม ${p.total.toFixed(2)} ${cur} ถึงเป้า ${s.autoCloseLosingOnlyValue} ${cur} — ปิดไม้ #${x.ticket} (ลอยตัว ${x.profit.toFixed(2)} ${cur}) เก็บไม้ที่บวกไว้`
+          : `ปิดไม้ #${x.ticket} อัตโนมัติ: บวก ${Math.round(x.pts)} จุด ถึงเป้า ${s.autoClosePointsValue} จุด (≈ ${x.profit.toFixed(2)} ${cur})`;
         engine.pushLog('order', '🔒 ' + msg, 'warn');
         send('auto-close', { kind: 'one', msg, tickets: [x.ticket] });
-        notifyOnce('autoclose-' + x.ticket, 'GoldSignal: ปิดไม้เซฟกำไร', msg);
+        notifyOnce('autoclose-' + x.ticket, p.trigger === 'lossonly' ? 'GoldSignal: ตัดขาดทุนเฉพาะไม้แดง' : 'GoldSignal: ปิดไม้เซฟกำไร', msg);
       }
     } catch (err) {
       engine.pushLog('order', `ปิดอัตโนมัติไม่สำเร็จ: ${err.message}`, 'err');

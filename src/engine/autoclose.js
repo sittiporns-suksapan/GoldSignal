@@ -34,10 +34,17 @@ function plan({ positions = [], bid, ask, spec, digits, settings = {}, skip = ne
   const target = Number(settings.autoCloseAllProfit);
   const targetPts = Number(settings.autoCloseAllPtsValue);
   const maxLoss = Number(settings.autoCloseLossValue);
+  const losingTarget = Number(settings.autoCloseLosingOnlyValue);
   if (settings.autoCloseLoss === true && maxLoss > 0 && out.total <= -maxLoss) out.trigger = 'loss';
+  else if (settings.autoCloseLosingOnly === true && losingTarget > 0 && out.total <= -losingTarget) out.trigger = 'lossonly';
   else if (settings.autoCloseAll === true && target > 0 && out.total >= target) out.trigger = 'money';
   else if (settings.autoCloseAllPts === true && targetPts > 0 && out.totalPts >= targetPts) out.trigger = 'points';
   if (out.trigger) {
+    // 'lossonly' = ปิดเฉพาะไม้แดง (ติดลบ) เก็บไม้ที่บวกไว้ — ที่เหลือปิดรวบ
+    if (out.trigger === 'lossonly') {
+      out.singles = out.live.filter((x) => x.profit < 0 && !skip.has(x.ticket));
+      return out;
+    }
     out.closeAll = out.live.map((x) => x.ticket).filter((t) => !skip.has(t));
     return out; // ปิดรวบครอบทุกไม้แล้ว ไม่ต้องดูรายไม้
   }

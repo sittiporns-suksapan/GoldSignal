@@ -253,6 +253,16 @@ ok('ปิดอัตโนมัติ: ปิดรวบเมื่อก�
   assert.equal(ac.plan({ ...lossQ, settings: { autoCloseLoss: true, autoCloseLossValue: 100 } }).closeAll.length, 0, 'ขาดทุนยังไม่ถึง 100');
   const cut = ac.plan({ ...lossQ, settings: { autoCloseLoss: true, autoCloseLossValue: 80, autoCloseAll: true, autoCloseAllProfit: 1 } });
   assert.equal(cut.trigger, 'loss'); assert.deepEqual(cut.closeAll, [11, 12], 'ขาดทุนรวม ≥ 80 → ปิดทุกไม้');
+  // ตัดขาดทุนเฉพาะไม้แดง: ขาดทุนรวมถึงเป้า → ปิดแค่ตัวติดลบ เก็บตัวบวก และลำดับการตรวจ (loss เช็คก่อน lossonly)
+  const mixQ = { positions: [
+    { ticket: 21, type: 'buy', volume: 0.01, open: 3940, profit: 0 },  // bid 3945 → +500 จุด ≈ +168.5
+    { ticket: 22, type: 'sell', volume: 0.01, open: 3941, profit: 0 }, // ask 3946.5 → −550 จุด ≈ −185.35
+  ], bid: 3945, ask: 3946.5, spec, digits: 2 }; // รวม ≈ −16.85
+  const lo = ac.plan({ ...mixQ, settings: { autoCloseLosingOnly: true, autoCloseLosingOnlyValue: 16 } });
+  assert.equal(lo.trigger, 'lossonly'); assert.deepEqual(lo.singles.map((x) => x.ticket), [22], 'ปิดแค่ไม้แดง #22 — เก็บไม้บวก #21');
+  assert.equal(ac.plan({ ...mixQ, settings: { autoCloseLosingOnly: true, autoCloseLosingOnlyValue: 100 } }).singles.length, 0, 'รวมยังไม่ถึง −100');
+  const bothOn = ac.plan({ ...lossQ, settings: { autoCloseLoss: true, autoCloseLossValue: 80, autoCloseLosingOnly: true, autoCloseLosingOnlyValue: 80 } });
+  assert.equal(bothOn.trigger, 'loss', 'ปิดรวบตัดขาดทุนได้ก่อนเสมอเมื่อสองสวิตช์เปิดคู่กัน');
   const notYet = ac.plan({ ...q, settings: { autoCloseAll: true, autoCloseAllProfit: 200 } });
   assert.equal(notYet.closeAll.length, 0, 'ยังไม่ถึงเป้ารวม');
   const one = ac.plan({ ...q, settings: { autoClosePoints: true, autoClosePointsValue: 300 } });

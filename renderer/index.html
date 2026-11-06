@@ -323,6 +323,13 @@
                     <div class="ac-prog"><div class="ac-bar"><i id="ac-loss-bar"></i></div><span id="ac-loss-now" class="ac-now">—</span></div>
                   </div>
                 </div>
+                <div class="ac-item " title="ขาดทุนลอยตัวรวมถึงจำนวนนี้ = ปิดแค่ไม้ที่เป็นแดง (ติดลบ) ทันที — เก็บไม้ที่บวกไว้วิ่งต่อ">
+                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-lossonly" /><span></span></span></label>
+                  <div class="ac-main">
+                    <div class="ac-line"><span class="ac-lbl">ปิดเฉพาะไม้แดง เมื่อขาดทุนรวม ≥</span><input type="number" id="ac-lossonly-v" inputmode="decimal" min="0.01" step="1" /><span class="ac-unit" id="ac-lossonly-cur">THB</span></div>
+                    <div class="ac-prog"><div class="ac-bar"><i id="ac-lossonly-bar"></i></div><span id="ac-lossonly-now" class="ac-now">—</span></div>
+                  </div>
+                </div>
               </div>
               <div id="ac-status" class="ac-status"></div>
             </div>

@@ -1484,6 +1484,8 @@ $('t-auto').addEventListener('change', async (e) => {
 function renderAutoClose(meta, list) {
   $('ac-cur').textContent = acctCur || '';
   $('ac-loss-cur').textContent = acctCur || '';
+  const lossOnlyCur = $('ac-lossonly-cur');
+  if (lossOnlyCur) lossOnlyCur.textContent = acctCur || '';
   const digits = (meta && meta.digits) || 2;
   // จุด → เงินสกุลบัญชี (เช่น THB): จุด × ขนาดจุด × 100 oz × ล็อต × อัตราแลก (equity ÷ equityUSD)
   // ล็อต: ไม้ที่เปิดอยู่ (ถ้าขนาดเท่ากันทุกไม้) ไม่งั้นใช้ช่องล็อตของการ์ดส่งคำสั่ง
@@ -1496,9 +1498,9 @@ function renderAutoClose(meta, list) {
   $('ac-pts-px').textContent = pxOf(val('ac-pts-v'));
   $('ac-allpts-px').textContent = pxOf(val('ac-allpts-v'));
   // สรุปบนหัว: เปิดอยู่กี่ตัว
-  const ids = ['ac-all', 'ac-allpts', 'ac-pts', 'ac-loss'];
+  const ids = ['ac-all', 'ac-allpts', 'ac-pts', 'ac-loss', 'ac-lossonly'];
   const nOn = ids.filter((id) => $(id).checked).length;
-  $('ac-active').textContent = nOn ? `เปิดอยู่ ${nOn}/4` : 'ยังไม่เปิดใช้';
+  $('ac-active').textContent = nOn ? `เปิดอยู่ ${nOn}/5` : 'ยังไม่เปิดใช้';
   $('ac-active').classList.toggle('on', nOn > 0);
   // ความคืบหน้าถึงเป้า (แถบ + ตัวเลขตอนนี้/เป้า)
   const bar = (id, now, target, fmt) => {
@@ -1521,6 +1523,15 @@ function renderAutoClose(meta, list) {
   const loss = list.length ? Math.max(0, -total) : null;
   $('ac-loss-bar').style.width = (loss && val('ac-loss-v') > 0 ? Math.min(100, (loss / val('ac-loss-v')) * 100) : 0) + '%';
   $('ac-loss-now').textContent = loss == null ? '—' : `ขาดทุน ${fmtD(loss, 2)} / ${fmtD(val('ac-loss-v'), 2)}`;
+  // ตัดขาดทุนเฉพาะไม้แดง: แถบเดียวกัน — แสดงครบเมื่อไม้เปิด + สรุปกี่ไม้แดงที่จะถูกปิดเมื่อทำงาน
+  const lossOnlyEl = $('ac-lossonly-bar');
+  if (lossOnlyEl) {
+    lossOnlyEl.style.width = (loss && val('ac-lossonly-v') > 0 ? Math.min(100, (loss / val('ac-lossonly-v')) * 100) : 0) + '%';
+    const nowEl = $('ac-lossonly-now');
+    const sumLoss = list.reduce((s, p) => s + (Number(p.profit) < 0 ? Number(p.profit) : 0), 0);
+    const nRed = list.filter((p) => Number(p.profit) < 0).length;
+    if (nowEl) nowEl.textContent = loss == null ? '—' : `แดง ${nRed} ไม้ • ลอยตัว ${fmtD(sumLoss, 2)} / ตั้ง ${fmtD(val('ac-lossonly-v'), 2)}`;
+  }
   $('ac-status').textContent = list.length
     ? `ไม้ที่เปิด ${list.length} ไม้ • กำไรรวม ${money(total, acctCur, true)}${sumPts != null ? ` • จุดรวม ${pt(sumPts)}` : ''}`
     : 'ไม่มีไม้ที่เปิดอยู่ — ตั้งเป้าไว้ก่อนได้ ระบบจะเริ่มดูเมื่อมีไม้';
@@ -1556,6 +1567,7 @@ bindAutoClose('ac-all', 'ac-all-v', 'autoCloseAll', 'autoCloseAllProfit', 'ป�
 bindAutoClose('ac-loss', 'ac-loss-v', 'autoCloseLoss', 'autoCloseLossValue', 'ตัดขาดทุนรวบ', () => `${acctCur || ''} (ขาดทุนรวม)`);
 bindAutoClose('ac-allpts', 'ac-allpts-v', 'autoCloseAllPts', 'autoCloseAllPtsValue', 'ปิดรวบตามจุด', () => 'จุด');
 bindAutoClose('ac-pts', 'ac-pts-v', 'autoClosePoints', 'autoClosePointsValue', 'ปิดรายไม้', () => 'จุด');
+bindAutoClose('ac-lossonly', 'ac-lossonly-v', 'autoCloseLosingOnly', 'autoCloseLosingOnlyValue', 'ตัดขาดทุนเฉพาะไม้แดง', () => `${acctCur || ''} (ขาดทุนรวม — ปิดแค่ไม้แดง)`);
 window.api.onAutoEnter((r) => { toast('🤖 ' + r.msg, r.ok ? 'ok' : 'err'); if (r.ok) setTimeout(() => window.api.refreshNow(), 1500); });
 window.api.onAutoClose((r) => { toast('🔒 ' + r.msg, 'ok'); setTimeout(() => window.api.refreshNow(), 1500); });
 
@@ -2294,6 +2306,8 @@ async function loadSettingsToForm() {
   $('ac-all-v').value = s.autoCloseAllProfit;
   $('ac-loss').checked = !!s.autoCloseLoss;
   $('ac-loss-v').value = s.autoCloseLossValue;
+  if ($('ac-lossonly')) $('ac-lossonly').checked = !!s.autoCloseLosingOnly;
+  if ($('ac-lossonly-v')) $('ac-lossonly-v').value = s.autoCloseLosingOnlyValue;
   $('ac-allpts').checked = !!s.autoCloseAllPts;
   $('ac-allpts-v').value = s.autoCloseAllPtsValue;
   $('ac-pts').checked = !!s.autoClosePoints;
