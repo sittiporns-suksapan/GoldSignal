@@ -113,7 +113,7 @@ function riskScore(sig, sessionQuality = 'good') {
 // ---------- ตรวจคำสั่งซื้อขายจริงจากปุ่มในแอป (กันเหนียว 3 ชั้น) ----------
 // จุดต่างจากสัญญาณ: ผู้ใช้เป็นผู้ตัดสินใจ — เราบังคับเฉพาะของแข็ง:
 //  SL ห้ามลบ • เพดานเสี่ยงตามกลุ่ม: auto=autoRiskMaxPct, ปุ่มกด/เว็บ/Telegram=manualRiskMaxPct (2–10%) • ทุกไม้มีเหตุผลกรองพร้อมแสดง
-function validateManualOrder({ side, lot, entry, sl, tp, settings, manualToday = 0, signalsToday = 0, auto = false }) {
+function validateManualOrder({ side, lot, entry, sl, tp, settings, manualToday = 0, signalsToday = 0, auto = false, allowOverCap = false }) {
   const equity = Number(settings.equity) || 0;
   const ozPerLot = Number(settings.ozPerLot) || OZ_PER_LOT;   // ขนาดสัญญาจริงของโบรกเกอร์ (จาก EA) ถ้ามี
   const base = { pass: false, reason: null, warn: null, metrics: {} };
@@ -135,16 +135,21 @@ function validateManualOrder({ side, lot, entry, sl, tp, settings, manualToday =
   const groupTxt = auto ? 'อัตโนมัติ' : 'ปุ่มกดเอง';
   const hardMax = (equity * capPct) / 100;
   if (equity <= 0) return { ...base, reason: 'ยังไม่ได้ตั้งทุน (แท็บตั้งค่า)' };
-  if (riskUSD > hardMax * 1.001) return {
-    ...base,
-    reason: `ไม้นี้เสี่ยง $${ind.round(riskUSD, 2)} เกินเพดาน${groupTxt} ${capPct}% ของทุน ($${ind.round(hardMax, 2)}) — ลดล็อต/ขยับ SL ใกล้ขึ้น (ยกเพดาน ${groupTxt} ได้ในแท็บตั้งค่า)`,
-    metrics: { riskUSD: ind.round(riskUSD, 2), hardMax: ind.round(hardMax, 2), slDist: ind.round(slDist, 2) },
-  };
+  // เกินเพดานกลุ่ม: auto = ปฏิเสธเสมอ • ปุ่มกด/เว็บ/Telegram มือ = allowOverCap ผ่านได้ (ผู้ใช้ยืนยันเห็นเตือนก่อน)
+  if (riskUSD > hardMax * 1.001) {
+    if (auto || !allowOverCap) return {
+      ...base,
+      overCap: true,
+      reason: `ไม้นี้เสี่ยง $${ind.round(riskUSD, 2)} = ${ind.round(riskUSD / Math.max(equity, 1) * 100, 1)}% ของทุน ($${ind.round(equity, 0)}) เกินเพดาน${groupTxt} ${capPct}% ($${ind.round(hardMax, 2)}) — ลดล็อต/SL ใกล้ขึ้น หรือยืนยันเกินเพดานเอง`,
+      metrics: { riskUSD: ind.round(riskUSD, 2), hardMax: ind.round(hardMax, 2), slDist: ind.round(slDist, 2) },
+    };
+  }
 
   const rrBase = Number.isFinite(tp) && tp > 0 ? Math.abs(tp - entry) / Math.abs(entry - sl) : null;
   let warn = null;
+  if (riskUSD > hardMax * 1.001) warn = `⚠ เสี่ยงเกินเพดาน${groupTxt} (${capPct}%) — ผู้ใช้ยืนยันเกินเพดานเอง`;
   if (Number.isFinite(rrBase) && rrBase < Math.max(HARD_MIN_RR, Number(settings.minRR) || 1.5)) {
-    warn = `RR แผนนี้ 1:${ind.round(rrBase, 2)} ต่ำกว่าเกณฑ์ของระบบสัญญาณ (${settings.minRR}) — พิจารณา TP ให้ไกลขึ้น`;
+    warn = (warn ? warn + ' • ' : '') + `RR แผนนี้ 1:${ind.round(rrBase, 2)} ต่ำกว่าเกณฑ์ของระบบสัญญาณ (${settings.minRR}) — พิจารณา TP ให้ไกลขึ้น`;
   }
 
   const max = Number(settings.maxSignalsPerDay) || 0;

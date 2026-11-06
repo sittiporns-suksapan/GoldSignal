@@ -635,20 +635,26 @@ function openConfirmPending(req) {
     <div class="merr" id="m-err"></div>
     <div class="mbtns">
       <button class="mcancel" id="m-cancel">ยกเลิก</button>
-      <button class="mgo ${side}" id="m-go">${overP ? 'วางไม่ได้ (เกินเพดาน)' : 'วางคำสั่งรอจริง'}</button>
+      <button class="mgo ${side}" id="m-go">${overP ? 'ส่งแม้เกินเพดาน (ยืนยันเอง)' : 'วางคำสั่งรอจริง'}</button>
     </div>`;
   $('modal').classList.add('show');
   $('m-cancel').focus();
   // ผูกปุ่มยกเลิก "เสมอ" (กดออกได้ทุกสถานะ) — ปุ่มวางปิดเฉพาะเมื่อเกินเพดาน
   $('m-cancel').addEventListener('click', closeModal);
-  // เกินเพดานกลาง = ปุ่มยังกดได้ (ผู้ใช้ยืนยันเอง) — เกตจริงอยู่ฝั่ง main (เพดานของผู้ใช้)
+  // เกินเพดานกลาง = ปุ่มยังกดได้ (ผู้ใช้ยืนยันเอง — รอบแรก main คืน overCap → confirm อีกชั้น → ส่งแบบ allowOverCap)
   $('m-go').addEventListener('click', async () => {
     $('m-go').disabled = true;
     $('m-go').textContent = 'กำลังวาง...';
     try {
-      const r = await window.api.sendPending({ side, ptype, lot: req.lot, entry: req.entry, sl: req.sl, tp: req.tp });
+      let r = await window.api.sendPending({ side, ptype, lot: req.lot, entry: req.entry, sl: req.sl, tp: req.tp });
+      if (!r.ok && r.overCap) {
+        if (confirm(`เสี่ยง $${fmtD(riskUSD, 2)} เกินเพดานปุ่มกด (${fmtD(capPctP, 1)}% = $${fmtD(capP2, 2)})\n\nวางคำสั่งรอทั้งที่เกินเพดาน — ยืนยันเอง?`)) {
+          r = await window.api.sendPending({ side, ptype, lot: req.lot, entry: req.entry, sl: req.sl, tp: req.tp, allowOverCap: true });
+        }
+      }
       if (r.ok) { closeModal(); toast(`⏱ วางคำสั่งรอแล้ว (id ${r.id}) — รอราคา trigger (เห็นในรายการคำสั่งรอ)`, 'ok'); setTimeout(() => window.api.refreshNow(), 1500); }
-      else { $('m-err').textContent = '✗ ' + (r.reason || 'วางไม่ได้'); $('m-go').disabled = false; $('m-go').textContent = 'วางคำสั่งรอจริง'; }
+      else if (!$('m-err').textContent) { $('m-err').textContent = '✗ ' + (r.reason || 'วางไม่ได้'); $('m-go').disabled = false; $('m-go').textContent = 'วางคำสั่งรอจริง'; }
+      else { $('m-go').disabled = false; $('m-go').textContent = 'วางคำสั่งรอจริง'; }
     } catch (e) { $('m-err').textContent = '✗ ผิดพลาด: ' + e.message; $('m-go').disabled = false; $('m-go').textContent = 'วางคำสั่งรอจริง'; }
   });
 }
@@ -1422,21 +1428,27 @@ function openConfirm(req) {
     </div>`;
   $('modal').classList.add('show');
   $('m-cancel').focus(); // ปุ่มที่โฟกัสก่อน = ยกเลิก (กด Enter พลาดไม่ส่งไม้)
-  // เกินเพดานกลาง = ปุ่มยังกดได้ (ผู้ใช้ยืนยันเอง) — เกตจริงอยู่ฝั่ง main (เพดานของผู้ใช้)
   $('m-cancel').addEventListener('click', closeModal);
+  // เกินเพดานกลาง = ปุ่มยังกดได้ (ผู้ใช้ยืนยันเอง) — เกตจริงอยู่ฝั่ง main (เพดานของผู้ใช้)
+  if (overCap) $('m-go').textContent = 'ส่งแม้เกินเพดาน (ยืนยันเอง)';
   $('m-go').addEventListener('click', async () => {
     $('m-go').disabled = true;
     $('m-go').textContent = 'กำลังส่ง...';
     try {
-      const r = await window.api.sendOrder({ side: buy ? 'buy' : 'sell', lot, sl, tp });
+      let r = await window.api.sendOrder({ side: buy ? 'buy' : 'sell', lot, sl, tp });
+      if (!r.ok && r.overCap) {
+        if (confirm(`เสี่ยง $${fmtD(riskUSD, 2)} เกินเพดานปุ่มกด (${fmtD(capPctC, 1)}% = $${fmtD(cap, 2)})\n\nส่งไม้จริงทั้งที่เกินเพดาน — ยืนยันเอง?`)) {
+          r = await window.api.sendOrder({ side: buy ? 'buy' : 'sell', lot, sl, tp, allowOverCap: true });
+        }
+      }
       if (r.ok) {
         closeModal();
         toast(`📤 ส่งคำสั่งแล้ว (id ${r.id}) — รอผลจาก MT5...`, 'ok');
         setTimeout(() => window.api.refreshNow(), 1500);
       } else {
-        $('m-err').textContent = '✗ ' + (r.reason || 'ส่งไม่ได้');
+        if (!$('m-err').textContent) $('m-err').textContent = '✗ ' + (r.reason || 'ส่งไม่ได้');
         $('m-go').disabled = false;
-        $('m-go').textContent = goTxt;
+        $('m-go').textContent = overCap ? 'ส่งแม้เกินเพดาน (ยืนยันเอง)' : goTxt;
       }
     } catch (e) {
       $('m-err').textContent = '✗ ผิดพลาด: ' + e.message;

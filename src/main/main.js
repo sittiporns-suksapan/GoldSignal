@@ -622,8 +622,9 @@ function boot() {
       manualToday: engine.manualToday,
       signalsToday: engine.dailyCount,
       auto: req.auto === true,
+      allowOverCap: req.allowOverCap === true,
     });
-    if (!v.pass) { engine.pushLog('order', `ปฏิเสธคำสั่ง ${side}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, warn: v.warn, metrics: v.metrics }; }
+    if (!v.pass) { engine.pushLog('order', `ปฏิเสธคำสั่ง ${side}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, warn: v.warn, metrics: v.metrics, overCap: v.overCap === true }; }
     // มติสภาบังคับเหมือนสัญญาณ (สวนมติ/ไร้มติ = กรอง ตามโหมดเข้ม)
     const councilVerdict = g.snap.council || null;
     const gate = gateSignal({ side }, councilVerdict, engine.settings);
@@ -666,8 +667,10 @@ function boot() {
       manualToday: engine.manualToday,
       signalsToday: engine.dailyCount,
       auto: req.auto === true,
+      allowOverCap: req.allowOverCap === true,
     });
-    if (!v.pass) { engine.pushLog('order', `ปฏิเสธคำสั่งรอ ${side}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, warn: v.warn, metrics: v.metrics }; }
+    if (!v.pass) { engine.pushLog('order', `ปฏิเสธคำสั่งรอ ${side}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, warn: v.warn, metrics: v.metrics, overCap: v.overCap === true }; }
+    if (req.allowOverCap === true && v.metrics.riskUSD > v.metrics.hardMax) engine.pushLog('order', `วางคำสั่งรอ ${side} เกินเพดาน (เสี่ยง $${v.metrics.riskUSD} > $${v.metrics.hardMax}) — ผู้ใช้ยืนยันเอง`, 'warn');
     try {
       const { id } = engine.connectors.mt5.sendPending({ side, ptype, lot: v.metrics.lot, entry: Number(entry), sl: Number(req.sl), tp: Number(req.tp) || 0 });
       engine.manualToday++;
