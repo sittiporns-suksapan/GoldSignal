@@ -49,7 +49,6 @@ function plan({ positions = [], bid, ask, spec, digits, settings = {}, skip = ne
     return out; // ปิดรวบครอบทุกไม้แล้ว ไม่ต้องดูรายไม้
   }
   const needMoney = Number(settings.autoClosePointsValue);   // เป้ารายไม้ (บาท)
-  if (settings.autoCloseAllPts === true && targetPts > 0 && out.total >= targetPts) out.trigger = 'points';
   if (settings.autoClosePoints === true && needMoney > 0) {
     out.singles = out.live.filter((x) => x.profit >= needMoney && !skip.has(x.ticket));
   }

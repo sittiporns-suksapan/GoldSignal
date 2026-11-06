@@ -981,12 +981,15 @@ function boot() {
     let results = [];
     try { results = engine.connectors.mt5.pollResults(); } catch (err) { engine.pushLog('order', `อ่านผลจาก MT5 ไม่ได้: ${err.message}`, 'warn'); }
     for (const r of results) {
-      // ไม้เปิดที่ไม่สำเร็จ (โบรกปฏิเสธ/หมดอายุ) ไม่ได้เข้าตลาด → คืนโควตาวันนี้
-      if (r.status !== 'ok' && r.cmd && r.cmd.action === 'open') engine.manualToday = Math.max(0, engine.manualToday - 1);
-      engine.pushLog('order', `ผล id=${r.id}: ${r.status === 'ok' ? '✅ ทำสำเร็จ' : '❌ ล้มเหลว — ' + r.msg} (retcode ${r.retcode}, ticket ${r.ticket || '-'})`, r.status === 'ok' ? 'info' : 'err');
-      send('order-result', r);
-      const a = r.cmd && r.cmd.action;
-      if (r.status !== 'ok') notify('orderFail', `❌ คำสั่ง ${a === 'closepart' ? 'ปิดบางส่วน' : a || '-'} ล้มเหลว: ${r.msg} (retcode ${r.retcode})${r.cmd && r.cmd.ticket ? ' • ticket #' + r.cmd.ticket : ''}\n${thTime()}`);
+    // retcode 10036 (TRADE_RETCODE_POSITION_CLOSED) บนคำสั่งปิด = ไม่ถูกปิดไปก่อน (TP/SL โบรกพุ่งก่อนเป็น 0.x วิ) = ผลลัพธ์ครบจบแล้ว — ไม่ผิด ไม่ต้องแจ้งเตือน
+    const r2 = r;
+    if (r2.status !== 'ok' && Number(r2.retcode) === 10036 && r2.cmd && ['close', 'closepart', 'closeall'].includes(r2.cmd.action)) r2.benign = true;
+    // ไม้เปิดที่ไม่สำเร็จ (โบรกปฏิเสธ/หมดอายุ) ไม่ได้เข้าตลาด → คืนโควตาวันนี้
+    if (r2.status !== 'ok' && r2.cmd && r2.cmd.action === 'open') engine.manualToday = Math.max(0, engine.manualToday - 1);
+    engine.pushLog('order', `ผล id=${r2.id}: ${r2.status === 'ok' ? '✅ ทำสำเร็จ' : r2.benign ? '✅ ไม้ถูกปิดไปก่อนแล้ว (TP/SL โบรกทำก่อน — ถือว่าสำเร็จ)' : '❌ ล้มเหลว — ' + r2.msg} (retcode ${r2.retcode}, ticket ${r2.ticket || '-'})`, r2.status === 'ok' || r2.benign ? 'info' : 'err');
+    send('order-result', r2);
+    const a = r2.cmd && r2.cmd.action;
+    if (r2.status !== 'ok' && !r2.benign) notify('orderFail', `❌ คำสั่ง ${a === 'closepart' ? 'ปิดบางส่วน' : a || '-'} ล้มเหลว: ${r2.msg} (retcode ${r2.retcode})${r2.cmd && r2.cmd.ticket ? ' • ticket #' + r2.cmd.ticket : ''}\n${thTime()}`);
       else if (a === 'limit' || a === 'stop') notify('pending', `⏳ วางคำสั่งรอ ${String(r.cmd.side).toUpperCase()} ${a.toUpperCase()} ล็อต ${r.cmd.lot} @ ${px(r.cmd.entry)} • SL ${px(r.cmd.sl)} • TP ${px(r.cmd.tp)}\nticket #${r.ticket || '-'} • ${thTime()}`);
       else if (a === 'cancel') notify('pending', `🗑 ยกเลิกคำสั่งรอ #${r.cmd.ticket}\n${thTime()}`);
       else if (a === 'closepart') notify('realClose', `✂️ ปิดบางส่วน ${r.cmd.lot} ล็อต @ ${px(r.price)}\nticket #${r.cmd.ticket} • ${thTime()}`);

@@ -1628,16 +1628,17 @@ window.api.onOrderResult((r) => {
   if (isClose && r.status !== 'ok') { closingTickets.delete(Number(r.cmd.ticket)); if (lastSnap) renderPositions(lastSnap.meta); }
   // กันทุน/ปิดครึ่งที่ MT5 ไม่รับ = ปลดล็อกปุ่มแถวนั้นทันที (สำเร็จ = รอ snapshot เห็นผลค่อยปลด กันกดซ้ำด้วยล็อตเก่า)
   if (r.cmd && r.status !== 'ok' && rowBusy.delete(Number(r.cmd.ticket)) && lastSnap) renderPositions(lastSnap.meta);
-  toast(r.status === 'ok'
+  const ok = r.status === 'ok' || r.benign;
+  toast(ok
     ? isModify ? `✅ แก้${r.cmd.action === 'pmodify' ? 'คำสั่งรอ' : ' SL/TP ไม้'} #${r.cmd.ticket} แล้ว`
-    : isClose ? `✅ ปิดไม้ #${r.ticket} แล้ว${pxTxt}`
-    : isPart ? `✂️ ปิดบางส่วนไม้ #${r.cmd.ticket} แล้ว (${fmtD(Number(r.cmd.lot), 2)} ล็อต${pxTxt})`
+    : isClose ? (r.benign ? `✅ ไม้ #${r.ticket} ถูกปิดไปก่อนแล้ว (TP/SL โบรกทำก่อน)` : `✅ ปิดไม้ #${r.ticket} แล้ว${pxTxt}`)
+    : isPart ? (r.benign ? `✅ ปิดบางส่วน #${r.cmd.ticket} จบไปก่อนแล้ว (โบรกปิดพร้อมไม้หลัก)` : `✂️ ปิดบางส่วนไม้ #${r.cmd.ticket} แล้ว (${fmtD(Number(r.cmd.lot), 2)} ล็อต${pxTxt})`)
     : `✅ MT5 รับไม้แล้ว — ticket ${r.ticket}${pxTxt}`
     : r.status === 'stale'
     ? `⏳ ${r.msg}`
     : isPart ? `❌ ปิดครึ่งไม้ #${r.cmd.ticket} ไม่ได้: ${eaErrTh(r.msg)} (retcode ${r.retcode})`
-    : `❌ MT5 ปฏิเสธ: ${eaErrTh(r.msg)} (retcode ${r.retcode})`, r.status === 'ok' ? 'ok' : r.status === 'stale' ? '' : 'err');
-  if (r.status === 'ok') setTimeout(() => window.api.refreshNow(), 800);
+    : `❌ MT5 ปฏิเสธ: ${eaErrTh(r.msg)} (retcode ${r.retcode})`, ok ? 'ok' : r.status === 'stale' ? '' : 'err');
+  if (ok) setTimeout(() => window.api.refreshNow(), 800);
 });
 
 // ---------- เลนเรียลไทม์ (ราคาวิ่งทุก ~1 วิ เหมือน MT5) ----------
