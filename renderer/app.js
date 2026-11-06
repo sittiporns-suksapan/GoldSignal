@@ -1012,6 +1012,29 @@ for (const k of ['sl', 'tp']) {
   });
 }
 
+// คำสั่งรอ: ปุ่มระยะ SL/TP เป็นจุด — กรอกราคาลงช่องให้ตรงจากราคาเข้า (ถ้าราคาเข้าว่าง = ใช้ราคาตลาดกลาง)
+document.querySelectorAll('[data-psl], [data-ptp]').forEach((c) => c.addEventListener('click', () => {
+  const meta = lastSnap && lastSnap.meta || {};
+  if (!Number.isFinite(Number(meta.bid))) { toast('ยังไม่มีราคาสด — เชื่อม MT5 ก่อน', 'err'); return; }
+  const digits = meta.digits || 2, pt = Math.pow(10, -digits);
+  const entry = Number($('p-entry').value) || ((Number(meta.bid) + Number(meta.ask)) / 2);
+  const isPsl = c.hasAttribute('data-psl');
+  const r = isPsl ? c.getAttribute('data-psl') : c.getAttribute('data-ptp');
+  document.querySelectorAll(`[data-${isPsl ? 'psl' : 'ptp'}]`).forEach((x) => setAttrIf(x, 'aria-pressed', x === c ? 'true' : 'false'));
+  if (isPsl) {
+    const el = $('p-sl');
+    if (r === '') { el.value = ''; el.placeholder = 'อัตโนมัติ'; }
+    else el.value = (entry - Number(r) * pt).toFixed(digits);
+  } else if (r === '0') {
+    $('p-tp').value = '0';
+  } else {
+    const el = $('p-tp');
+    if (r === '') { el.value = ''; el.placeholder = 'อัตโนมัติ'; }
+    else el.value = (entry + Number(r) * pt).toFixed(digits);
+  }
+  $('pend-hint').textContent = `ตั้งจากราคาเข้า ${fmtD(entry, digits)} • SL ${fmtD(Number($('p-sl').value), digits)} • TP ${$('p-tp').value === '' ? 'อัตโนมัติ' : fmtD(Number($('p-tp').value), digits)} — ตรวจแล้วกด "วางคำสั่งรอ"`;
+}));
+
 // ล็อตด่วน: ปุ่มที่ต่ำกว่าล็อตขั้นต่ำของโบรกเกอร์ = aria-disabled (กดแล้วบอกเหตุผล)
 function syncLotChips(meta) {
   const v = Number($('t-lot').value);

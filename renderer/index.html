@@ -275,6 +275,23 @@
                 <label class="stopbox tp">TP — เก็บกำไร <input type="number" id="p-tp" inputmode="decimal" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า ± ATR×4.5 ตามฝั่ง (ใส่ 0 = ไม่ตั้ง TP)" /></label>
                 <button class="pgo" id="p-go">วางคำสั่งรอ</button>
               </div>
+              <div class="prow pchips">
+                <div class="qchips" id="p-sl-chips" role="group" aria-label="ระยะ SL เป็นจุด">
+                  <span class="qlbl">SL</span>
+                  <button type="button" class="qchip" data-psl="" aria-pressed="true" title="อัตโนมัติจาก ATR">อัตโนมัติ</button>
+                  <button type="button" class="qchip" data-psl="300" title="SL ห่างราคาเข้า 300 จุด">300</button>
+                  <button type="button" class="qchip" data-psl="500" title="SL ห่างราคาเข้า 500 จุด">500</button>
+                  <button type="button" class="qchip" data-psl="1000" title="SL ห่างราคาเข้า 1000 จุด">1000</button>
+                </div>
+                <div class="qchips" id="p-tp-chips" role="group" aria-label="ระยะ TP เป็นจุด">
+                  <span class="qlbl">TP</span>
+                  <button type="button" class="qchip" data-ptp="" aria-pressed="true" title="อัตโนมัติจาก ATR">อัตโนมัติ</button>
+                  <button type="button" class="qchip" data-ptp="500" title="TP ห่างราคาเข้า 500 จุด">500</button>
+                  <button type="button" class="qchip" data-ptp="1000" title="TP ห่างราคาเข้า 1000 จุด">1000</button>
+                  <button type="button" class="qchip" data-ptp="2000" title="TP ห่างราคาเข้า 2000 จุด">2000</button>
+                  <button type="button" class="qchip" data-ptp="0" title="ไม่ตั้ง TP — ปิดไม้เอง">ไม่ตั้ง</button>
+                </div>
+              </div>
               <div id="pend-hint" class="pend-hint"></div>
               <div id="pend-list" class="pend-list"></div>
             </div>
