@@ -2268,6 +2268,17 @@ function setKpi(id, text, cls = '') { const el = $(id); el.textContent = text; e
 function renderKpis(snap) {
   const a = snap.analysis;
   const bias = a && a.bias;
+  // แถบบรรชื่อ (topbar): ทุน / สุทธิ / ลอยตัว — สดทุกทิค
+  const topAcct = (snap.meta && snap.meta.account) || snap.account || null;
+  const topEl = $('brand-acct');
+  if (topEl) {
+    if (topAcct && Number.isFinite(topAcct.balance)) {
+      const floatPnl = topAcct.equity - topAcct.balance;
+      topEl.innerHTML = `ทุน <b>${money(topAcct.balance, acctCur)}</b> • สุทธิ <b class="${floatPnl >= 0 ? 'up' : 'down'}">${money(topAcct.equity, acctCur)}</b> • ลอยตัว <b class="${floatPnl >= 0 ? 'up' : 'down'}">${money(floatPnl, acctCur, true)}</b>`;
+    } else {
+      topEl.textContent = 'เชื่อม MT5 เพื่อดูยอดเงิน';
+    }
+  }
   setKpi('kpi-bias', bias === 'bull' ? 'ขาขึ้น ▲' : bias === 'bear' ? 'ขาลง ▼' : a ? 'ออกข้าง' : '—', bias === 'bull' ? 'up' : bias === 'bear' ? 'down' : '');
   const c = snap.council;
   if (!c) setKpi('kpi-council', 'ปิดอยู่');
