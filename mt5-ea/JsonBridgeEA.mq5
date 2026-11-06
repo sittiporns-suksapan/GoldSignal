@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| JsonBridgeEA.mq5 — GoldSignal Bridge v1.95 (ราคาสด 50ms + pending/modify/cancel/closepart)                        |
+//| JsonBridgeEA.mq5 — GoldSignal Bridge v1.96 (ประวัติ 200 ไม้ + เวลา deal เทียบ GMT)                |
 //| v1.9: ปิดบางส่วน (action closepart: ปิด lot ของไม้ ticket — บัญชี hedging) |
 //| v1.6: ราคาสดทันทุกทิค (ไม่ทิ้งราคาล่าสุด, timer 100ms) • หยิบคำสั่งทุก 0.1 วิ |
 //| v1.5: จองคำสั่งแบบ atomic + ทำงานทีละ EA เดียว • ส่งสถานะเชื่อมเซิร์ฟเวอร์/เวลา GMT |
@@ -14,7 +14,7 @@
 //| วิธีติดตั้ง: แอป GoldSignal → แท็บ เชื่อม MT5 → ปุ่มติดตั้งอัตโนมัติ |
 //+------------------------------------------------------------------+
 #property copyright "GoldSignal"
-#property version   "1.95"
+#property version   "1.96"
 #property strict
 
 input int    InpIntervalSec  = 3;     // เขียนไฟล์แท่งเทียน (bridge หลัก) ทุกกี่วินาที
@@ -399,9 +399,9 @@ void AppendHistory(string &json)
   {
    if(!HistorySelect(TimeCurrent() - 30 * 86400, TimeCurrent() + 60)) { json += "[]"; return; }   // 30 วันพอ (เดิมทั้งบัญชีทุก 3 วิ)
    int total = HistoryDealsTotal();
-   int from = MathMax(0, total - 80);
-   long inPid[80]; double inPx[80]; int mapCount = 0;   // หาราคาเปิดจาก deal ฝั่งเข้า (IN)
-   for(int i = from; i < total && mapCount < 80; i++)
+   int from = MathMax(0, total - 600);   // สแกนหา deal เข้า (IN) ย้อนหลัง 600 เข้า — ครอบคุมครอบไม้ที่ปิดบางส่วนหลายชิ้น
+   long inPid[400]; double inPx[400]; int mapCount = 0;
+   for(int i = from; i < total && mapCount < 400; i++)
      {
       ulong tk = HistoryDealGetTicket(i);
       if(tk == 0) continue;
@@ -438,7 +438,7 @@ void AppendHistory(string &json)
                            HistoryDealGetDouble(tk, DEAL_PRICE), net, why,
                            (long)HistoryDealGetInteger(tk, DEAL_TIME));
       wrote++;
-      if(wrote >= 30) break;
+      if(wrote >= 200) break;   // เดิม 30 ไม้ — เทรดวันเดียวเยอะจะหายไป → รายวันที่ 2 ขึ้นไปถูกตัด
      }
    json += "]";
   }
@@ -456,7 +456,7 @@ void WriteSnapshot()
                  ",\"srv\":" + IntegerToString((long)TimeTradeServer()) +
                  ",\"symbol\":\"" + _Symbol + "\"" +
                  ",\"digits\":" + IntegerToString(_Digits);
-   json += ",\"ea\":\"1.95\"";
+   json += ",\"ea\":\"1.96\"";
    if(hasTick)
      {
       json += StringFormat(",\"bid\":%.5f,\"ask\":%.5f,\"spreadPts\":%d", tick.bid, tick.ask,
