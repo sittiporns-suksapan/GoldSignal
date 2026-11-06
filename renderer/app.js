@@ -939,7 +939,16 @@ function renderTradePanel(snap) {
   $('t-tp-hint').innerHTML = stopHint('tp');
   $('t-spread').textContent = live ? String(Math.round((meta.ask - meta.bid) * Math.pow(10, d))) : '—';
   syncLotChips(meta);
-  syncPendChips(live);
+  // syncPendChips เดิม (คิวราคาเข้า±จุด): โครงใหม่ 2 คอลัมน์ = ปุ่มลัดแต่ละคอลัมน์ disabled ตามราคาสด
+  for (const side of ['sell', 'buy']) {
+    const chipsEl = $(acCol(side, 'entry-chips'));
+    if (!chipsEl) continue;
+    chipsEl.querySelectorAll('.qchip[data-pts]').forEach((c) => {
+      if (live) { if (c.hasAttribute('aria-disabled')) c.removeAttribute('aria-disabled'); }
+      else setAttrIf(c, 'aria-disabled', 'true');
+      setAttrIf(c, 'aria-pressed', pendEntryPick[side] && Number(c.dataset.pts) === pendEntryPick[side].pts ? 'true' : 'false');
+    });
+  }
   // สถานะสวิตช์จากฝั่ง MT5 จริง (EA + AutoTrading)
   const gateTxt = live && !meta.spec
     ? '⚠ EA ใน MT5 รุ่นเก่า ส่งไม้ไม่ได้ — แท็บ MT5 → ติดตั้ง EA แล้วลากลงชาร์ตใหม่'
