@@ -1641,7 +1641,15 @@ function tryTrade(side) {
   const buy = side === 'buy';
   if (buy ? sl >= st.px : sl <= st.px) { toast(`SL ต้องอยู่${buy ? 'ต่ำกว่า' : 'สูงกว่า'}ราคา ${buy ? 'ASK' : 'BID'} สำหรับไม้${buy ? 'ซื้อ' : 'ขาย'} — ล้างช่อง SL เพื่อให้คิดอัตโนมัติ`, 'err'); return; }
   if (tp > 0 && (buy ? tp <= st.px : tp >= st.px)) { toast(`TP ต้องอยู่${buy ? 'สูงกว่า' : 'ต่ำกว่า'}ราคา สำหรับไม้${buy ? 'ซื้อ' : 'ขาย'} — ล้างช่อง TP เพื่อให้คิดอัตโนมัติ`, 'err'); return; }
-  openConfirm({ action: side, side, lot, sl, tp: Number.isFinite(tp) ? tp : 0, px: st.px });
+  // เข้าเลย — ไม่มีหน้ายืนยัน กดปุ่ม = ส่งทันที (เกตความเสี่ยง/มติสภา/โควตา ยังตรวจฝั่ง main เสมอ)
+  window.api.sendOrder({ side, lot, sl, tp: Number.isFinite(tp) ? tp : 0 }).then((r) => {
+    if (r.ok) {
+      toast(`📤 ส่งคำสั่งแล้ว (id ${r.id}) — ${buy ? 'BUY' : 'SELL'} ${lot} @ ${st.px.toFixed(2)} SL ${sl.toFixed(2)} — รอผลจาก MT5...`, 'ok');
+      setTimeout(() => window.api.refreshNow(), 1500);
+    } else {
+      toast('✗ ' + (r.reason || 'ส่งไม่ได้'), 'err');
+    }
+  }).catch((e) => toast('✗ ผิดพลาด: ' + e.message, 'err'));
 }
 
 // รหัสข้อผิดพลาดจาก EA (msg=...) → ข้อความไทย • รหัสอื่นแสดงตามเดิม
