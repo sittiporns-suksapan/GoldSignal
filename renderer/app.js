@@ -518,7 +518,7 @@ function renderRealHistory(meta) {
     .join('');
   // กระดานไม้จริงแยกซ้าย/ขวาของตัวปุ่ม (เหมือนกระดานไม้เสมือน): สกอร์บอร์ดฝั่งละอัน + เปิดอยู่ + ปิดล่าสุด
   const positions = Array.isArray(meta.positions) ? meta.positions : [];
-  const reasonTh = { TP: 'TP', SL: 'SL', SO: 'Stop out', manual: 'ปิดเอง' };
+  const reasonTh = { TP: 'TP', SL: 'SL', SO: 'Stop out', manual: 'ปิดเอง', ea: 'ปิดโดยระบบ', pc: 'ปิดเอง (MT5)', web: 'ปิดจากเว็บ MT5', mobile: 'ปิดจากมือถือ' };
   const board = (s) => {
     const perSide = rows.filter((t) => t.type === s);
     const w = perSide.filter((t) => t.profit > 0).length;

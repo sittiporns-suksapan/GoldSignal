@@ -912,7 +912,7 @@ function boot() {
   // ---------- Telegram: ติดตามไม้จริงเข้า/ปิด จากรายการไม้ใน bridge (ครอบคลุมทั้งไม้จากแอป, คำสั่งรอ trigger, เปิดเองใน MT5) ----------
   let tgKnown = null;              // ticket → position ล่าสุดที่เห็น
   const tgClosing = new Map();     // ticket → { p, at } รอประวัติปิดจาก EA (กำไรจริง + เหตุผล)
-  const REASON_TH = { TP: 'ถึง TP 🎯', SL: 'โดน SL', SO: 'Stop out', manual: 'ปิดเอง' };
+  const REASON_TH = { TP: 'ถึง TP 🎯', SL: 'โดน SL', SO: 'Stop out', manual: 'ปิดเอง (MT5)', ea: 'ปิดโดยระบบ 🔒', pc: 'ปิดเอง (MT5)', web: 'ปิดจากเว็บ MT5', mobile: 'ปิดจากมือถือ' };
   function tgTrackPositions() {
     const mt5 = engine.connectors.mt5;
     const meta = mt5.latest && mt5.latest.meta;

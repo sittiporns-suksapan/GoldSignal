@@ -428,10 +428,13 @@ void AppendHistory(string &json)
       string ptype = (dtype == DEAL_TYPE_SELL) ? "buy" : "sell";
       double net = HistoryDealGetDouble(tk, DEAL_PROFIT) + HistoryDealGetDouble(tk, DEAL_COMMISSION) + HistoryDealGetDouble(tk, DEAL_SWAP);
       long reason = HistoryDealGetInteger(tk, DEAL_REASON);
-      string why = "manual";               // 4=SL 5=TP 6=SO นอกนั้น = ปิดเอง/คำสั่งแอป
+      string why = "manual";               // 4=SL 5=TP 6=SO • 3=EA(แอป) 0=ปิดใน MT5 พีซี 1=มือถือ 2=เว็บ — แยกให้ผู้ใช้รู้ที่มา
       if(reason == DEAL_REASON_SL) why = "SL";
       else if(reason == DEAL_REASON_TP) why = "TP";
       else if(reason == DEAL_REASON_SO) why = "SO";
+      else if(reason == DEAL_REASON_EXPERT) why = "ea";
+      else if(reason == DEAL_REASON_WEB) why = "web";
+      else if(reason == DEAL_REASON_MOBILE) why = "mobile";
       if(wrote > 0) json += ",";
       json += StringFormat("{\"pid\":%I64d,\"type\":\"%s\",\"volume\":%.2f,\"open\":%.2f,\"close\":%.2f,\"profit\":%.2f,\"reason\":\"%s\",\"time\":%I64d}",
                            pid, ptype, HistoryDealGetDouble(tk, DEAL_VOLUME), openPx,
