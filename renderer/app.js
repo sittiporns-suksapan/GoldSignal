@@ -1538,20 +1538,49 @@ async function saveAutoClose(partial, okMsg) {
     return clean;
   } catch (err) { toast('บันทึกไม่สำเร็จ: ' + err.message, 'err'); return null; }
 }
+// ---------- พิมพ์เป้าเป็นบาท หรือ จุดก็ได้ (จ) ----------
+// ใส่ "200" = 200 บาท • "300จ" / "300 จุด" = 3,000 จุด → แปลงเป็นเงิน (จุด × ขนาดจุด × oz × ล็อต × ขนมค่าแปลงค่าราคา)
+function acPtsToMoney(pts) {
+  const meta = (lastSnap && lastSnap.meta) || {};
+  const point = Math.pow(10, -(Number(meta.digits) || 2));
+  const oz = ((appSettings && Number(appSettings.ozPerLot)) || (meta.spec && meta.spec.contractSize) || 100);
+  const lots = [...new Set(((meta && meta.positions) || []).map((p) => Number(p.volume)).filter((v) => v > 0))];
+  const lot = lots.length === 1 ? lots[0] : (Number($('t-lot').value) || 0.01);
+  const acct = (meta && meta.account) || null;
+  const fx = acct && acct.equityUSD > 0 && acct.equity > 0 ? acct.equity / acct.equityUSD : 1;
+  return pts * point * oz * lot * fx;
+}
+function parseAcTarget(raw, label, unit) {
+  const txt = String(raw == null ? '' : raw).trim().replace(/\s+/g, ' ');
+  if (txt === '') return { bad: true };
+  const m = txt.match(/^([0-9]+(?:[.,][0-9]+)?)\s*(จุด|จุดกี|จ|พอย|p|pt)$/i);
+  if (m) {
+    const pts = Number(m[1].replace(',', '.'));
+    if (!(pts > 0)) return { bad: true };
+    const money = acPtsToMoney(pts);
+    if (!(money > 0)) return { bad: true };
+    return { v: money, display: `${(Math.round(money * 100) / 100)}`, note: `${pts} จุด = ${money.toFixed(2)} ${unit()}` };
+  }
+  const v = Number(txt.replace(',', '.'));
+  if (!(v > 0)) return { bad: true };
+  return { v, display: `${v}` };
+}
 function bindAutoClose(swId, valId, key, valKey, label, unit) {
   $(swId).addEventListener('change', async (e) => {
     const on = e.target.checked;
-    const v = Number($(valId).value);
-    if (on && !(v > 0)) { e.target.checked = false; toast(`ใส่เป้า${label}ก่อน (มากกว่า 0)`, 'err'); return; }
-    if (on && !confirm(`เปิด${label}อัตโนมัติ?\n\nเมื่อถึง ${v} ${unit()} ระบบจะส่งคำสั่งปิดไม้จริงใน MT5 ทันที (ไม่ถามซ้ำ)\nต้องเปิด MT5 + EA บนชาร์ตไว้ แอปต้องเปิดอยู่`)) { e.target.checked = false; return; }
-    const r = await saveAutoClose({ [key]: on, [valKey]: v }, on ? `🔒 เปิด${label}: ปิดเมื่อถึง ${v} ${unit()}` : `ปิด${label}อัตโนมัติแล้ว`);
+    const p = parseAcTarget($(valId).value, label, unit);
+    if (!(p && p.v > 0) || p.bad) { e.target.checked = false; toast(`ใส่เป้า${label}ก่อน — พิมพ์ "300" (บาท) หรือ "300จ" (จุด)`, 'err'); return; }
+    if (on && !confirm(`เปิด${label}อัตโนมัติ?\n\nเมื่อถึง ${p.display} ${unit()} ระบบจะส่งคำสั่งปิดไม้จริงใน MT5 ทันที (ไม่ถามซ้ำ)\nต้องเปิด MT5 + EA บนชาร์ตไว้ แอปต้องเปิดอยู่`)) { e.target.checked = false; return; }
+    const r = await saveAutoClose({ [key]: on, [valKey]: p.v }, on ? `🔒 เปิด${label}: ปิดเมื่อถึง ${p.display} ${unit()}${p.note ? ' (' + p.note + ')' : ''}` : `ปิด${label}อัตโนมัติแล้ว`);
     if (!r) e.target.checked = !on;
     if (lastSnap) renderPositions(lastSnap.meta);
   });
   $(valId).addEventListener('change', async () => {
-    const v = Number($(valId).value);
-    if (!(v > 0)) { toast('เป้าต้องมากกว่า 0', 'err'); $(valId).value = appSettings ? appSettings[valKey] : ''; return; }
-    const r = await saveAutoClose({ [valKey]: v }, $(swId).checked ? `ตั้งเป้า${label}ใหม่: ${v} ${unit()}` : null);
+    const p = parseAcTarget($(valId).value, label, unit);
+    if (!(p && p.v > 0) || p.bad) { toast('เป้าต้องมากกว่า 0 — รูปแบบ: 200 (บาท) หรือ 300จ (จุด)', 'err'); $(valId).value = appSettings ? appSettings[valKey] : ''; return; }
+    $(valId).value = p.display;
+    if (p.note) toast('🔁 ' + p.note, 'ok');
+    const r = await saveAutoClose({ [valKey]: p.v }, $(swId).checked ? `ตั้งเป้า${label}ใหม่: ${p.display} ${unit()}${p.note ? ' (' + p.note + ')' : ''}` : null);
     if (r) $(valId).value = r[valKey];
     if (lastSnap) renderPositions(lastSnap.meta);
   });
