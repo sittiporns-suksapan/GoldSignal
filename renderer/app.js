@@ -586,7 +586,7 @@ function pendStops(kind, entry, snap) {
 }
 
 function tryPending() {
-  const kind = $('p-kind').value;
+  const kind = pendActiveKind();
   const entry = Number($('p-entry').value);
   const lot = Number($('p-lot').value);
   if (!lastSnap || !lastSnap.meta || !Number.isFinite(lastSnap.meta.bid)) { toast('ต้องเชื่อม MT5 ก่อน — ราคา bid/ask ยังไม่มา', 'err'); return; }
@@ -780,7 +780,6 @@ function openPendingAt(ev) {
   const riskTxt = slDist < atr * 1.8 ? ` (บีบ SL ตามเพดาน ${capPct}% — เดิม $${fmtD(atr * 1.8, 2)})` : '';
   const sl = side === 'buy' ? entry - slDist : entry + slDist;
   const tp = side === 'buy' ? entry + slDist * 2.5 : entry - slDist * 2.5;
-  $('p-kind').value = `${side}-limit`;
   $('p-entry').value = entry;
   $('p-sl').value = Number(sl.toFixed(d));
   $('p-tp').value = Number(tp.toFixed(d));
@@ -1051,7 +1050,7 @@ const PEND_DIR = {
 };
 let pendEntryPick = null; // { pts, value } ที่ปุ่มลัดกรอกล่าสุด — ช่องยังเท่าค่านี้ = เปลี่ยนชนิดแล้วคิดใหม่ให้
 function syncPendKind() {
-  const dir = PEND_DIR[$('p-kind').value] || PEND_DIR['buy-limit'];
+  const dir = PEND_DIR[pendActiveKind()] || PEND_DIR['buy-limit'];
   const sg = dir.sign < 0 ? '−' : '+';
   $('p-entry-base').textContent = `ราคาเข้า = ${dir.base.toUpperCase()}`;
   document.querySelectorAll('#p-entry-chips .qchip[data-pts]').forEach((c) => {
@@ -1068,7 +1067,7 @@ function syncPendChips(live) {
 }
 function fillPendEntry(pts) {
   const q = liveQuote();
-  const dir = PEND_DIR[$('p-kind').value] || PEND_DIR['buy-limit'];
+  const dir = PEND_DIR[pendActiveKind()] || PEND_DIR['buy-limit'];
   if (!q || !Number.isFinite(q[dir.base])) { toast('ต้องเชื่อม MT5 ก่อน', 'err'); return false; }
   const base = q[dir.base];
   const value = (base + dir.sign * pts * pointOf(q.d)).toFixed(q.d);
@@ -1083,18 +1082,27 @@ document.querySelectorAll('#p-entry-chips .qchip[data-pts]').forEach((c) => c.ad
   if (c.getAttribute('aria-disabled') === 'true') { toast('ต้องเชื่อม MT5 ก่อน', 'err'); return; }
   fillPendEntry(Number(c.dataset.pts));
 }));
-$('p-kind').addEventListener('change', () => {
+// หน่วยเลือก: ปุ่มคู่ SELL/BUY — pendActiveKind() คืน 'buy-limit' และอื่น เช่น sel ลอย
+let pendKindId = localStorage.getItem('gs.pendKind') || 'buy-limit';
+function syncPendKind() {
+  document.querySelectorAll('.psbtn').forEach((b) => setAttrIf(b, 'aria-pressed', b.dataset.pside === pendKindId ? 'true' : 'false'));
+  const sellWrap = $('pside-sell-active'), buyWrap = $('pside-buy-active');
+  if (sellWrap) sellWrap.classList.toggle('active', pendKindId.startsWith('sell'));
+  if (buyWrap) buyWrap.classList.toggle('active', pendKindId.startsWith('buy'));
+}
+function pendActiveKind() { return pendKindId; }
+document.querySelectorAll('.psbtn').forEach((b) => b.addEventListener('click', () => {
+  pendKindId = b.dataset.pside;
+  try { localStorage.setItem('gs.pendKind', pendKindId); } catch { void 0; }
   syncPendKind();
-  // ช่องราคาเข้ายังเป็นค่าจากปุ่มลัด = คิดใหม่ตามทิศของชนิดใหม่ (ระยะจุดเดิม)
   if (pendEntryPick && $('p-entry').value === pendEntryPick.value && liveQuote()) fillPendEntry(pendEntryPick.pts);
-});
+}));
+syncPendKind();
 $('p-entry').addEventListener('input', () => {
   if (!pendEntryPick || $('p-entry').value === pendEntryPick.value) return;
   pendEntryPick = null;
   syncPendChips(!!liveQuote());
 });
-syncPendKind();
-
 // ขาดทุนลอยตัวรวมเกินเท่านี้ (% ของทุน) = ปุ่มปิดทุกไม้เรืองเตือน "ควรพิจารณาหยุด" (ไม่ปิดเอง — ผู้ใช้ตัดสินใจ)
 const STOP_HINT_PCT = 2;
 function renderCloseAll(meta, list) {

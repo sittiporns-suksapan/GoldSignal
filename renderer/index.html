@@ -258,15 +258,17 @@
             </div>
             <div id="pend-card" class="pend">
               <div class="pend-head"><h5>คำสั่งรอล่วงหน้า (เตรียมไม้รอราคา)</h5><button id="pend-max" class="pmax" title="ขยายให้เต็มจอ / ย่อกลับ" aria-label="ขยายคำสั่งรอเต็มจอ / ย่อกลับ">⛶</button></div>
+              <div class="pend-side-row">
+                <div class="pside sell${'' /* side-sell จะ activate ปุ่ม SELL */}" id="pside-sell-active">
+                  <button type="button" class="psbtn sell${' on'}" data-pside="sell-limit" title="ขายแพงกว่าตลาด — รอราคาพุ่งขึ้นมาถึง">SELL LIMIT<small>ขายแพงกว่าตลาด — รอเดินขึ้น</small></button>
+                  <button type="button" class="psbtn sell" data-pside="sell-stop" title="ขายเมื่อหลุดราคา — ตามแรงขาลง">SELL STOP<small>ขายเมื่อทะลุลง — ตามแรงขาลง</small></button>
+                </div>
+                <div class="pside buy" id="pside-buy-active">
+                  <button type="button" class="psbtn buy" data-pside="buy-limit" title="ซื้อถูกกว่าตลาด — รอย่อมาถึง">BUY LIMIT<small>ซื้อถูกกว่าตลาด — รอย่อมาถึง</small></button>
+                  <button type="button" class="psbtn buy" data-pside="buy-stop" title="ซื้อเมื่อทะลุราคาขึ้น — ตามแรงขาขึ้น">BUY STOP<small>ซื้อเมื่อทะลุขึ้น — ตามแรงขาขึ้น</small></button>
+                </div>
+              </div>
               <div class="prow">
-                <label>ประเภท
-                  <select id="p-kind">
-                    <option value="buy-limit">BUY LIMIT — ซื้อถูกกว่าตลาด (รอย่อมาถึง)</option>
-                    <option value="sell-limit">SELL LIMIT — ขายแพงกว่าตลาด (รอเดินขึ้นมา)</option>
-                    <option value="buy-stop">BUY STOP — ซื้อเมื่อทะลุขึ้น (ตามแรงขาขึ้น)</option>
-                    <option value="sell-stop">SELL STOP — ขายเมื่อหลุดลง (ตามแรงขาลง)</option>
-                  </select>
-                </label>
                 <label>ล็อต <input type="number" id="p-lot" inputmode="decimal" min="0.01" step="0.01" value="0.01" /></label>
               </div>
               <div id="p-entry-chips" class="qchips pentry" role="group" aria-label="ตั้งราคาเข้าจากราคาตลาด (จุด)">
