@@ -561,7 +561,7 @@ function pendParts(kind) {
 // ---------- คำสั่งรอ 2 ชุด (SELL แดง / BUY น้ำเงิน) — แต่ละชุดใส่ล็อต/ราคา/SL/TP ของตัวเอง วางแยกกัน ----------
 const PEND_KINDS = { sell: 'sell-limit', buy: 'buy-limit' };
 const pendKindCol = JSON.parse(localStorage.getItem('gs.pendKinds') || 'null') || { sell: 'sell-limit', buy: 'buy-limit' };
-const acCol = (side, key) => side + '-' + key;   // psell-entry, pbuy-sl, …
+const acCol = (side, key) => 'p' + side + '-' + key;   // psell-entry, pbuy-sl, … (id ใน HTML มีตัว p นำหน้า)
 
 function pendActiveKind(side) { return pendKindCol[side] || PEND_KINDS[side]; }
 function setPendKindCol(side, kind) { pendKindCol[side] = kind; try { localStorage.setItem('gs.pendKinds', JSON.stringify(pendKindCol)); } catch { void 0; } }
@@ -569,10 +569,7 @@ function setPendKindCol(side, kind) { pendKindCol[side] = kind; try { localStora
 // ระยะ SL/TP โหมดปุ่มลัด (จุด) — ต่อคอลัมน์ • null = อัตโนมัติ ATR • 'none' = ไม่ตั้ง TP
 const pendStopMode = { sell: { sl: null, tp: null }, buy: { sl: null, tp: null } };
 function pointOf(d) { return Math.pow(10, -(d || 2)); }
-function pendEntry() {
-  const meta = lastSnap.meta || {};
-  return Number($(acCol('sell', 'entry')).value) || null; // ไม่ใช้ — มีด่านต่อไป
-}
+// (ลบ pendEntry() — ฟังก์ชันตาย ไม่มีตัวเรียก)
 
 // คำนวณ SL/TP ตามคอลัมน์: ช่องกรอก = ใช้ค่านั้น • ว่าง = ระยะจุด หรือ ATR×1.8/×4.5 ตามทิศ
 function pendStops(side, entry, snap) {
@@ -647,7 +644,6 @@ document.querySelectorAll('.pkind').forEach((c) => c.addEventListener('click', (
   const kind = c.dataset.kind;
   const side = kind.startsWith('sell') ? 'sell' : 'buy';
   setPendKindCol(side, kind);
-  document.querySelectorAll(`#${acCol(side, 'entry-chips') || ''}`).forEach(() => {});
   // ไฮไลท์ปุ่มตัวเองในคอลัมน์ของมัน
   c.closest('.pside-col').querySelectorAll('.pkind').forEach((x) => setAttrIf(x, 'aria-pressed', x === c ? 'true' : 'false'));
 }));
@@ -793,7 +789,7 @@ function openPendingAt(ev) {
   const atr = (m15 && Number.isFinite(m15.atr) && m15.atr > 0) ? Number(m15.atr) : mid * 0.0008;
   const entry = Number(px.toFixed(d));
   // SL ให้ผ่านเกตจริง: ระยะ SL จำกัดตามเพดานปุ่มกด/ล็อต (ถ้า ATR กว้างเกิน = บีบ, TP ยึด RR 2.5 ตามระยะใหม่)
-  const lot = Math.max(0.01, Number($('p-lot').value) || 0.01);
+  const lot = Math.max(0.01, Number($(acCol(side, 'lot')).value) || 0.01);
   const capPct = clampPct(snap);
   const eqReal = (meta.account && Number.isFinite(meta.account.equityUSD)) ? meta.account.equityUSD : (Number(snap.risk && snap.risk.equity) || 0);
   const maxSlDist = eqReal > 0 ? (eqReal * capPct) / (lot * 100) : Infinity;
