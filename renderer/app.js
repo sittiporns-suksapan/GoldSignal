@@ -557,81 +557,101 @@ function pendParts(kind) {
 
 // SL/TP อัตโนมัติจากราคาที่จะรอ (เหมือนกฎไม้สด: ATR 1.8 / 4.5 — แต่ยึดราคาเข้า ไม่ใช่ราคาตอนกด)
 // กันเหนียว: ระยะ SL เกินเพดาน 2% ของทุนจริง = ตีเข้าเดิมเอง (ไม้ "อัตโนมัติ" ต้องผ่านเกตได้จริงเสมอ)
-function pendStops(kind, entry, snap) {
-  const { side, ptype } = pendParts(kind);
+// ---------- คำสั่งรอ 2 ชุด (SELL แดง / BUY น้ำเงิน) — แต่ละชุดใส่ล็อต/ราคา/SL/TP ของตัวเอง วางแยกกัน ----------
+const PEND_KINDS = { sell: 'sell-limit', buy: 'buy-limit' };
+const pendKindCol = JSON.parse(localStorage.getItem('gs.pendKinds') || 'null') || { sell: 'sell-limit', buy: 'buy-limit' };
+const acCol = (side, key) => side + '-' + key;   // psell-entry, pbuy-sl, …
+
+function pendActiveKind(side) { return pendKindCol[side] || PEND_KINDS[side]; }
+function setPendKindCol(side, kind) { pendKindCol[side] = kind; try { localStorage.setItem('gs.pendKinds', JSON.stringify(pendKindCol)); } catch { void 0; } }
+
+// ระยะ SL/TP โหมดปุ่มลัด (จุด) — ต่อคอลัมน์ • null = อัตโนมัติ ATR • 'none' = ไม่ตั้ง TP
+const pendStopMode = { sell: { sl: null, tp: null }, buy: { sl: null, tp: null } };
+function pointOf(d) { return Math.pow(10, -(d || 2)); }
+function pendEntry() {
+  const meta = lastSnap.meta || {};
+  return Number($(acCol('sell', 'entry')).value) || null; // ไม่ใช้ — มีด่านต่อไป
+}
+
+// คำนวณ SL/TP ตามคอลัมน์: ช่องกรอก = ใช้ค่านั้น • ว่าง = ระยะจุด หรือ ATR×1.8/×4.5 ตามทิศ
+function pendStops(side, entry, snap) {
+  const kind = pendActiveKind(side);
+  const { ptype } = pendParts(kind);
   const meta = (snap && snap.meta) || {};
   let atrv = snap && snap.analysis && snap.analysis.tf && snap.analysis.tf.M15 && Number.isFinite(snap.analysis.tf.M15.atr)
     ? snap.analysis.tf.M15.atr : (Number.isFinite(entry) ? entry * 0.0008 : null);
   if (!Number.isFinite(entry) || !Number.isFinite(atrv)) return null;
-  const lot = Number($('p-lot').value) || 0.01;
+  const lot = Math.max(0.01, Number($(acCol(side, 'lot')).value) || 0.01);
   const oz = (meta.spec && meta.spec.contractSize) || 100;
   const eqUSD = (meta.account && Number.isFinite(meta.account.equityUSD) && meta.account.equityUSD > 0) ? meta.account.equityUSD : (Number((snap && snap.risk && snap.risk.equity)) || 0);
-  // เพดานผ่านเกตจริงตามที่ผู้ใช้ตั้ง (manualRiskMaxPct — ไม่ใช่ 2% แข็งเดิม)
   const capPct = clampPct(snap);
   const maxDist = eqUSD > 0 ? (eqUSD * capPct) / (lot * oz) : Infinity;
   if (atrv * 1.8 > maxDist) atrv = maxDist / 1.8;
-  const dir = side === 'buy' ? 1 : -1;
   const d = meta.digits || 2;
-  const pt = pointOf(d);
-  // ระยะที่ผู้ใช้ตั้งถาวรใน settings (จุด) เป็นทางเลือกก่อน ATR อัตโนมัติ
-  const setPts = (snap.risk && snap.risk) || {};
-  const slPts = Number(setPts.slDistPts) > 0 ? Number(setPts.slDistPts) : null;
-  const tpPts = Number(setPts.tpDistPts) > 0 ? Number(setPts.tpDistPts) : null;
-  const read = (id, auto) => ($(id).value.trim() !== '' ? Number($(id).value) : Number(auto.toFixed(d)));
+  const mode = pendStopMode[side];
+  const slPt = mode.sl != null ? mode.sl * pointOf(d) : atrv * 1.8;
+  const tpPt = mode.tp === 'none' ? null : (mode.tp != null ? mode.tp * pointOf(d) : atrv * 4.5);
+  const r = (id, auto) => ($(id).value.trim() !== '' ? Number($(id).value) : Number(auto.toFixed(d)));
+  const slPre = side === 'buy' ? entry - slPt : entry + slPt;
+  const tpPre = tpPt == null ? 'none' : (side === 'buy' ? entry + tpPt : entry - tpPt);
   return {
-    sl: read('p-sl', side === 'buy' ? entry - (slPts != null ? slPts * pt : atrv * 1.8) : entry + (slPts != null ? slPts * pt : atrv * 1.8)),
-    tp: read('p-tp', side === 'buy' ? entry + (tpPts != null ? tpPts * pt : atrv * 4.5) : entry - (tpPts != null ? tpPts * pt : atrv * 4.5)),
-    side, ptype,
+    sl: r(acCol(side, 'sl'), slPre),
+    tp: readTpOpt(acCol(side, 'tp'), tpPre, d),
+    side, ptype, lot,
   };
+  function readTpOpt(id, auto, dd) {
+    if (auto === 'none' && $(id).value.trim() === '') return 0;
+    return $(id).value.trim() !== '' ? Number($(id).value) : Number(auto.toFixed(dd));
+  }
 }
 
-function tryPending() {
-  const kind = pendActiveKind();
-  const entry = Number($('p-entry').value);
-  const lot = Number($('p-lot').value);
+function tryPendSubmit(side) {
   if (!lastSnap || !lastSnap.meta || !Number.isFinite(lastSnap.meta.bid)) { toast('ต้องเชื่อม MT5 ก่อน — ราคา bid/ask ยังไม่มา', 'err'); return; }
-  if (!Number.isFinite(entry) || entry <= 0) { toast('ใส่ราคาเข้าก่อน (ราคาที่จะรอ)', 'err'); return; }
-  if (!Number.isFinite(lot) || lot <= 0) { toast('ล็อตไม่ถูกต้อง', 'err'); return; }
-  let st = pendStops(kind, entry, lastSnap);
-  if (!st || !Number.isFinite(st.sl) || st.sl <= 0) { toast('SL ยังไม่ถูกต้อง — ใส่ SL เองหรือราคาเข้าให้ถูก', 'err'); return; }
+  const kind = pendActiveKind(side);
+  const { ptype } = pendParts(kind);
+  const entry = Number($(acCol(side, 'entry')).value);
+  const lot = Math.max(0.01, Number($(acCol(side, 'lot')).value) || 0.01);
+  if (!Number.isFinite(entry) || entry <= 0) { toast(`ใส่ราคาเข้าก่อน (ช่อง ${side.toUpperCase()})`, 'err'); return; }
+  let st = pendStops(side, entry, lastSnap);
+  if (!st || !Number.isFinite(st.sl) || st.sl <= 0) { toast('SL ยังไม่ถูกต้อง', 'err'); return; }
   const meta = lastSnap.meta || {};
-  const px = st.side === 'buy' ? meta.ask : meta.bid;
+  const px = side === 'buy' ? meta.ask : meta.bid;
   const oz = (meta.spec && meta.spec.contractSize) || 100;
-  // บีบ SL ให้ผ่านเพดานปุ่มกดอัตโนมัติ — กดวาง = ผ่านเกตครั้งแรก (ไม่โดน reject)
-  const capP = Math.max(2, Math.min(100, Number(lastSnap.risk && lastSnap.risk.manualRiskMaxPct) || 2));
+  // บีบ SL ตามเพดานปุ่มกด — กดวาง = ผ่านเกตครั้งแรก
+  const capP = clampPct(lastSnap);
   const capEq = (meta.account && meta.account.equityUSD > 0 ? meta.account.equityUSD : (Number(lastSnap.risk && lastSnap.risk.equity) || 0));
   const capMoney = capEq * capP / 100;
   let slDist = Math.abs(entry - st.sl);
-  const slShrunk = slDist * lot * oz > capMoney * 1.001;
-  if (slShrunk && capMoney > 0) {
+  if (slDist * lot * oz > capMoney * 1.001 && capMoney > 0) {
     slDist = capMoney / (lot * oz);
-    st = { ...st, sl: st.side === 'buy' ? entry - slDist : entry + slDist };
-    if (Number(st.tp) > 0) {
-      const oldTpDist = Math.abs(Number(st.tp) - entry);
-      const oldSlDist = Math.abs(entry - st.sl) + slDist; // ค่า SL ก่อนบีบ
-      const rr = oldSlDist > 0 ? oldTpDist / oldSlDist : 1;
-      st = { ...st, tp: st.side === 'buy' ? entry + Math.max(1, slDist * rr) : entry - Math.max(1, slDist * rr) };
-    }
-    toast(`↕ SL บีบให้เข้าเพดาน ${capP}% ($${capMoney.toFixed(2)}) — เดิม ${fmtD(Math.abs(entry - st.sl) + slDist - slDist, 0)} จุดสูงเกิน`, 'ok');
+    st = { ...st, sl: side === 'buy' ? entry - slDist : entry + slDist };
+    if (Number(st.tp) > 0) st = { ...st, tp: side === 'buy' ? entry + slDist * 2.5 : entry - slDist * 2.5 };
+    $(acCol(side, 'sl')).value = Number(st.sl.toFixed(2));
+    if (Number(st.tp) > 0) $(acCol(side, 'tp')).value = Number(st.tp.toFixed(2));
+    toast(`↕ SL บีบตามเพดาน ${capP}% ($${capMoney.toFixed(2)}) — วางผ่านเกตแล้ว`, 'ok');
   }
-  // วางคำสั่งรอทันที — กด = เข้าเลย (เกตความเสี่ยง/มติสภา ตรวจฝั่ง main)
-  // ทิศ: หากผิด toast ที่ p-go ทำอยู่แล้ว
-  const { side, ptype } = pendParts(kind);
-  const buy = side === 'buy';
-  const above = (buy) === (ptype === 'stop');
-  if (px > 0) {
+  const above = (side === 'buy') === (ptype === 'stop');
+  if (Number.isFinite(px)) {
     const bad = above ? !(entry > px) : !(entry < px);
-    if (bad) {
-      const need = above ? 'สูงกว่า' : 'ต่ำกว่า';
-      toast(`${side.toUpperCase()} ${ptype.toUpperCase()} ราคาเข้าต้อง${need}ราคาตลาด (${fmtD(px)}) — ปรับราคาเข้าแล้วกดใหม่`, 'err');
-      return;
-    }
+    if (bad) { toast(`${side.toUpperCase()} ${ptype.toUpperCase()} ต้อง${above ? 'สูงกว่า' : 'ต่ำกว่า'}ราคาตลาด (${fmtD(px)}) — ปรับราคาเข้าแล้วกดใหม่`, 'err'); return; }
   }
   window.api.sendPending({ side, ptype, lot, entry, sl: st.sl, tp: Number(st.tp) || 0 }).then((r) => {
-    if (r.ok) { toast(`⏱ วางคำสั่งรอแล้ว (id ${r.id}) — ${side.toUpperCase()} ${ptype.toUpperCase()} ${lot} @ ${entry} SL ${st.sl} TP ${st.tp}`, 'ok'); setTimeout(() => window.api.refreshNow(), 1500); }
+    if (r.ok) { toast(`⏱ วางคำสั่งรอแล้ว (id ${r.id}) — ${side.toUpperCase()} ${ptype.toUpperCase()} ${lot} @ ${entry}`, 'ok'); setTimeout(() => window.api.refreshNow(), 1500); }
     else { toast('✗ ' + (r.reason || 'วางไม่ได้'), 'err'); }
   }).catch((e) => toast('✗ ผิดพลาด: ' + e.message, 'err'));
 }
+
+// ผูกปุ่มวาง + ชิปชนิด ต่อคอลัมน์
+document.querySelectorAll('.pkind').forEach((c) => c.addEventListener('click', () => {
+  const kind = c.dataset.kind;
+  const side = kind.startsWith('sell') ? 'sell' : 'buy';
+  setPendKindCol(side, kind);
+  document.querySelectorAll(`#${acCol(side, 'entry-chips') || ''}`).forEach(() => {});
+  // ไฮไลท์ปุ่มตัวเองในคอลัมน์ของมัน
+  c.closest('.pside-col').querySelectorAll('.pkind').forEach((x) => setAttrIf(x, 'aria-pressed', x === c ? 'true' : 'false'));
+}));
+$('psell-go').addEventListener('click', () => tryPendSubmit('sell'));
+$('pbuy-go').addEventListener('click', () => tryPendSubmit('buy'));
 
 // แก้คำสั่งรอ: ระหว่างแก้ไม่วาดรายการใหม่ (กันช่องกรอกถูกล้างทุกรอบ snapshot)
 let editingPending = null;
@@ -823,7 +843,6 @@ function money(v, cur = acctCur, signed = false) {
 // อยู่ในตัวแปรโมดูล (renderTradePanel วาดใหม่ทุก snapshot) — ค้างจนผู้ใช้เปลี่ยนเอง ไม่บันทึกข้ามการเปิดแอป
 const stopPts = { sl: null, tp: null };
 const STOP_INPUT = { sl: 't-sl', tp: 't-tp' };
-const pointOf = (d) => Math.pow(10, -(d || 2));
 // SL/TP ของฝั่งที่จะกด: ช่องที่ผู้ใช้กรอก = ใช้ค่านั้น, ช่องว่าง = ระยะจุดที่เลือก หรือ ATR(M15)×1.8 / ×4.5 จากราคาฝั่งนั้น
 function stopsFor(side, snap) {
   const meta = (snap && snap.meta) || {};
@@ -985,27 +1004,41 @@ for (const k of ['sl', 'tp']) {
   });
 }
 
-// คำสั่งรอ: ปุ่มระยะ SL/TP เป็นจุด — กรอกราคาลงช่องให้ตรงจากราคาเข้า (ถ้าราคาเข้าว่าง = ใช้ราคาตลาดกลาง)
+// คำสั่งรอ 2 ชุด: ปุ่มระยะ SL/TP + ราคาเข้า ± จุด — ทำงานต่อคอลัมน์ของมันเอง
+const PEND_DIR = {
+  'buy-limit': { base: 'ask', sign: -1 }, 'sell-limit': { base: 'bid', sign: 1 },
+  'buy-stop': { base: 'ask', sign: 1 }, 'sell-stop': { base: 'bid', sign: -1 },
+};
+let pendEntryPick = {};   // { sell: { pts, value }, buy: {...} }
 document.querySelectorAll('[data-psl], [data-ptp]').forEach((c) => c.addEventListener('click', () => {
-  const meta = lastSnap && lastSnap.meta || {};
-  if (!Number.isFinite(Number(meta.bid))) { toast('ยังไม่มีราคาสด — เชื่อม MT5 ก่อน', 'err'); return; }
-  const digits = meta.digits || 2, pt = Math.pow(10, -digits);
-  const entry = Number($('p-entry').value) || ((Number(meta.bid) + Number(meta.ask)) / 2);
-  const isPsl = c.hasAttribute('data-psl');
-  const r = isPsl ? c.getAttribute('data-psl') : c.getAttribute('data-ptp');
-  document.querySelectorAll(`[data-${isPsl ? 'psl' : 'ptp'}]`).forEach((x) => setAttrIf(x, 'aria-pressed', x === c ? 'true' : 'false'));
-  if (isPsl) {
-    const el = $('p-sl');
+  const q = liveQuote();
+  if (!q) { toast('ยังไม่มีราคาสด — เชื่อม MT5 ก่อน', 'err'); return; }
+  const col = c.closest('.pside-col'); if (!col) return;
+  const side = col.id === 'pbuy-col' ? 'buy' : 'sell';
+  const digits = q.d, pt = pointOf(digits);
+  const dir = PEND_DIR[pendActiveKind(side)] || PEND_DIR[PEND_KINDS[side]];
+  const entry = Number($(acCol(side, 'entry')).value) || (dir.base === 'ask' ? q.ask : q.bid);
+  const isSl = c.hasAttribute('data-psl');
+  const r = isSl ? c.getAttribute('data-psl') : c.getAttribute('data-ptp');
+  c.closest('.qchips').querySelectorAll('.qchip').forEach((x) => setAttrIf(x, 'aria-pressed', x === c ? 'true' : 'false'));
+  if (isSl) {
+    const el = $(acCol(side, 'sl'));
     if (r === '') { el.value = ''; el.placeholder = 'อัตโนมัติ'; }
-    else el.value = (entry - Number(r) * pt).toFixed(digits);
+    else el.value = (dir.sign === 1 ? entry + Number(r) * pt : entry - Number(r) * pt).toFixed(digits);
   } else if (r === '0') {
-    $('p-tp').value = '0';
+    $(acCol(side, 'tp')).value = '0';
   } else {
-    const el = $('p-tp');
+    const el = $(acCol(side, 'tp'));
     if (r === '') { el.value = ''; el.placeholder = 'อัตโนมัติ'; }
-    else el.value = (entry + Number(r) * pt).toFixed(digits);
+    else el.value = (dir.sign === 1 ? entry - Number(r) * pt : entry + Number(r) * pt).toFixed(digits);
   }
-  $('pend-hint').textContent = `ตั้งจากราคาเข้า ${fmtD(entry, digits)} • SL ${fmtD(Number($('p-sl').value), digits)} • TP ${$('p-tp').value === '' ? 'อัตโนมัติ' : fmtD(Number($('p-tp').value), digits)} — ตรวจแล้วกด "วางคำสั่งรอ"`;
+}));
+// ราคาเข้า ± จุด chips ต่อคอลัมน์
+document.querySelectorAll('.pside-col .qchip[data-pts]').forEach((c) => c.addEventListener('click', () => {
+  const col = c.closest('.pside-col'); if (!col) return;
+  const side = col.id === 'pbuy-col' ? 'buy' : 'sell';
+  fillPendEntry(side, Number(c.dataset.pts));
+  col.querySelectorAll('.qchip[data-pts]').forEach((x) => setAttrIf(x, 'aria-pressed', x === c ? 'true' : 'false'));
 }));
 
 // ล็อตด่วน: ปุ่มที่ต่ำกว่าล็อตขั้นต่ำของโบรกเกอร์ = aria-disabled (กดแล้วบอกเหตุผล)
@@ -1043,66 +1076,6 @@ $('price').addEventListener('click', () => {
   copyText(v.toFixed(priceDigits()), 'ราคา');
 });
 
-// คำสั่งรอ: ราคาเข้า = ราคาตลาด ± จุด ตามชนิด (BUY LIMIT ใต้ ASK • SELL LIMIT เหนือ BID • BUY STOP เหนือ ASK • SELL STOP ใต้ BID)
-const PEND_DIR = {
-  'buy-limit': { base: 'ask', sign: -1 }, 'sell-limit': { base: 'bid', sign: 1 },
-  'buy-stop': { base: 'ask', sign: 1 }, 'sell-stop': { base: 'bid', sign: -1 },
-};
-let pendEntryPick = null; // { pts, value } ที่ปุ่มลัดกรอกล่าสุด — ช่องยังเท่าค่านี้ = เปลี่ยนชนิดแล้วคิดใหม่ให้
-function syncPendKind() {
-  const dir = PEND_DIR[pendActiveKind()] || PEND_DIR['buy-limit'];
-  const sg = dir.sign < 0 ? '−' : '+';
-  $('p-entry-base').textContent = `ราคาเข้า = ${dir.base.toUpperCase()}`;
-  document.querySelectorAll('#p-entry-chips .qchip[data-pts]').forEach((c) => {
-    c.textContent = `${sg}${c.dataset.pts}`;
-    c.title = `ราคาเข้า = ${dir.base.toUpperCase()} ${sg} ${c.dataset.pts} จุด (อิงราคาตอนกด)`;
-  });
-}
-function syncPendChips(live) {
-  document.querySelectorAll('#p-entry-chips .qchip[data-pts]').forEach((c) => {
-    if (live) { if (c.hasAttribute('aria-disabled')) c.removeAttribute('aria-disabled'); }
-    else setAttrIf(c, 'aria-disabled', 'true');
-    setAttrIf(c, 'aria-pressed', pendEntryPick && Number(c.dataset.pts) === pendEntryPick.pts ? 'true' : 'false');
-  });
-}
-function fillPendEntry(pts) {
-  const q = liveQuote();
-  const dir = PEND_DIR[pendActiveKind()] || PEND_DIR['buy-limit'];
-  if (!q || !Number.isFinite(q[dir.base])) { toast('ต้องเชื่อม MT5 ก่อน', 'err'); return false; }
-  const base = q[dir.base];
-  const value = (base + dir.sign * pts * pointOf(q.d)).toFixed(q.d);
-  pendEntryPick = { pts, value };
-  $('p-entry').value = value;
-  $('p-entry').dispatchEvent(new Event('input', { bubbles: true }));
-  syncPendChips(true);
-  $('pend-hint').innerHTML = `ราคาเข้า <b>${value}</b> = ${dir.base.toUpperCase()} ${base.toFixed(q.d)} ${dir.sign < 0 ? '−' : '+'} ${pts} จุด • อิงราคาตอนกด`;
-  return true;
-}
-document.querySelectorAll('#p-entry-chips .qchip[data-pts]').forEach((c) => c.addEventListener('click', () => {
-  if (c.getAttribute('aria-disabled') === 'true') { toast('ต้องเชื่อม MT5 ก่อน', 'err'); return; }
-  fillPendEntry(Number(c.dataset.pts));
-}));
-// หน่วยเลือก: ปุ่มคู่ SELL/BUY — pendActiveKind() คืน 'buy-limit' และอื่น เช่น sel ลอย
-let pendKindId = localStorage.getItem('gs.pendKind') || 'buy-limit';
-function syncPendKind() {
-  document.querySelectorAll('.psbtn').forEach((b) => setAttrIf(b, 'aria-pressed', b.dataset.pside === pendKindId ? 'true' : 'false'));
-  const sellWrap = $('pside-sell-active'), buyWrap = $('pside-buy-active');
-  if (sellWrap) sellWrap.classList.toggle('active', pendKindId.startsWith('sell'));
-  if (buyWrap) buyWrap.classList.toggle('active', pendKindId.startsWith('buy'));
-}
-function pendActiveKind() { return pendKindId; }
-document.querySelectorAll('.psbtn').forEach((b) => b.addEventListener('click', () => {
-  pendKindId = b.dataset.pside;
-  try { localStorage.setItem('gs.pendKind', pendKindId); } catch { void 0; }
-  syncPendKind();
-  if (pendEntryPick && $('p-entry').value === pendEntryPick.value && liveQuote()) fillPendEntry(pendEntryPick.pts);
-}));
-syncPendKind();
-$('p-entry').addEventListener('input', () => {
-  if (!pendEntryPick || $('p-entry').value === pendEntryPick.value) return;
-  pendEntryPick = null;
-  syncPendChips(!!liveQuote());
-});
 // ขาดทุนลอยตัวรวมเกินเท่านี้ (% ของทุน) = ปุ่มปิดทุกไม้เรืองเตือน "ควรพิจารณาหยุด" (ไม่ปิดเอง — ผู้ใช้ตัดสินใจ)
 const STOP_HINT_PCT = 2;
 function renderCloseAll(meta, list) {

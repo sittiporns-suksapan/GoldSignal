@@ -258,47 +258,62 @@
             </div>
             <div id="pend-card" class="pend">
               <div class="pend-head"><h5>คำสั่งรอล่วงหน้า (เตรียมไม้รอราคา)</h5><button id="pend-max" class="pmax" title="ขยายให้เต็มจอ / ย่อกลับ" aria-label="ขยายคำสั่งรอเต็มจอ / ย่อกลับ">⛶</button></div>
-              <div class="pend-side-row">
-                <div class="pside sell${'' /* side-sell จะ activate ปุ่ม SELL */}" id="pside-sell-active">
-                  <button type="button" class="psbtn sell${' on'}" data-pside="sell-limit" title="ขายแพงกว่าตลาด — รอราคาพุ่งขึ้นมาถึง">SELL LIMIT<small>ขายแพงกว่าตลาด — รอเดินขึ้น</small></button>
-                  <button type="button" class="psbtn sell" data-pside="sell-stop" title="ขายเมื่อหลุดราคา — ตามแรงขาลง">SELL STOP<small>ขายเมื่อทะลุลง — ตามแรงขาลง</small></button>
+              <div class="pend-cols">
+                <!-- SELL ชุด -->
+                <div class="pside-col sell" id="psell-col">
+                  <div class="pc-title">🔴 SELL</div>
+                  <div class="qchips" role="group" aria-label="ชนิด SELL">
+                    <button type="button" class="qchip pkind" data-kind="sell-limit" aria-pressed="true">LIMIT</button>
+                    <button type="button" class="qchip pkind" data-kind="sell-stop" aria-pressed="false">STOP</button>
+                  </div>
+                  <div class="prow">
+                    <label class="pmini">ล็อต <input type="number" id="psell-lot" inputmode="decimal" min="0.01" step="0.01" value="0.01" /></label>
+                  </div>
+                  <div id="psell-entry-chips" class="qchips" role="group" aria-label="ตั้งราคาเข้าจากราคาตลาด (จุด)">
+                    <span class="qlbl" id="psell-entry-base">ราคาเข้า = BID</span>
+                    <button type="button" class="qchip" data-pts="100">+100</button>
+                    <button type="button" class="qchip" data-pts="200">+200</button>
+                    <button type="button" class="qchip" data-pts="500">+500</button>
+                    <span class="qlbl">จุด</span>
+                  </div>
+                  <div class="prow">
+                    <label class="stopbox entry">ราคาเข้า <input type="number" id="psell-entry" inputmode="decimal" step="0.01" placeholder="ราคาที่จะรอ" /></label>
+                    <label class="stopbox sl">SL <input type="number" id="psell-sl" inputmode="decimal" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า + ATR×1.8" /></label>
+                    <label class="stopbox tp">TP <input type="number" id="psell-tp" inputmode="decimal" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า − ATR×4.5 (ใส่ 0 = ไม่ตั้ง TP)" /></label>
+                  </div>
+                  <div class="qchips" role="group" aria-label="ระยะ SL/TP เป็นจุด">
+                    <span class="qlbl">SL</span><button type="button" class="qchip" data-psl="" aria-pressed="true">อัตโนมัติ</button><button type="button" class="qchip" data-psl="300">300</button><button type="button" class="qchip" data-psl="500">500</button>
+                    <span class="qlbl">TP</span><button type="button" class="qchip" data-ptp="" aria-pressed="true">อัตโนมัติ</button><button type="button" class="qchip" data-ptp="500">500</button><button type="button" class="qchip" data-ptp="1000">1000</button><button type="button" class="qchip" data-ptp="0">ไม่ตั้ง</button>
+                  </div>
+                  <button type="button" class="pgo pgo-sell" id="psell-go">วางคำสั่งรอ SELL</button>
                 </div>
-                <div class="pside buy" id="pside-buy-active">
-                  <button type="button" class="psbtn buy" data-pside="buy-limit" title="ซื้อถูกกว่าตลาด — รอย่อมาถึง">BUY LIMIT<small>ซื้อถูกกว่าตลาด — รอย่อมาถึง</small></button>
-                  <button type="button" class="psbtn buy" data-pside="buy-stop" title="ซื้อเมื่อทะลุราคาขึ้น — ตามแรงขาขึ้น">BUY STOP<small>ซื้อเมื่อทะลุขึ้น — ตามแรงขาขึ้น</small></button>
-                </div>
-              </div>
-              <div class="prow">
-                <label>ล็อต <input type="number" id="p-lot" inputmode="decimal" min="0.01" step="0.01" value="0.01" /></label>
-              </div>
-              <div id="p-entry-chips" class="qchips pentry" role="group" aria-label="ตั้งราคาเข้าจากราคาตลาด (จุด)">
-                <span class="qlbl" id="p-entry-base">ราคาเข้า = ASK</span>
-                <button type="button" class="qchip" data-pts="100" aria-pressed="false">−100</button>
-                <button type="button" class="qchip" data-pts="200" aria-pressed="false">−200</button>
-                <button type="button" class="qchip" data-pts="500" aria-pressed="false">−500</button>
-                <span class="qlbl">จุด</span>
-              </div>
-              <div class="prow">
-                <label class="stopbox entry">ราคาเข้า <input type="number" id="p-entry" inputmode="decimal" step="0.01" placeholder="ราคาที่จะรอ" /></label>
-                <label class="stopbox sl">SL — ตัดขาดทุน <input type="number" id="p-sl" inputmode="decimal" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า ∓ ATR×1.8 ตามฝั่ง" /></label>
-                <label class="stopbox tp">TP — เก็บกำไร <input type="number" id="p-tp" inputmode="decimal" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า ± ATR×4.5 ตามฝั่ง (ใส่ 0 = ไม่ตั้ง TP)" /></label>
-                <button class="pgo" id="p-go">วางคำสั่งรอ</button>
-              </div>
-              <div class="prow pchips">
-                <div class="qchips" id="p-sl-chips" role="group" aria-label="ระยะ SL เป็นจุด">
-                  <span class="qlbl">SL</span>
-                  <button type="button" class="qchip" data-psl="" aria-pressed="true" title="อัตโนมัติจาก ATR">อัตโนมัติ</button>
-                  <button type="button" class="qchip" data-psl="300" title="SL ห่างราคาเข้า 300 จุด">300</button>
-                  <button type="button" class="qchip" data-psl="500" title="SL ห่างราคาเข้า 500 จุด">500</button>
-                  <button type="button" class="qchip" data-psl="1000" title="SL ห่างราคาเข้า 1000 จุด">1000</button>
-                </div>
-                <div class="qchips" id="p-tp-chips" role="group" aria-label="ระยะ TP เป็นจุด">
-                  <span class="qlbl">TP</span>
-                  <button type="button" class="qchip" data-ptp="" aria-pressed="true" title="อัตโนมัติจาก ATR">อัตโนมัติ</button>
-                  <button type="button" class="qchip" data-ptp="500" title="TP ห่างราคาเข้า 500 จุด">500</button>
-                  <button type="button" class="qchip" data-ptp="1000" title="TP ห่างราคาเข้า 1000 จุด">1000</button>
-                  <button type="button" class="qchip" data-ptp="2000" title="TP ห่างราคาเข้า 2000 จุด">2000</button>
-                  <button type="button" class="qchip" data-ptp="0" title="ไม่ตั้ง TP — ปิดไม้เอง">ไม่ตั้ง</button>
+                <!-- BUY ชุด -->
+                <div class="pside-col buy" id="pbuy-col">
+                  <div class="pc-title">🔵 BUY</div>
+                  <div class="qchips" role="group" aria-label="ชนิด BUY">
+                    <button type="button" class="qchip pkind" data-kind="buy-limit" aria-pressed="true">LIMIT</button>
+                    <button type="button" class="qchip pkind" data-kind="buy-stop" aria-pressed="false">STOP</button>
+                  </div>
+                  <div class="prow">
+                    <label class="pmini">ล็อต <input type="number" id="pbuy-lot" inputmode="decimal" min="0.01" step="0.01" value="0.01" /></label>
+                  </div>
+                  <div id="pbuy-entry-chips" class="qchips" role="group" aria-label="ตั้งราคาเข้าจากราคาตลาด (จุด)">
+                    <span class="qlbl" id="pbuy-entry-base">ราคาเข้า = ASK</span>
+                    <button type="button" class="qchip" data-pts="100">−100</button>
+                    <button type="button" class="qchip" data-pts="200">−200</button>
+                    <button type="button" class="qchip" data-pts="500">−500</button>
+                    <span class="qlbl">จุด</span>
+                  </div>
+                  <div class="prow">
+                    <label class="stopbox entry">ราคาเข้า <input type="number" id="pbuy-entry" inputmode="decimal" step="0.01" placeholder="ราคาที่จะรอ" /></label>
+                    <label class="stopbox sl">SL <input type="number" id="pbuy-sl" inputmode="decimal" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า − ATR×1.8" /></label>
+                    <label class="stopbox tp">TP <input type="number" id="pbuy-tp" inputmode="decimal" step="0.01" placeholder="อัตโนมัติ" title="เว้นว่าง = ราคาเข้า + ATR×4.5 (ใส่ 0 = ไม่ตั้ง TP)" /></label>
+                  </div>
+                  <div class="qchips" role="group" aria-label="ระยะ SL/TP เป็นจุด">
+                    <span class="qlbl">SL</span><button type="button" class="qchip" data-psl="" aria-pressed="true">อัตโนมัติ</button><button type="button" class="qchip" data-psl="300">300</button><button type="button" class="qchip" data-psl="500">500</button>
+                    <span class="qlbl">TP</span><button type="button" class="qchip" data-ptp="" aria-pressed="true">อัตโนมัติ</button><button type="button" class="qchip" data-ptp="500">500</button><button type="button" class="qchip" data-ptp="1000">1000</button><button type="button" class="qchip" data-ptp="0">ไม่ตั้ง</button>
+                  </div>
+                  <button type="button" class="pgo pgo-buy" id="pbuy-go">วางคำสั่งรอ BUY</button>
                 </div>
               </div>
               <div id="pend-hint" class="pend-hint"></div>
