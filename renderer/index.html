@@ -291,42 +291,42 @@
                 <span class="ac-sub">ดูราคาสดทุกทิค ถึงเป้าแล้วสั่งปิดทันที</span>
               </div>
               <div class="ac-group profit">
-                <div class="ac-gh">💰 เก็บกำไร <span class="muted small" style="margin-left:6px">พิมพ์ต่อท้าย "จ" = จุด (เช่น 500จ) — เปล่า = บาท</span></div>
+                <div class="ac-gh">💰 เก็บกำไร <span class="muted small" style="margin-left:6px">ช่องคู่: บาท ↔ จุด ใส่ช่องไหนก็ได้ — อีกช่องเปลี่ยนให้เอง</span></div>
                 <div class="ac-item " title="กำไรลอยตัวรวมทุกไม้ถึงเป้า = ปิดทุกไม้ทันที (ไม้ที่ติดลบก็ปิดด้วย)">
                   <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-all" aria-label="เปิด/ปิด ปิดทุกไม้เมื่อกำไรรวมถึงเป้า" /><span></span></span></label>
                   <div class="ac-main">
-                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ เมื่อกำไรรวม ≥</span><input type="number" id="ac-all-v" inputmode="decimal" min="0.01" step="1" /><span class="ac-unit" id="ac-cur">THB</span><select class="ac-usel" id="ac-all-unit" data-row="ac-all" title="หน่วยของค่าที่พิมพ์"><option value="thb">บาท</option><option value="pts">จุด</option></select></div>
+                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ เมื่อกำไรรวม ≥</span><input type="number" class="ac-th" id="ac-all-th" inputmode="decimal" step="0.01" min="0.01" title="กำไรรวม (บาท)" /><span class="ac-unit">THB</span><input type="number" class="ac-p" id="ac-all-p" inputmode="decimal" step="1" min="1" title="กำไรรวม (จุด)" /><span class="ac-unit">จุด</span></div>
                     <div class="ac-prog"><div class="ac-bar"><i id="ac-all-bar"></i></div><span id="ac-all-now" class="ac-now">—</span></div>
                   </div>
                 </div>
                 <div class="ac-item " title="กำไรลอยตัวรวมทุกไม้ (สกุลบัญชี) ถึงเป้า = ปิดทุกไม้ทันที — สวิตช์คู่ขนานกับแถวเงินหลัก (เพิ่มเป้าได้อีกช่อง)">
                   <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-allpts" aria-label="เปิด/ปิด ปิดทุกไม้เมื่อกำไรรวมถึงเป้า (บาท)" /><span></span></span></label>
                   <div class="ac-main">
-                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ (เป่าเซ็คกัน) เมื่อกำไรรวม ≥</span><input type="number" id="ac-allpts-v" inputmode="decimal" min="0.01" step="1" /><span class="ac-unit" id="ac-allpts-cur">THB</span><select class="ac-usel" id="ac-allpts-unit" data-row="ac-allpts" title="หน่วยของค่าที่พิมพ์"><option value="thb">บาท</option><option value="pts">จุด</option></select></div>
+                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ (เป่าเซ็คกัน) เมื่อกำไรรวม ≥</span><input type="number" class="ac-th" id="ac-allpts-th" inputmode="decimal" step="0.01" min="0.01" title="กำไรรวม (เป้าที่สอง) (บาท)" /><span class="ac-unit">THB</span><input type="number" class="ac-p" id="ac-allpts-p" inputmode="decimal" step="1" min="1" title="กำไรรวม (เป้าที่สอง) (จุด)" /><span class="ac-unit">จุด</span></div>
                     <div class="ac-prog"><div class="ac-bar"><i id="ac-allpts-bar"></i></div><span id="ac-allpts-now" class="ac-now">—</span></div>
                   </div>
                 </div>
                 <div class="ac-item " title="ไม้ใดกำไรรายไม้ (สกุลบัญชี) ถึงเป้า = ปิดไม้นั้นไม้เดียว">
                   <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-pts" aria-label="เปิด/ปิด ปิดเฉพาะไม้ที่กำไรรายไม้ถึงเป้า (บาท)" /><span></span></span></label>
                   <div class="ac-main">
-                    <div class="ac-line"><span class="ac-lbl">ปิดเฉพาะไม้ที่บวก ≥</span><input type="number" id="ac-pts-v" inputmode="decimal" min="0.01" step="1" /><span class="ac-unit" id="ac-pts-cur">THB</span><select class="ac-usel" id="ac-pts-unit" data-row="ac-pts" title="หน่วยของค่าที่พิมพ์"><option value="thb">บาท</option><option value="pts">จุด</option></select></div>
+                    <div class="ac-line"><span class="ac-lbl">ปิดเฉพาะไม้ที่บวก ≥</span><input type="number" class="ac-th" id="ac-pts-th" inputmode="decimal" step="0.01" min="0.01" title="กำไรรายไม้ (บาท)" /><span class="ac-unit">THB</span><input type="number" class="ac-p" id="ac-pts-p" inputmode="decimal" step="1" min="1" title="กำไรรายไม้ (จุด)" /><span class="ac-unit">จุด</span></div>
                     <div class="ac-prog"><div class="ac-bar"><i id="ac-pts-bar"></i></div><span id="ac-pts-now" class="ac-now">—</span></div>
                   </div>
                 </div>
               </div>
               <div class="ac-group loss">
-                <div class="ac-gh">🛡 ตัดขาดทุน <span class="muted small" style="margin-left:6px">พิมพ์ต่อท้าย "จ" = จุด (เช่น 300จ) — เปล่า = บาท</span></div>
+                <div class="ac-gh">🛡 ตัดขาดทุน <span class="muted small" style="margin-left:6px">ช่องคู่: บาท ↔ จุด ใส่ช่องไหนก็ได้ — อีกช่องเปลี่ยนให้เอง</span></div>
                 <div class="ac-item " title="ขาดทุนลอยตัวรวมถึงจำนวนนี้ = ปิดทุกไม้ทันที (ตรวจก่อนเป้ากำไรเสมอ)">
                   <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-loss" aria-label="เปิด/ปิด ตัดขาดทุนรวบเมื่อขาดทุนรวมถึงค่าที่ตั้ง" /><span></span></span></label>
                   <div class="ac-main">
-                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ เมื่อขาดทุนรวม ≥</span><input type="number" id="ac-loss-v" inputmode="decimal" min="0.01" step="1" /><span class="ac-unit" id="ac-loss-cur">THB</span><select class="ac-usel" id="ac-loss-unit" data-row="ac-loss" title="หน่วยของค่าที่พิมพ์"><option value="thb">บาท</option><option value="pts">จุด</option></select></div>
+                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ เมื่อขาดทุนรวม ≥</span><input type="number" class="ac-th" id="ac-loss-th" inputmode="decimal" step="0.01" min="0.01" title="ขาดทุนรวม (บาท)" /><span class="ac-unit">THB</span><input type="number" class="ac-p" id="ac-loss-p" inputmode="decimal" step="1" min="1" title="ขาดทุนรวม (จุด)" /><span class="ac-unit">จุด</span></div>
                     <div class="ac-prog"><div class="ac-bar"><i id="ac-loss-bar"></i></div><span id="ac-loss-now" class="ac-now">—</span></div>
                   </div>
                 </div>
                 <div class="ac-item " title="ขาดทุนลอยตัวรวมถึงจำนวนนี้ = ปิดแค่ไม้ที่เป็นแดง (ติดลบ) ทันที — เก็บไม้ที่บวกไว้วิ่งต่อ">
                   <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-lossonly" /><span></span></span></label>
                   <div class="ac-main">
-                    <div class="ac-line"><span class="ac-lbl">ปิดเฉพาะไม้แดง เมื่อขาดทุนรวม ≥</span><input type="number" id="ac-lossonly-v" inputmode="decimal" min="0.01" step="1" /><span class="ac-unit" id="ac-lossonly-cur">THB</span><select class="ac-usel" id="ac-lossonly-unit" data-row="ac-lossonly" title="หน่วยของค่าที่พิมพ์"><option value="thb">บาท</option><option value="pts">จุด</option></select></div>
+                    <div class="ac-line"><span class="ac-lbl">ปิดเฉพาะไม้แดง เมื่อขาดทุนรวม ≥</span><input type="number" class="ac-th" id="ac-lossonly-th" inputmode="decimal" step="0.01" min="0.01" title="ขาดทุนรวม (ปิดแค่ไม้แดง) (บาท)" /><span class="ac-unit">THB</span><input type="number" class="ac-p" id="ac-lossonly-p" inputmode="decimal" step="1" min="1" title="ขาดทุนรวม (ปิดแค่ไม้แดง) (จุด)" /><span class="ac-unit">จุด</span></div>
                     <div class="ac-prog"><div class="ac-bar"><i id="ac-lossonly-bar"></i></div><span id="ac-lossonly-now" class="ac-now">—</span></div>
                   </div>
                 </div>
