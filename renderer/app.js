@@ -800,12 +800,12 @@ function openPendingAt(ev) {
   const riskTxt = slDist < atr * 1.8 ? ` (บีบ SL ตามเพดาน ${capPct}% — เดิม $${fmtD(atr * 1.8, 2)})` : '';
   const sl = side === 'buy' ? entry - slDist : entry + slDist;
   const tp = side === 'buy' ? entry + slDist * 2.5 : entry - slDist * 2.5;
-  $('p-entry').value = entry;
-  $('p-sl').value = Number(sl.toFixed(d));
-  $('p-tp').value = Number(tp.toFixed(d));
+  $(acCol(side, 'entry')).value = entry;
+  $(acCol(side, 'sl')).value = Number(sl.toFixed(d));
+  $(acCol(side, 'tp')).value = Number(tp.toFixed(d));
   // ตั้งค่าตรงไม่ยิง event → อัปเดตป้าย/ปุ่มลัดราคาเข้าเอง (ราคาจากชาร์ต ไม่ใช่จากปุ่มลัด)
   pendEntryPick = null;
-  syncPendKind();
+  syncPendEntryLabels();
   syncPendChips(true);
   const el = $('pend-card');
   el.classList.add('max'); $('pend-max').textContent = '↘ ย่อ';
@@ -1584,7 +1584,6 @@ $('btn-close-all').addEventListener('click', () => {
 
 $('t-buy').addEventListener('click', () => tryTrade('buy'));
 $('t-sell').addEventListener('click', () => tryTrade('sell'));
-$('p-go').addEventListener('click', () => tryPending());
 
 function tryTrade(side) {
   if (!lastSnap || !lastSnap.meta || !Number.isFinite(lastSnap.meta.bid)) { toast('ต้องเชื่อม MT5 ก่อน — ราคา bid/ask ยังไม่มา (ลาก EA ลงชาร์ตแล้วรอ 5 วิ)', 'err'); return; }
@@ -2105,7 +2104,7 @@ if ($('line-card') && !window.GS_WEB) {
 /* ---------- ช่องกรอกราคา: ทศนิยมตาม digits ของโบรกเกอร์ + ปรับละเอียดด้วยลูกศร ----------
    ออกจากช่อง = จัดรูปเป็นทศนิยม 2 ตำแหน่ง (เช่น 3930 → 3930.00)
    ↑/↓ = ±0.01 • Shift+↑/↓ = ±0.10 • Alt/Option+↑/↓ = ±1.00 • ช่องราคาเข้าว่าง + กด ↑/↓ = เริ่มจากราคาตลาด */
-const PRICE_INPUTS = '#t-sl, #t-tp, #p-entry, #p-sl, #p-tp, .pin';
+const PRICE_INPUTS = '#t-sl, #t-tp, .pin';
 const priceDigits = () => (lastSnap && lastSnap.meta && lastSnap.meta.digits) || 2;
 const marketPx = () => { const m = (lastSnap && lastSnap.meta) || {}; return Number(m.bid) || Number(lastSnap && lastSnap.price) || null; };
 document.addEventListener('focusout', (e) => {
