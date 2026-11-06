@@ -592,24 +592,45 @@ function tryPending() {
   if (!lastSnap || !lastSnap.meta || !Number.isFinite(lastSnap.meta.bid)) { toast('ต้องเชื่อม MT5 ก่อน — ราคา bid/ask ยังไม่มา', 'err'); return; }
   if (!Number.isFinite(entry) || entry <= 0) { toast('ใส่ราคาเข้าก่อน (ราคาที่จะรอ)', 'err'); return; }
   if (!Number.isFinite(lot) || lot <= 0) { toast('ล็อตไม่ถูกต้อง', 'err'); return; }
-  const st = pendStops(kind, entry, lastSnap);
+  let st = pendStops(kind, entry, lastSnap);
   if (!st || !Number.isFinite(st.sl) || st.sl <= 0) { toast('SL ยังไม่ถูกต้อง — ใส่ SL เองหรือราคาเข้าให้ถูก', 'err'); return; }
   const meta = lastSnap.meta || {};
   const px = st.side === 'buy' ? meta.ask : meta.bid;
-  let hint = '';
-  if (Number.isFinite(px)) {
-    const g = lastSnap.guard || {};
-    const bad = (st.ptype === 'limit' && st.side === 'buy' && !(entry < px))
-      || (st.ptype === 'limit' && st.side === 'sell' && !(entry > px))
-      || (st.ptype === 'stop' && st.side === 'buy' && !(entry > px))
-      || (st.ptype === 'stop' && st.side === 'sell' && !(entry < px));
-    const oz = (meta.spec && meta.spec.contractSize) || 100;
-    const capP = Math.max(2, Math.min(100, Number(lastSnap.risk && lastSnap.risk.manualRiskMaxPct) || 2));
-    const riskUSD = Math.abs(entry - st.sl) * lot * oz;
-    $('pend-hint').innerHTML = `<span class="${bad ? 'down' : 'muted'}">ตอนนี้: ${fmtD(px)} </span>• เสี่ยงถ้าแตะ SL: <b>$${fmtD(riskUSD, 2)}</b> / เพดานปุ่มกด $${fmtD((((meta.account && meta.account.equityUSD) || (lastSnap.risk && lastSnap.risk.equity) || 0) * capP) / 100, 2)} (${fmtD(capP, 1)}%) • R:R 1:${fmtD(Math.abs((Number(st.tp) || entry) - entry) / (Math.abs(entry - st.sl) || 1e-9), 2)}${bad ? ' <b class="down">— ทิศราคาผิดตามชนิดที่เลือก (รายละเอียดเมื่อกด)</b>' : ''}`;
-    hint = bad ? 'ทิศผิด' : 'ok';
+  const oz = (meta.spec && meta.spec.contractSize) || 100;
+  // บีบ SL ให้ผ่านเพดานปุ่มกดอัตโนมัติ — กดวาง = ผ่านเกตครั้งแรก (ไม่โดน reject)
+  const capP = Math.max(2, Math.min(100, Number(lastSnap.risk && lastSnap.risk.manualRiskMaxPct) || 2));
+  const capEq = (meta.account && meta.account.equityUSD > 0 ? meta.account.equityUSD : (Number(lastSnap.risk && lastSnap.risk.equity) || 0));
+  const capMoney = capEq * capP / 100;
+  let slDist = Math.abs(entry - st.sl);
+  const slShrunk = slDist * lot * oz > capMoney * 1.001;
+  if (slShrunk && capMoney > 0) {
+    slDist = capMoney / (lot * oz);
+    st = { ...st, sl: st.side === 'buy' ? entry - slDist : entry + slDist };
+    if (Number(st.tp) > 0) {
+      const oldTpDist = Math.abs(Number(st.tp) - entry);
+      const oldSlDist = Math.abs(entry - st.sl) + slDist; // ค่า SL ก่อนบีบ
+      const rr = oldSlDist > 0 ? oldTpDist / oldSlDist : 1;
+      st = { ...st, tp: st.side === 'buy' ? entry + Math.max(1, slDist * rr) : entry - Math.max(1, slDist * rr) };
+    }
+    toast(`↕ SL บีบให้เข้าเพดาน ${capP}% ($${capMoney.toFixed(2)}) — เดิม ${fmtD(Math.abs(entry - st.sl) + slDist - slDist, 0)} จุดสูงเกิน`, 'ok');
   }
-  openConfirmPending({ kind, entry, lot, sl: st.sl, tp: st.tp });
+  // วางคำสั่งรอทันที — กด = เข้าเลย (เกตความเสี่ยง/มติสภา ตรวจฝั่ง main)
+  // ทิศ: หากผิด toast ที่ p-go ทำอยู่แล้ว
+  const { side, ptype } = pendParts(kind);
+  const buy = side === 'buy';
+  const above = (buy) === (ptype === 'stop');
+  if (px > 0) {
+    const bad = above ? !(entry > px) : !(entry < px);
+    if (bad) {
+      const need = above ? 'สูงกว่า' : 'ต่ำกว่า';
+      toast(`${side.toUpperCase()} ${ptype.toUpperCase()} ราคาเข้าต้อง${need}ราคาตลาด (${fmtD(px)}) — ปรับราคาเข้าแล้วกดใหม่`, 'err');
+      return;
+    }
+  }
+  window.api.sendPending({ side, ptype, lot, entry, sl: st.sl, tp: Number(st.tp) || 0 }).then((r) => {
+    if (r.ok) { toast(`⏱ วางคำสั่งรอแล้ว (id ${r.id}) — ${side.toUpperCase()} ${ptype.toUpperCase()} ${lot} @ ${entry} SL ${st.sl} TP ${st.tp}`, 'ok'); setTimeout(() => window.api.refreshNow(), 1500); }
+    else { toast('✗ ' + (r.reason || 'วางไม่ได้'), 'err'); }
+  }).catch((e) => toast('✗ ผิดพลาด: ' + e.message, 'err'));
 }
 
 function openConfirmPending(req) {
