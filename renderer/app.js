@@ -498,10 +498,7 @@ function renderRealHistory(meta) {
   const rows = meta.history.slice(0, 20);   // EA ส่งใหม่สุดก่อนอยู่แล้ว
   // คีย์วันแบบ yyyy-mm-dd เรียงได้ถูก (เดิม dd/mm/yyyy เรียงตามตัวอักษร: 30/10 ขึ้นก่อน 02/11)
   const pad = (n) => String(n).padStart(2, '0');
-  // เวลา deal เป็น "วินาที" เขตเวลาโบรเกอร์ • ลบ offset (t−gmt) ก่อน → มิลลิวินาทีที่แสดงตรงเครื่องผู้ใช้ (กันทุกแถวจับรวมเป็นวันเดียว)
-  const tGmt = Number.isFinite(Number(meta.t)) && Number.isFinite(Number(meta.gmt)) ? Number(meta.t) - Number(meta.gmt) : 0;
-  const tsoff = Math.abs(tGmt) <= 2 * 86400 ? tGmt : 0;   // offset โบรเกอร์ (วินาที) • ผิดปกติเกิน ±2 วัน = ไม่เที่ยง ไม่แก้
-  const msOf = (t) => (Number(t) - Number(tsoff)) * 1000;
+  // ประวัติที่ได้ = ms เวลาเครื่องแล้ว (เอ็นจิ้นแปลงและเทียบ offset โบรเกอร์ให้เรียบร้อย — ห้ามแปลงซ้ำ)
   const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
   const dayLabel = (k) => { const [y, m, d] = k.split('-'); return `${d}/${m}/${y}`; };
   const stamp = (t) => { const d = new Date(t); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
@@ -509,7 +506,7 @@ function renderRealHistory(meta) {
   const byDay = new Map();
   for (const h of meta.history) {
     if (!Number.isFinite(h.time)) continue;
-    const k = dayKey(msOf(h.time));
+    const k = dayKey(h.time);
     const g = byDay.get(k) || { n: 0, w: 0, l: 0, total: 0 };
     g.n++;
     if (h.profit > 0) g.w++; else if (h.profit < 0) g.l++;
@@ -534,7 +531,7 @@ function renderRealHistory(meta) {
         const pl = h.profit;
         const cls = h.reason === 'TP' ? 'TP' : h.reason === 'SL' ? 'SL' : pl === 0 ? 'open' : 'manual';
         const signCls = pl >= 0 ? 'up' : 'down';
-        return `<div class="zh-line"><span class="t">${Number.isFinite(h.time) ? stamp(msOf(h.time)) : '—'}</span><span>${h.type === 'buy' ? 'BUY' : 'SELL'} ${fmtD(h.volume, 2)} ล็อต ${fmtD(h.open, 2)} → ${fmtD(h.close, 2)}</span><span class="res ${cls}">${esc(reasonTh[h.reason] || h.reason)} <b class="sig ${signCls}">${money(pl, acctCur, true)}</b></span></div>`;
+        return `<div class="zh-line"><span class="t">${Number.isFinite(h.time) ? stamp(h.time) : '—'}</span><span>${h.type === 'buy' ? 'BUY' : 'SELL'} ${fmtD(h.volume, 2)} ล็อต ${fmtD(h.open, 2)} → ${fmtD(h.close, 2)}</span><span class="res ${cls}">${esc(reasonTh[h.reason] || h.reason)} <b class="sig ${signCls}">${money(pl, acctCur, true)}</b></span></div>`;
       }),
     ];
     return `<div class="zh-side ${s}"><h5>${s === 'buy' ? 'ไม้จริงซื้อ (BUY)' : 'ไม้จริงขาย (SELL)'}</h5>
