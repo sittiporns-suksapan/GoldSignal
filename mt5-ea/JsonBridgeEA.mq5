@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| JsonBridgeEA.mq5 — GoldSignal Bridge v1.9 (pending limit/stop + modify + cancel)                       |
+//| JsonBridgeEA.mq5 — GoldSignal Bridge v1.95 (ราคาสด 50ms + pending/modify/cancel/closepart)                        |
 //| v1.9: ปิดบางส่วน (action closepart: ปิด lot ของไม้ ticket — บัญชี hedging) |
 //| v1.6: ราคาสดทันทุกทิค (ไม่ทิ้งราคาล่าสุด, timer 100ms) • หยิบคำสั่งทุก 0.1 วิ |
 //| v1.5: จองคำสั่งแบบ atomic + ทำงานทีละ EA เดียว • ส่งสถานะเชื่อมเซิร์ฟเวอร์/เวลา GMT |
@@ -14,11 +14,11 @@
 //| วิธีติดตั้ง: แอป GoldSignal → แท็บ เชื่อม MT5 → ปุ่มติดตั้งอัตโนมัติ |
 //+------------------------------------------------------------------+
 #property copyright "GoldSignal"
-#property version   "1.90"
+#property version   "1.95"
 #property strict
 
 input int    InpIntervalSec  = 3;     // เขียนไฟล์แท่งเทียน (bridge หลัก) ทุกกี่วินาที
-input int    InpQuotesMs     = 100;   // ราคาสด: เขียนเร็วสุดทุกกี่มิลลิวินาที (ไม่ทิ้งราคาล่าสุด — ตามทัน MT5)
+input int    InpQuotesMs     = 50;    // ราคาสด: เขียนเร็วสุดทุกกี่มิลลิวินาที (ไวกว่า MT5 — สูงสุด 20 ครั้ง/วิ)
 // สวิตช์การส่งไม้จริงคุมอยู่ที่ 2 ชั้นหลัก: ปุ่ม AutoTrading ในเทอรมินัล + สวิตช์ในแอป (ยืนยัน 2 ชั้น)
 // (ค่าเดิมตั้ง false เพื่อความชอบของผู้ใช้ที่ขอความปลอดภัยสุด)
 input bool   InpAllowOrders  = true;  // รับคำสั่งซื้อขายจากแอป GoldSignal (ต้องเปิด AutoTrading ด้วย)
@@ -456,7 +456,7 @@ void WriteSnapshot()
                  ",\"srv\":" + IntegerToString((long)TimeTradeServer()) +
                  ",\"symbol\":\"" + _Symbol + "\"" +
                  ",\"digits\":" + IntegerToString(_Digits);
-   json += ",\"ea\":\"1.9\"";
+   json += ",\"ea\":\"1.95\"";
    if(hasTick)
      {
       json += StringFormat(",\"bid\":%.5f,\"ask\":%.5f,\"spreadPts\":%d", tick.bid, tick.ask,

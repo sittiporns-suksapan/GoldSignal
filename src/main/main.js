@@ -995,7 +995,7 @@ function boot() {
   }
   // โพล fallback ทุก 250ms — เร็วเท่าจังหวะที่ EA เขียนราคา (ครอบคลุมถ้า watch ใช้ไม่ได้บนเครื่องนั้น)
   // (pushTick กรองซ้ำเอง: ส่งต่อ renderer เฉพาะเมื่อ bid/ask เปลี่ยน)
-  const quoteLane = setInterval(pushTick, 250);
+  const quoteLane = setInterval(pushTick, 100);   // โพลราคาสดของตาย (watch เดิมส่งทันทีอยู่แล้ว) — ไวกว่า MT5 แสดงผล
   // ราคาสดต้องมาไม่เกิน 5 วิ (t = เวลาไฟล์ราคาจริง)
   const quoteFor = (side) => (lastQ && lastQ.fresh && Date.now() - lastQ.t < 5000 ? (side === 'buy' ? lastQ.ask : lastQ.bid) : null);
   // วงจรอ่านผลจาก EA ทุก 2 วินาที + ถอนคำสั่งที่ EA ไม่หยิบภายใน 15 วิ

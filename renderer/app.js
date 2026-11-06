@@ -1654,7 +1654,7 @@ window.api.onOrderResult((r) => {
 //   ชั้นเร็ว (ราคา/bid/ask/ทุนสด) ≤ 4 ครั้ง/วิ • ชั้นหนัก (วาดชาร์ตใหม่ + บันไดราคา + ระยะจุดรอ) ≤ 1 ครั้ง/วิ
 // วัดจริง: วาดทุกทิคกิน CPU renderer+GPU ~35% ตอนตลาดวิ่ง • หน้าต่างถูกซ่อน = rAF ไม่ทำงาน = ไม่วาดเลย
 let pendingTick = null, tickTimer = 0, lastTickPaint = 0, lastHeavyPaint = 0;
-const TICK_PAINT_MS = 250, HEAVY_PAINT_MS = 1000;
+const TICK_PAINT_MS = 100, HEAVY_PAINT_MS = 500;   // วาดราคาเร็วสุด 10 ครั้ง/วิ + กลุ่มอื่น 2 ครั้ง/วิ
 window.api.onTick((q) => {
   if (!q || !Number.isFinite(q.bid)) return;
   pendingTick = q;
