@@ -1486,17 +1486,13 @@ function renderAutoClose(meta, list) {
   $('ac-loss-cur').textContent = acctCur || '';
   const lossOnlyCur = $('ac-lossonly-cur');
   if (lossOnlyCur) lossOnlyCur.textContent = acctCur || '';
-  const digits = (meta && meta.digits) || 2;
-  // จุด → เงินสกุลบัญชี (เช่น THB): จุด × ขนาดจุด × 100 oz × ล็อต × อัตราแลก (equity ÷ equityUSD)
-  // ล็อต: ไม้ที่เปิดอยู่ (ถ้าขนาดเท่ากันทุกไม้) ไม่งั้นใช้ช่องล็อตของการ์ดส่งคำสั่ง
   const acct = (meta && meta.account) || null;
-  const fx = acct && acct.equityUSD > 0 && acct.equity > 0 ? acct.equity / acct.equityUSD : 1;
   const lots = [...new Set((list || []).map((p) => Number(p.volume)).filter((v) => v > 0))];
   const lotRef = lots.length === 1 ? lots[0] : (Number($('t-lot').value) || 0.01);
-  const pxOf = (v) => (v > 0 ? `≈ ${fmtD(v * Math.pow(10, -digits) * ((appSettings && Number(appSettings.ozPerLot)) || 100) * lotRef * fx, 2)} ${acctCur || 'USD'} (ล็อต ${lotRef})` : '');
   const val = (id) => Number($(id).value);
-  $('ac-pts-px').textContent = pxOf(val('ac-pts-v'));
-  $('ac-allpts-px').textContent = pxOf(val('ac-allpts-v'));
+  // หน่วยบาท: สรุปสกุลเงินให้แถวบาททุกแถว (จุดถูกแปลงเป็นเงินหมดแล้ว)
+  $('ac-allpts-cur').textContent = acctCur || '';
+  $('ac-pts-cur').textContent = acctCur || '';
   // สรุปบนหัว: เปิดอยู่กี่ตัว
   const ids = ['ac-all', 'ac-allpts', 'ac-pts', 'ac-loss', 'ac-lossonly'];
   const nOn = ids.filter((id) => $(id).checked).length;
@@ -1510,15 +1506,12 @@ function renderAutoClose(meta, list) {
   };
   const bid = meta && Number(meta.bid), ask = meta && Number(meta.ask);
   const live = list.length && Number.isFinite(bid) && Number.isFinite(ask);
-  const ptsOf = (p) => (p.type === 'buy' ? bid - p.open : p.open - ask) / Math.pow(10, -digits);
   const total = list.reduce((s, p) => s + (Number(p.profit) || 0), 0);
-  const sumPts = live ? list.reduce((s, p) => s + ptsOf(p), 0) : null;
-  const best = live ? Math.max(...list.map(ptsOf)) : null;
+  const best = live ? Math.max(...list.map((p) => Number(p.profit) || 0)) : null;
   const m = (x) => `${x >= 0 ? '+' : ''}${fmtD(x, 2)}`;
-  const pt = (x) => `${x >= 0 ? '+' : ''}${Math.round(x)}`;
   bar('ac-all', list.length ? total : null, val('ac-all-v'), m);
-  bar('ac-allpts', sumPts, val('ac-allpts-v'), pt);
-  bar('ac-pts', best, val('ac-pts-v'), pt);
+  bar('ac-allpts', list.length ? total : null, val('ac-allpts-v'), m);
+  bar('ac-pts', live ? best : null, val('ac-pts-v'), m);
   // ตัดขาดทุน: เทียบขนาดขาดทุน (บวก) กับเพดาน
   const loss = list.length ? Math.max(0, -total) : null;
   $('ac-loss-bar').style.width = (loss && val('ac-loss-v') > 0 ? Math.min(100, (loss / val('ac-loss-v')) * 100) : 0) + '%';
@@ -1533,7 +1526,7 @@ function renderAutoClose(meta, list) {
     if (nowEl) nowEl.textContent = loss == null ? '—' : `แดง ${nRed} ไม้ • ลอยตัว ${fmtD(sumLoss, 2)} / ตั้ง ${fmtD(val('ac-lossonly-v'), 2)}`;
   }
   $('ac-status').textContent = list.length
-    ? `ไม้ที่เปิด ${list.length} ไม้ • กำไรรวม ${money(total, acctCur, true)}${sumPts != null ? ` • จุดรวม ${pt(sumPts)}` : ''}`
+    ? `ไม้ที่เปิด ${list.length} ไม้ • กำไรรวม ${money(total, acctCur, true)}${best != null ? ` • กำไรรายไม้สูงสุด ${money(best, acctCur, true)}` : ''}`
     : 'ไม่มีไม้ที่เปิดอยู่ — ตั้งเป้าไว้ก่อนได้ ระบบจะเริ่มดูเมื่อมีไม้';
 }
 
@@ -1565,8 +1558,8 @@ function bindAutoClose(swId, valId, key, valKey, label, unit) {
 }
 bindAutoClose('ac-all', 'ac-all-v', 'autoCloseAll', 'autoCloseAllProfit', 'ปิดรวบ', () => acctCur || '');
 bindAutoClose('ac-loss', 'ac-loss-v', 'autoCloseLoss', 'autoCloseLossValue', 'ตัดขาดทุนรวบ', () => `${acctCur || ''} (ขาดทุนรวม)`);
-bindAutoClose('ac-allpts', 'ac-allpts-v', 'autoCloseAllPts', 'autoCloseAllPtsValue', 'ปิดรวบตามจุด', () => 'จุด');
-bindAutoClose('ac-pts', 'ac-pts-v', 'autoClosePoints', 'autoClosePointsValue', 'ปิดรายไม้', () => 'จุด');
+bindAutoClose('ac-allpts', 'ac-allpts-v', 'autoCloseAllPts', 'autoCloseAllPtsValue', 'ปิดรวบ (บาท)', () => acctCur || '');
+bindAutoClose('ac-pts', 'ac-pts-v', 'autoClosePoints', 'autoClosePointsValue', 'ปิดรายไม้ (บาท)', () => acctCur || '');
 bindAutoClose('ac-lossonly', 'ac-lossonly-v', 'autoCloseLosingOnly', 'autoCloseLosingOnlyValue', 'ตัดขาดทุนเฉพาะไม้แดง', () => `${acctCur || ''} (ขาดทุนรวม — ปิดแค่ไม้แดง)`);
 window.api.onAutoEnter((r) => { toast('🤖 ' + r.msg, r.ok ? 'ok' : 'err'); if (r.ok) setTimeout(() => window.api.refreshNow(), 1500); });
 window.api.onAutoClose((r) => { toast('🔒 ' + r.msg, 'ok'); setTimeout(() => window.api.refreshNow(), 1500); });

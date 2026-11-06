@@ -4,8 +4,8 @@
 // ปิดอัตโนมัติเพื่อเซฟกำไร (ตัดสินจากราคาสดทุกทิค ไม่รอรอบวิเคราะห์)
 //   1) ปิดรวบ: กำไรลอยตัวรวมทุกไม้ ≥ เป้า (สกุลเงินบัญชี) → ปิดทุกไม้
 //   1b) ตัดขาดทุนรวบ: ขาดทุนลอยตัวรวม ≥ เป้า (สกุลเงินบัญชี) → ปิดทุกไม้ (ตรวจก่อนเป้ากำไร)
-//   2) ปิดรวบตามจุด: จุดของทุกไม้รวมกัน ≥ N จุด → ปิดทุกไม้
-//   3) ปิดรายไม้: ไม้ใดบวก ≥ N จุด (1 จุด = 10^-digits เช่น XAUUSD 0.01) → ปิดไม้นั้น
+//   2) ปิดรวบตามเงิน: กำไรลอยตัวรวม ≥ N บาท → ปิดทุกไม้ (พร้อมกันกับเงินเป้าหลัก — สองสวิตช์คู่ขนาน)
+//   3) ปิดรายไม้: ไม้ใดกำไรรายไม้ ≥ N บาท (สกุลบัญชีเดียวกัน) → ปิดไม้นั้น
 // ฟังก์ชันนี้คำนวณอย่างเดียว ไม่ส่งคำสั่งเอง — main process เป็นคนส่ง
 // ============================================================
 
@@ -38,7 +38,7 @@ function plan({ positions = [], bid, ask, spec, digits, settings = {}, skip = ne
   if (settings.autoCloseLoss === true && maxLoss > 0 && out.total <= -maxLoss) out.trigger = 'loss';
   else if (settings.autoCloseLosingOnly === true && losingTarget > 0 && out.total <= -losingTarget) out.trigger = 'lossonly';
   else if (settings.autoCloseAll === true && target > 0 && out.total >= target) out.trigger = 'money';
-  else if (settings.autoCloseAllPts === true && targetPts > 0 && out.totalPts >= targetPts) out.trigger = 'points';
+  else if (settings.autoCloseAllPts === true && targetPts > 0 && out.total >= targetPts) out.trigger = 'points';
   if (out.trigger) {
     // 'lossonly' = ปิดเฉพาะไม้แดง (ติดลบ) เก็บไม้ที่บวกไว้ — ที่เหลือปิดรวบ
     if (out.trigger === 'lossonly') {
@@ -48,9 +48,10 @@ function plan({ positions = [], bid, ask, spec, digits, settings = {}, skip = ne
     out.closeAll = out.live.map((x) => x.ticket).filter((t) => !skip.has(t));
     return out; // ปิดรวบครอบทุกไม้แล้ว ไม่ต้องดูรายไม้
   }
-  const need = Number(settings.autoClosePointsValue);
-  if (settings.autoClosePoints === true && need > 0) {
-    out.singles = out.live.filter((x) => x.pts >= need && !skip.has(x.ticket));
+  const needMoney = Number(settings.autoClosePointsValue);   // เป้ารายไม้ (บาท)
+  if (settings.autoCloseAllPts === true && targetPts > 0 && out.total >= targetPts) out.trigger = 'points';
+  if (settings.autoClosePoints === true && needMoney > 0) {
+    out.singles = out.live.filter((x) => x.profit >= needMoney && !skip.has(x.ticket));
   }
   return out;
 }

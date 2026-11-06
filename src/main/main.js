@@ -887,7 +887,7 @@ function boot() {
         const why = p.trigger === 'loss'
           ? `ขาดทุนรวม ≈ ${p.total.toFixed(2)} ${cur} ถึงจุดตัด -${s.autoCloseLossValue} ${cur}`
           : p.trigger === 'points'
-          ? `จุดรวม ${Math.round(p.totalPts)} จุด ถึงเป้า ${s.autoCloseAllPtsValue} จุด (≈ ${p.total.toFixed(2)} ${cur})`
+          ? `จุดรวมเงิน: กำไรรวม ${p.total.toFixed(2)} ${cur} ถึงเป้า ${s.autoCloseAllPtsValue} ${cur}`
           : `กำไรรวม ≈ ${p.total.toFixed(2)} ${cur} ถึงเป้า ${s.autoCloseAllProfit} ${cur}`;
         const msg = `${p.trigger === 'loss' ? 'ตัดขาดทุนรวบอัตโนมัติ' : 'ปิดรวบอัตโนมัติ'}: ${why} — สั่งปิด ${p.closeAll.length} ไม้`;
         engine.pushLog('order', '🔒 ' + msg, 'warn');
@@ -900,7 +900,7 @@ function boot() {
         autoCloseBusy.set(x.ticket, now);
         const msg = p.trigger === 'lossonly'
           ? `ตัดขาดทุนเฉพาะไม้แดง: ขาดทุนรวม ${p.total.toFixed(2)} ${cur} ถึงเป้า ${s.autoCloseLosingOnlyValue} ${cur} — ปิดไม้ #${x.ticket} (ลอยตัว ${x.profit.toFixed(2)} ${cur}) เก็บไม้ที่บวกไว้`
-          : `ปิดไม้ #${x.ticket} อัตโนมัติ: บวก ${Math.round(x.pts)} จุด ถึงเป้า ${s.autoClosePointsValue} จุด (≈ ${x.profit.toFixed(2)} ${cur})`;
+          : `ปิดไม้ #${x.ticket} อัตโนมัติ: กำไรรายไม้ ${x.profit.toFixed(2)} ${cur} ถึงเป้า ${s.autoClosePointsValue} ${cur}`;
         engine.pushLog('order', '🔒 ' + msg, 'warn');
         send('auto-close', { kind: 'one', msg, tickets: [x.ticket] });
         notifyOnce('autoclose-' + x.ticket, p.trigger === 'lossonly' ? 'GoldSignal: ตัดขาดทุนเฉพาะไม้แดง' : 'GoldSignal: ปิดไม้เซฟกำไร', msg);

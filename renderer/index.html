@@ -299,17 +299,17 @@
                     <div class="ac-prog"><div class="ac-bar"><i id="ac-all-bar"></i></div><span id="ac-all-now" class="ac-now">—</span></div>
                   </div>
                 </div>
-                <div class="ac-item " title="เอาจุดของทุกไม้มารวมกัน (+200 กับ +100 = 300) ถึงเป้า = ปิดทุกไม้">
-                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-allpts" aria-label="เปิด/ปิด ปิดทุกไม้เมื่อจุดรวมถึงเป้า" /><span></span></span></label>
+                <div class="ac-item " title="กำไรลอยตัวรวมทุกไม้ (สกุลบัญชี) ถึงเป้า = ปิดทุกไม้ทันที — สวิตช์คู่ขนานกับแถวเงินหลัก (เพิ่มเป้าได้อีกช่อง)">
+                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-allpts" aria-label="เปิด/ปิด ปิดทุกไม้เมื่อกำไรรวมถึงเป้า (บาท)" /><span></span></span></label>
                   <div class="ac-main">
-                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ เมื่อจุดรวม ≥</span><input type="number" id="ac-allpts-v" inputmode="numeric" min="0.01" step="10" /><span class="ac-unit">จุด</span><span id="ac-allpts-px" class="ac-px"></span></div>
+                    <div class="ac-line"><span class="ac-lbl">ปิดทุกไม้ (เป่าเซ็คกัน) เมื่อกำไรรวม ≥</span><input type="number" id="ac-allpts-v" inputmode="decimal" min="0.01" step="1" /><span class="ac-unit" id="ac-allpts-cur">THB</span></div>
                     <div class="ac-prog"><div class="ac-bar"><i id="ac-allpts-bar"></i></div><span id="ac-allpts-now" class="ac-now">—</span></div>
                   </div>
                 </div>
-                <div class="ac-item " title="ไม้ใดบวกถึงจุดนี้ = ปิดไม้นั้นไม้เดียว">
-                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-pts" aria-label="เปิด/ปิด ปิดเฉพาะไม้ที่บวกถึงจุดที่ตั้ง" /><span></span></span></label>
+                <div class="ac-item " title="ไม้ใดกำไรรายไม้ (สกุลบัญชี) ถึงเป้า = ปิดไม้นั้นไม้เดียว">
+                  <label class="switch-row"><span class="switch"><input type="checkbox" id="ac-pts" aria-label="เปิด/ปิด ปิดเฉพาะไม้ที่กำไรรายไม้ถึงเป้า (บาท)" /><span></span></span></label>
                   <div class="ac-main">
-                    <div class="ac-line"><span class="ac-lbl">ปิดเฉพาะไม้ที่บวก ≥</span><input type="number" id="ac-pts-v" inputmode="numeric" min="0.01" step="10" /><span class="ac-unit">จุด</span><span id="ac-pts-px" class="ac-px"></span></div>
+                    <div class="ac-line"><span class="ac-lbl">ปิดเฉพาะไม้ที่บวก ≥</span><input type="number" id="ac-pts-v" inputmode="decimal" min="0.01" step="1" /><span class="ac-unit" id="ac-pts-cur">THB</span></div>
                     <div class="ac-prog"><div class="ac-bar"><i id="ac-pts-bar"></i></div><span id="ac-pts-now" class="ac-now">—</span></div>
                   </div>
                 </div>

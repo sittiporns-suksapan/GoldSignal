@@ -244,10 +244,10 @@ ok('ปิดอัตโนมัติ: ปิดรวบเมื่อก�
   assert.equal(off.closeAll.length + off.singles.length, 0, 'สวิตช์ปิด = ไม่ทำอะไร');
   const all = ac.plan({ ...q, settings: { autoCloseAll: true, autoCloseAllProfit: 100, autoClosePoints: true, autoClosePointsValue: 300 } });
   assert.deepEqual(all.closeAll, [11, 12], 'รวม ≈ +118 ≥ 100 → ปิดทุกไม้ (รวมไม้ติดลบ)');
-  const pts = ac.plan({ ...q, settings: { autoCloseAllPts: true, autoCloseAllPtsValue: 300 } });
-  assert.equal(pts.trigger, 'points'); assert.equal(Math.round(pts.totalPts), 350);
-  assert.deepEqual(pts.closeAll, [11, 12], 'จุดรวม +500 -150 = 350 ≥ 300 → ปิดทุกไม้');
-  assert.equal(ac.plan({ ...q, settings: { autoCloseAllPts: true, autoCloseAllPtsValue: 400 } }).closeAll.length, 0, 'จุดรวมยังไม่ถึง');
+  const pts = ac.plan({ ...q, settings: { autoCloseAllPts: true, autoCloseAllPtsValue: 100 } });
+  assert.equal(pts.trigger, 'points'); assert.ok(Math.abs(pts.total - 117.95) < 1);
+  assert.deepEqual(pts.closeAll, [11, 12], 'กำไรรวม (บาท) ≈ 118 ≥ 100 → ปิดทุกไม้');
+  assert.equal(ac.plan({ ...q, settings: { autoCloseAllPts: true, autoCloseAllPtsValue: 200 } }).closeAll.length, 0, 'รวม (บาท) ยังไม่ถึง 200');
   // ตัดขาดทุนรวบ: ใช้ราคาที่ทั้งสองไม้ติดลบ
   const lossQ = { ...q, bid: 3939, ask: 3945.5 }; // buy -100 จุด ≈ -33.7, sell -150 จุด ≈ -50.55 → รวม ≈ -84.25
   assert.equal(ac.plan({ ...lossQ, settings: { autoCloseLoss: true, autoCloseLossValue: 100 } }).closeAll.length, 0, 'ขาดทุนยังไม่ถึง 100');
@@ -265,8 +265,9 @@ ok('ปิดอัตโนมัติ: ปิดรวบเมื่อก�
   assert.equal(bothOn.trigger, 'loss', 'ปิดรวบตัดขาดทุนได้ก่อนเสมอเมื่อสองสวิตช์เปิดคู่กัน');
   const notYet = ac.plan({ ...q, settings: { autoCloseAll: true, autoCloseAllProfit: 200 } });
   assert.equal(notYet.closeAll.length, 0, 'ยังไม่ถึงเป้ารวม');
-  const one = ac.plan({ ...q, settings: { autoClosePoints: true, autoClosePointsValue: 300 } });
-  assert.deepEqual(one.singles.map((x) => x.ticket), [11], 'เฉพาะไม้ที่บวก ≥ 300 จุด');
+  const one = ac.plan({ ...q, settings: { autoClosePoints: true, autoClosePointsValue: 100 } });
+  assert.deepEqual(one.singles.map((x) => x.ticket), [11], 'กำไรรายไม้ +168.5 ≥ 100 บาท → ปิด #11');
+  assert.deepEqual(ac.plan({ ...q, settings: { autoClosePoints: true, autoClosePointsValue: 300 } }).singles.length, 0, 'รายไม้ยังไม่ถึง 300 บาท');
   const busy = ac.plan({ ...q, settings: { autoClosePoints: true, autoClosePointsValue: 300 }, skip: new Set([11]) });
   assert.equal(busy.singles.length, 0, 'ไม้ที่สั่งปิดแล้วไม่ส่งซ้ำ');
 });
