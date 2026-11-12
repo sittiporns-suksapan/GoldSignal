@@ -40,7 +40,7 @@ module.exports = {
       if (userSl != null) {
         const sl = price - userSl;
         const tp = userTp != null ? price + userTp : price + 1.8 * userSl;
-        return { side: 'buy', entry: price, sl, tp, confidence: Math.min(conf, 90), reason: `แบนด์เพิ่งบีบตัว (เปอร์เซ็นไทล์ ${ind.round(bwPct, 0)}) แล้ว M5 ปิดทะลุขอบบน ${ind.round(up, 2)} • SL/TP ตามค่าตั้งจุด` };
+        return { side: 'buy', entry: price, sl, tp, confidence: Math.min(conf, 90), distUser: true, reason: `แบนด์เพิ่งบีบตัว (เปอร์เซ็นไทล์ ${ind.round(bwPct, 0)}) แล้ว M5 ปิดทะลุขอบบน ${ind.round(up, 2)} • SL/TP ตามค่าตั้งจุด` };
       }
       const sl = mid - range * 0.15;
       if (price - sl < atrV) return null;

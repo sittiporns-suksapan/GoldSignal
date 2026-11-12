@@ -53,7 +53,7 @@ module.exports = {
 
     if (!candles.M5 || candles.M5.length < 70) return null;
     return {
-      side: council.side,
+      side: council.side, distUser: userSl != null,
       entry: price,
       sl,
       tp,

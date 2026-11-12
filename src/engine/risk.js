@@ -42,7 +42,7 @@ function normalizeSignal(raw, price) {
   const confidence = clamp(Math.round(Number(raw.confidence) || 0), 0, 100);
   return {
     side, entry: ind.round(entry, 2), sl: ind.round(sl, 2), tp: ind.round(tp, 2),
-    confidence, autoTp,
+    confidence, autoTp, distUser: raw.distUser === true,
     reason: String(raw.reason || '-').slice(0, 300),
   };
 }
@@ -92,7 +92,19 @@ function evaluateSignal(sig, settings) {
   if (equity <= 0) return reject('ยังไม่ได้ตั้งทุน (ตั้งได้ในแท็บสัญญาณ)');
   if (!Number.isFinite(rr) || rr < minRR) return reject(`RR ${ind.round(rr, 2)} ต่ำกว่าเกณฑ์ที่ตั้งไว้ ${minRR}`);
   if (sig.confidence < minConf) return reject(`ความมั่นใจ ${sig.confidence}% ต่ำกว่าเกณฑ์ ${minConf}%`);
-  if (!(pos.lot >= MIN_LOT)) return reject('พื้นที่ SL กว้างเกินไป — ล็อตขั้นต่ำ 0.01 ทำให้ความเสี่ยงต่อไม้เกินที่ตั้งไว้ จึงปฏิเสธ');
+  if (!(pos.lot >= MIN_LOT)) {
+    // จุด SL/TP ที่ผู้ใช้ตั้งเอง = กำหนดความเสี่ยงเอง: ล็อตขั้นต่ำ 0.01 เสมอ + บอกเสี่ยงจริง (แทนการปฏิเสธเงียบ)
+    if (sig.distUser === true && pos.lotRaw > 0) {
+      pos.lot = MIN_LOT;
+      pos.riskUSD = pos.lot * pos.slDist * ozPerLot;
+      pos.effRiskPct = ind.round(pos.riskUSD / equity * 100, 2);
+      metrics.lot = pos.lot; metrics.riskUSD = ind.round(pos.riskUSD, 2); metrics.effRiskPct = pos.effRiskPct;
+      if (pos.effRiskPct > 25) return reject(`เสี่ยง $${ind.round(pos.riskUSD, 2)} (${pos.effRiskPct}% ของทุน) — จุด SL ที่ตั้งกว้างเกินภาระบัญชี (ล็อตขั้นต่ำยังเสี่ยง >25%)`);
+      out.warn = `จุด SL ที่คุณตั้ง ($${ind.round(pos.slDist, 2)}) ทำให้ล็อต ~%ระดับขั้นต่ำ — เสี่ยง $${ind.round(pos.riskUSD, 2)} (${pos.effRiskPct}% ของทุน)`;
+      return out;
+    }
+    return reject('พื้นที่ SL กว้างเกินไป — ล็อตขั้นต่ำ 0.01 ทำให้ความเสี่ยงต่อไม้เกินที่ตั้งไว้ จึงปฏิเสธ');
+  }
   return out;
 }
 

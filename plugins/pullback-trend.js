@@ -35,7 +35,7 @@ module.exports = {
       if (userSl != null) {
         const sl = side === 'buy' ? entry - userSl : entry + userSl;
         const tp = userTp != null ? (side === 'buy' ? entry + userTp : entry - userTp) : entry + 2 * userSl;
-        return { side: 'buy', entry, sl, tp, confidence: Math.min(conf + (analysis.trendH1 === 'up' ? 10 : 0), 92), reason: `เทรนด์ขึ้นชัด (H1:${analysis.trendH1}/M15:${analysis.trendM15}) ราคาดีดใกล้ EMA20 ระดับ ${ind.round(e20, 2)} RSI ${ind.round(rsiV, 1)} • SL/TP ตามค่าตั้งจุด` };
+        return { side, entry, sl, tp, confidence: Math.min(conf + (analysis.trendH1 === 'up' ? 10 : 0), 92), distUser: true, reason: `เทรนด์ขึ้นชัด (H1:${analysis.trendH1}/M15:${analysis.trendM15}) ราคาดีดใกล้ EMA20 ระดับ ${ind.round(e20, 2)} RSI ${ind.round(rsiV, 1)} • SL/TP ตามค่าตั้งจุด` };
       }
       const sl = Math.min(last.l, e20) - 1.2 * atrV;
       if (entry - sl < atrV * 0.8) return null; // SL แคบไปเวอร์

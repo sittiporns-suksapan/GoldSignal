@@ -308,6 +308,18 @@ ok('เพดานสัมบูรณ์แก้ SL: modifyAbsMaxPct ยก�
   assert.equal(risk.validateModify({ ...P, sl: 100, settings: S3, allowOverCap: true }).pass, false, '$1,100 เกินทุนตัวเอง = ปฏิเสธ');
 });
 
+ok('จุด SL ที่ผู้ใช้ตั้ง (distUser) = ล็อตขั้นต่ำ 0.01 ทำงานแทนปฏิเสธ: ทุน $120 SL $30 → เสี่ยง 25% ผ่านพร้อมเตือน', () => {
+  const n = risk.normalizeSignal({ side: 'buy', entry: 4060, sl: 4030, tp: 4110, confidence: 70, distUser: true, reason: 'จุดผู้ใช้' });
+  const ev = risk.evaluateSignal(n, { equity: 120, realOrdersEnabled: true, manualRiskMaxPct: 100, ozPerLot: 100, riskPct: 10, autoRiskMaxPct: 5 });
+  assert.equal(ev.pass, true, 'distUser = เข้าด้วยล็อตขั้นต่ำ 0.01 แทนการกรอง');
+  assert.equal(ev.metrics.lot, 0.01);
+  assert.ok(ev.metrics.effRiskPct >= 20, `เสี่ยงจริง ${ev.metrics.effRiskPct}% ของทุน`);
+  assert.ok(!n.distUser === false, 'flag ส่งต่อถึง normalize');
+  // ไม่มี distUser (สัญญาณ ATR-อัตโนมัติ) = ยังปฏิเสธตามเกตจริการเดิม (คุ้มกันระบบ)
+  n.distUser = false;
+  const ev2 = risk.evaluateSignal(n, { equity: 120, realOrdersEnabled: true, manualRiskMaxPct: 100, ozPerLot: 100, riskPct: 10, autoRiskMaxPct: 5 });
+  assert.equal(ev2.pass, false, 'ATR อัตโนมัติ SL กว้างโดยไม่ตั้งจุด = กรองเหมือนเดิม');
+});
 ok('validatePendingModify: แก้คำสั่งรอ — ทิศราคาตามชนิด / SL บังคับ / เพดาน 2%', () => {
   const S = { equity: 1000, realOrdersEnabled: true };
   const P = { side: 'buy', ptype: 'limit', volume: 0.01, curEntry: 3930, curSl: 3920, market: 3945, settings: S };

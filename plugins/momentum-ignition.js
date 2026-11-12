@@ -36,7 +36,7 @@ module.exports = {
       if (userSl != null) {
         const sl = price - userSl;
         const tp = userTp != null ? price + userTp : price + 1.8 * userSl;
-        return { side: 'buy', entry: price, sl, tp, confidence: 68 + (analysis.bias === 'bull' ? 10 : 0), reason: 'EMA9 ตัดขึ้น EMA21 ใหม่ (M5) • SL/TP ตามค่าตั้งจุด' };
+        return { side: 'buy', entry: price, sl, tp, confidence: 68 + (analysis.bias === 'bull' ? 10 : 0), distUser: true, reason: 'EMA9 ตัดขึ้น EMA21 ใหม่ (M5) • SL/TP ตามค่าตั้งจุด' };
       }
       const sl = Math.min(b, last.l) - 1.2 * atrV;
       if (price - sl < atrV * 0.8) return null;
