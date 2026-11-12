@@ -2328,11 +2328,9 @@ async function loadSettingsToForm() {
   $('s-webpush-url').value = s.remoteDashboardUrl || '';
   $('s-webpush-token').value = s.remoteDashboardToken || '';
   $('s-modifyabsmax').value = s.modifyAbsMaxPct != null ? s.modifyAbsMaxPct : 10;
-  // กลุ่ม "ระยะ SL/TP (บาท)" = ค่าตั้งจริงของระบบ (จุด → บาท ตามอัตราปัจจุบัน) — ว่าง = อัตโนมัติ ATR
-  const rcRateNow = Number(((lastSnap && lastSnap.meta && lastSnap.meta.account) || {}).usdRate) || null;
-  const rPt = Math.pow(10, -2);
-  $('rc-sl').value = Number(s.slDistPts) > 0 && rcRateNow ? fmtD(Number(s.slDistPts) * rPt * rcRateNow, 0) : '';
-  $('rc-tp').value = Number(s.tpDistPts) > 0 && rcRateNow ? fmtD(Number(s.tpDistPts) * rPt * rcRateNow, 0) : '';
+  // กลุ่ม "ระยะ SL/TP (จุด)" = ค่าตั้งจริงของระบบ (จุด — กรอกตรงเหมือน MT5) — ว่าง = อัตโนมัติ ATR
+  $('rc-sl').value = Number(s.slDistPts) > 0 ? Math.round(Number(s.slDistPts)) : '';
+  $('rc-tp').value = Number(s.tpDistPts) > 0 ? Math.round(Number(s.tpDistPts)) : '';
   $('t-auto').checked = !!s.autoEnter;
   $('t-real').checked = !!s.realOrdersEnabled;
   $('ac-all').checked = !!s.autoCloseAll;
@@ -2369,16 +2367,10 @@ async function loadSettingsToForm() {
    $ = จุด × ขนาดจุด × oz/ล็อต × ล็อต • % = $ ÷ ทุน × 100 */
 const RC_KEY = 'gs.riskCalc', RC_MIN = 0.05, RC_MAX = 10;
 const rcNum = (id) => { const v = Number($(id).value); return Number.isFinite(v) && v > 0 ? v : 0; };
-// อัตรา THB→USD ล่าสุดจากบัญชี MT5 ของคุณ (ต้องเชื่อมก่อน — เกตส์ราคาจะบอกถ้ามาไม่ถึง)
-function rcRate() {
-  const a = (lastSnap && lastSnap.meta && lastSnap.meta.account) || {};
-  return Number(a.usdRate) > 0 ? Number(a.usdRate) : null;
-}
-// บาท → จุด: THB ÷ อัตรา(บาท/$) = $ → $ ÷ ค่าจุด = จุด (อิงอัตราจริงจากบัญชีของคุณ)
-function thbToPts(thb) {
-  const rate = rcRate(), point = Math.pow(10, -(Number((lastSnap && lastSnap.meta) || {}).digits || 2));
-  if (!rate || !point || !Number.isFinite(thb) || thb <= 0) return null;
-  return Math.round(thb / rate / point);
+// จุดที่พิมพ์ = จุดจริง (เท่า MetaTrader) — คืน null ถ้าค่าไม่ถูก
+function ptsIn(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
 }
 function rcEnv() {
   const m = (lastSnap && lastSnap.meta) || {};
@@ -2388,38 +2380,33 @@ function rcEnv() {
   const rate = Number(acct.usdRate) > 0 ? Number(acct.usdRate) : null;   // อัตรา THB→USD จากบัญชีจริง (เชื่อม MT5 ก่อน)
   return { point, oz, rate, equity: rcNum('s-equity') };
 }
-// บาท → จุด: THB ÷ อัตรา(บาท/$) = $ → $ ÷ ค่าจุด = จุด (อิงอัตราจริงจากบัญชีของคุณ)
-function thbToPts(thb) {
-  const rate = rcRate(), point = Math.pow(10, -(Number((lastSnap && lastSnap.meta) || {}).digits || 2));
-  if (!rate || !point || !Number.isFinite(thb) || thb <= 0) return null;
-  return Math.round(thb / rate / point);
-}
 function rcInfo(note) {
   const { point, oz, rate } = rcEnv();
   const lot = rcNum('rc-lot');
-  const thbSl = Number($('rc-sl').value), thbTp = Number($('rc-tp').value);
-  const ptsSl = thbToPts(thbSl), ptsTp = thbToPts(thbTp);
+  const ptsSl = ptsIn($('rc-sl').value), ptsTp = ptsIn($('rc-tp').value);
   const parts = [];
-  if (!rate) {
-    parts.push('เชื่อม MT5 ก่อน — ระบบต้องรู้อัตรา THB↔$ จากบัญชีจริงจึงแปลง "บาท" เป็นจุดได้');
-  } else if (!(lot > 0)) {
+  let bigRisk = false;
+  if (!(lot > 0)) {
     parts.push('ใส่ล็อตเพื่อคำนวณ');
   } else {
-    if (ptsSl > 0) parts.push(`จุด SL ≈ <b>${ptsSl}</b> (บาท${fmtD(thbSl, 0)} = $${r2(thbSl / rate, 2)}) = เสี่ยง $${r2(ptsSl * point * oz * lot, 2)}`);
-    if (ptsTp > 0) parts.push(`จุด TP ≈ <b>${ptsTp}</b> ($${r2(thbTp / rate, 2)})`);
+    if (ptsSl > 0) {
+      const usd = ptsSl * point * oz * lot;
+      bigRisk = usd > 30;
+      parts.push(`SL ${ptsSl} จุด = เสี่ยง $${r2(usd, 2)}${rate ? ` ≈ ${fmtD(usd * rate, 0)} บาท` : ''}`);
+      if (bigRisk) parts.push(`<b class="down">⚠ ระยะ SL ${ptsSl} จุด เสี่ยงเกิน $30 (0.01 ล็อต) — โบรกอาจปฏิเสธล็อตขั้นต่ำ ให้ลดระยะ</b>`);
+    }
+    if (ptsTp > 0) parts.push(`TP ${ptsTp} จุด = เป้ากำไร $${r2(ptsTp * point * oz * lot, 2)}${rate ? ` ≈ ${fmtD(ptsTp * point * rate, 0)} บาท` : ''}`);
     if (ptsSl > 0 && ptsTp > 0) parts.push(`RR 1:${r2(ptsTp / ptsSl, 2)}`);
-    if (thbSl > 1000) parts.push('<b class="down">⚠ ระยะ SL เกิน 1,000 บาท (~$30) — 0.01 ล็อตจะเสี่ยงหนักเกิน 10% ของทุน โบรกจะปฏิเสธล็อตขั้นต่ำ ให้ลดระยะ</b>');
   }
-  $('rc-out').innerHTML = (note ? note + ' • ' : '') + (parts.join(' • ') || `อัตรา ${rate ? r2(rate, 2) : '—'} บาท/$ • 1 จุด = $${r2(point, 2)}`);
-  $('rc-out').classList.toggle('down', !!note || (thbSl > 1000));
+  $('rc-out').innerHTML = (note ? note + ' • ' : '') + (parts.join(' • ') || `1 จุด = $${r2(point, 2)} • 0.01 ล็อตเสี่ยง $${r2(point * oz * lot, 2)} ต่อ 1 จุด • ว่าง = อัตโนมัติจาก ATR`);
+  $('rc-out').classList.toggle('down', !!note || bigRisk);
 }
 // แก้ล็อต / จุด SL → เขียน % ใหม่ (ปัด 2 ตำแหน่ง, บีบในกรอบ 0.05–10) • แก้ทุนไม่แตะ % (ใช้ rcFromPct)
 function rcFromLotSl() {
-  const { point, oz, rate, equity } = rcEnv();
-  const lot = rcNum('rc-lot'), thbSl = Number($('rc-sl').value);
-  const ptsSl = thbToPts(thbSl);
+  const { point, oz, equity } = rcEnv();
+  const lot = rcNum('rc-lot'), ptsSl = ptsIn($('rc-sl').value);
   let note = '';
-  if (rate && ptsSl > 0 && lot > 0 && equity > 0) {
+  if (ptsSl > 0 && lot > 0 && equity > 0) {
     const raw = Number(((ptsSl * point * oz * lot) / equity * 100).toFixed(2));
     const pct = Math.min(RC_MAX, Math.max(RC_MIN, raw));
     $('s-riskpct').value = pct;
@@ -2429,29 +2416,24 @@ function rcFromLotSl() {
 }
 // แก้ % → คำนวณจุด SL ใหม่ (ล็อตคงที่, ปัดเป็นจุดเต็ม)
 function rcFromPct() {
-  const { point, oz, rate, equity } = rcEnv();
+  const { point, oz, equity } = rcEnv();
   const lot = rcNum('rc-lot'), pct = rcNum('s-riskpct');
-  if (rate && lot > 0 && pct > 0 && equity > 0) {
+  if (lot > 0 && pct > 0 && equity > 0) {
     const pts = Math.max(1, Math.round((equity * pct / 100) / (point * oz * lot)));
-    $('rc-sl').value = fmtD(pts * point * rate, 0);   // คืนค่าเป็น "บาท" (ช่องนี้ = บาท)
+    $('rc-sl').value = pts;   // คืนค่าเป็นจุด (ช่องนี้ = จุด เท่า MT5)
   }
   rcInfo('');
 }
 const rcSave = () => store.set(RC_KEY, JSON.stringify({ lot: $('rc-lot').value }));
 // จุด SL/จุด TP ที่พิมพ์ = ค่าตั้งจริง (settings.json) — ทุกแผน/คำสั่งรอ/อัตโนมัติจะดึงมาใช้
 const rcPushSettings = () => {
-  const ptsSl = thbToPts(Number($('rc-sl').value)) || 0;
-  const ptsTp = thbToPts(Number($('rc-tp').value)) || 0;
-  try { window.api.saveSettings({ slDistPts: ptsSl, tpDistPts: ptsTp }); } catch { void 0; }
+  try { window.api.saveSettings({ slDistPts: ptsIn($('rc-sl').value) || 0, tpDistPts: ptsIn($('rc-tp').value) || 0 }); } catch { void 0; }
 };
 (() => {
-  // migrate: ค่าจุด SL/TP ที่เคยจำใน localStorage (ก่อนมี settings) → ย้ายเป็นค่าตั้งจริงครั้งเดียว
+  // รื้อค่าล็อตจากเครื่องนี้ (ค่าระยะอยู่ที่ settings.json จุดเดียว — ไม่ต้อง migrate อีกต่อไป)
   let saved = null;
   try { saved = JSON.parse(store.get(RC_KEY, 'null')); } catch { saved = null; }
-  const ls = (saved && appSettings && Number(appSettings.slDistPts) === 0) ? Number(saved.slPts) : 0;
-  const lt = (saved && appSettings && Number(appSettings.tpDistPts) === 0) ? Number(saved.tp) : 0;
   $('rc-lot').value = saved && saved.lot ? saved.lot : '0.01';
-  if (Number.isFinite(ls) && ls > 0) { $('rc-sl').value = ls; rcPushSettings(); store.set(RC_KEY, JSON.stringify({ lot: saved.lot, slPts: ls, tp: saved.tp })); }
 })();
 $('rc-lot').addEventListener('input', () => { rcFromLotSl(); rcSave(); });
 $('rc-sl').addEventListener('input', () => { rcFromLotSl(); rcPushSettings(); });
