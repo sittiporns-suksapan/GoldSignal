@@ -397,6 +397,7 @@ function signalCard(sig) {
       <span class="side ${sig.side}">${sig.side === 'buy' ? 'ซื้อ BUY' : 'ขาย SELL'}</span>
       <span class="muted small">${esc(sig.pluginName || sig.plugin)}</span>
       ${sig.held ? `<span class="held">⏸ ${esc(sig.held)}</span>` : '<span class="held ready">✔ พร้อมใช้</span>'}
+      ${sig.opp != null ? `<span class="own" title="มาจากมติสภา + สถิติชนะจริงของช่วงความมั่นใจเดียวกัน + RR">🎯 โอกาส ${Math.round(sig.opp)}%</span>` : ''}
       <span class="sig-price">@ ${r2(sig.entry)}</span>
     </div>
     <div class="sig-grid">
@@ -409,7 +410,7 @@ function signalCard(sig) {
       <div class="sig-cell"><small>คะแนนเสี่ยง</small><b>${sig.riskScore != null ? sig.riskScore : '—'} <small class="muted">ต่ำ=ปลอดภัยกว่า</small></b></div>
     </div>
     <div class="confbar"><div style="width:${conf}%"></div></div>
-    <div class="sig-meta">ความมั่นใจ ${conf}% • เวลา ${fmtTs(sig.ts)}${sig.autoTp ? ' • TP คำนวณอัตโนมัติที่ R:R 2:1' : ''}${sig.council && sig.council.conf != null ? ` • ทีมเอเจนต์ ${sig.council.conf}% (${esc(sig.council.note)})` : ''}</div>
+    <div class="sig-meta">โอกาสคาดการณ์ ${sig.opp != null ? `<b>${Math.round(sig.opp)}%</b>` : '—'} • ความมั่นใจ ${conf}% • เวลา ${fmtTs(sig.ts)}${sig.autoTp ? ' • TP คำนวณอัตโนมัติที่ R:R 2:1' : ''}${sig.council && sig.council.conf != null ? ` • ทีมเอเจนต์ ${sig.council.conf}% (${esc(sig.council.note)})` : ''}</div>
     <div class="reason">${esc(sig.reason)}</div>
   </div>`;
 }
@@ -2457,6 +2458,8 @@ async function loadSettingsToForm() {
   $('s-webpush-url').value = s.remoteDashboardUrl || '';
   $('s-webpush-token').value = s.remoteDashboardToken || '';
   $('s-modifyabsmax').value = s.modifyAbsMaxPct != null ? s.modifyAbsMaxPct : 10;
+  $('s-atbest').checked = s.autoBestOnly === true;
+  $('s-atmin').value = Number(s.autoMinPct) > 0 ? Number(s.autoMinPct) : 0;
   // กลุ่ม "ระยะ SL/TP (จุด)" = ค่าตั้งจริงของระบบ (จุด — กรอกตรงเหมือน MT5) — ว่าง = อัตโนมัติ ATR
   $('rc-sl').value = Number(s.slDistPts) > 0 ? Math.round(Number(s.slDistPts)) : '';
   $('rc-tp').value = Number(s.tpDistPts) > 0 ? Math.round(Number(s.tpDistPts)) : '';
@@ -2588,6 +2591,8 @@ $('form-risk').addEventListener('submit', async (e) => {
     autoRiskMaxPct: Number($('s-automax').value),
     manualRiskMaxPct: Number($('s-manualriskmax').value),
     modifyAbsMaxPct: Number($('s-modifyabsmax').value),
+    autoBestOnly: $('s-atbest').checked,
+    autoMinPct: Number($('s-atmin').value),
     minRR: Number($('s-minrr').value),
     minConfidence: Number($('s-minconf').value),
     maxSignalsPerDay: Number($('s-maxday').value),

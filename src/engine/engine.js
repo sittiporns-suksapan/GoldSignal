@@ -171,6 +171,21 @@ class AnalysisEngine extends EventEmitter {
       const frozenCandles = this._frozen && this._frozenSrc === candles
         ? this._frozen
         : ((this._frozenSrc = candles), (this._frozen = Object.freeze(Object.fromEntries(Object.entries(candles).map(([tf, arr]) => [tf, Object.freeze((Array.isArray(arr) ? arr : []).map(Object.freeze))])))));
+      // ระยะ SL/TP จุดที่ผู้ใช้ตั้ง ($1 = 100 จุด) — ทับทุกสัญญาณอัตโนมัติ (0 = ปล่อยตามกลยุทธ์/ATR)
+      const userSlPts = Number(effSettings.slDistPts) > 0 ? Number(effSettings.slDistPts) : null;
+      const userTpPts = Number(effSettings.tpDistPts) > 0 ? Number(effSettings.tpDistPts) : null;
+      const userPt = Math.pow(10, -(digits || 2));
+      const applyUserDist = (norm) => {
+        const buy = norm.side === 'buy';
+        if (userSlPts != null) {
+          const nsl = ind.round(buy ? norm.entry - userSlPts * userPt : norm.entry + userSlPts * userPt, 2);
+          if (nsl > 0 && (buy ? nsl < norm.entry : nsl > norm.entry)) norm.sl = nsl;
+        }
+        if (userTpPts != null) {
+          const ntp = ind.round(buy ? norm.entry + userTpPts * userPt : norm.entry - userTpPts * userPt, 2);
+          if (ntp > 0 && (buy ? ntp > norm.entry : ntp < norm.entry)) { norm.tp = ntp; norm.autoTp = true; }
+        }
+      };
       const raw = await this.plugins.runStrategies({
         analysis: structuredClone(analysis), candles: frozenCandles, price, settings: Object.freeze({ ...effSettings }), council: councilVerdict ? Object.freeze(structuredClone(councilVerdict)) : null,
         ind: PLUGIN_IND,
@@ -187,6 +202,7 @@ class AnalysisEngine extends EventEmitter {
         }
         const norm = risk.normalizeSignal(r, price);
         if (!norm) { filtered.push({ plugin: r.plugin || '?', reason: 'โครงสร้างสัญญาณไม่ถูกต้อง (ไม่มี SL หรือทิศทางผิด)' }); continue; }
+        if (userSlPts != null || userTpPts != null) applyUserDist(norm);   // SL/TP ของผู้ใช้มีผลทุกสัญญาณอัตโนมัติ
         const ev = risk.evaluateSignal(norm, effSettings);
         ev.plugin = r.plugin || '?';
         ev.pluginName = r.pluginName || ev.plugin;
@@ -198,13 +214,16 @@ class AnalysisEngine extends EventEmitter {
         const gate = gateSignal(ev, councilVerdict, this.settings);
         if (!gate.ok) { filtered.push({ plugin: ev.plugin, reason: gate.reason }); continue; }
         if (gate.info) ev.council = gate.info.councilConf != null ? { conf: gate.info.councilConf, note: gate.info.note } : null;
+        ev.opp = this.opportunityPct(councilVerdict, ev);   // % โอกาสคาดการณ์ (อิงสถิติชนะจริงของช่วงความมั่นใจเดียวกัน)
         passers.push(ev);
       }
-      // 4) โหมดเสี่ยงน้อยที่สุด: เข้าเฉพาะไม้ที่วิเคราะห์แล้วเสี่ยงต่ำสุดของรอบ — ไม้ที่เหลือ "เลื่อน" พร้อมเหตุผล
+      // 4) โหมดเลือกไม้: โหมด Auto Trader (โอกาส% สูงสุด) = มาก่อนเสี่ยงน้อยสุด / เดิม = เสี่ยงน้อยสุด
       const sessionNow = sessions.evaluate(Date.now());
-      const chosen = this.settings.leastRisk === false ? null : this._pickLeastRisk(passers, sessionNow.quality);
+      const chosen = this.settings.autoBestOnly === true
+        ? this._pickBestOpportunity(passers)
+        : (this.settings.leastRisk === false ? null : this._pickLeastRisk(passers, sessionNow.quality));
       for (const ev of passers) {
-        const hold = !chosen || ev === chosen ? this._gate() : { reason: 'เสี่ยงกว่าไม้ที่เลือกในรอบนี้ (โหมดเสี่ยงน้อยที่สุด)' };
+        const hold = !chosen || ev === chosen ? this._gate() : { reason: this.settings.autoBestOnly === true ? `โอกาสน้อยกว่าไม้ที่เลือกในรอบนี้ (${Math.round(ev.opp || 0)}% < ${Math.round(Number(chosen && chosen.opp) || 0)}%)` : 'เสี่ยงกว่าไม้ที่เลือกในรอบนี้ (โหมดเสี่ยงน้อยที่สุด)' };
         signals.push({ ...ev, ts: Date.now(), riskScore: risk.riskScore(ev, sessionNow.quality), held: hold.reason ? hold.reason : null });
         if (!hold.reason) {
           this._rememberIssue(this._keySig(ev), ev);
@@ -663,6 +682,35 @@ class AnalysisEngine extends EventEmitter {
       if (sc < bestScore) { best = ev; bestScore = sc; }
     }
     return best;
+  }
+
+  // โหมด Auto Trader: หยิบไม้ที่ % โอกาสคาดการณ์สูงสุดของรอบ (ถูกมองแยกจากเสี่ยงน้อยสุด)
+  _pickBestOpportunity(list) {
+    if (!Array.isArray(list) || !list.length) return null;
+    let best = null, bestP = -1;
+    for (const ev of list) {
+      const p = Number(ev.opp) || 0;
+      if (p > bestP) { best = ev; bestP = p; }
+    }
+    return best;
+  }
+
+  // % โอกาสคาดการณ์ของสัญญาณ — โครงสร้าง: มติสภา 55% + อัตราชนะจริงของช่วงความมั่นใจเดียวกัน (สถิติสภา 30%) + ความมั่นใจกลยุทธ์ 15% + โบนัส RR (≥3 = +5, ≥2 = +3, ≥1.5 = +1, <1 = −8)
+  opportunityPct(councilVerdict, ev) {
+    const conf = councilVerdict && councilVerdict.confidence != null ? councilVerdict.confidence : (ev.confidence || 0);
+    const cal = this.councilStats && this.councilStats.bandSummary ? this.councilStats.bandSummary(conf) : null;
+    const band = cal && cal.hit != null ? cal.hit * 100 : null;
+    const ov = this.councilStats && this.councilStats.summary ? this.councilStats.summary(this.councilStats.stats.verdict) : null;
+    const overall = ov && ov.hit != null ? ov.hit * 100 : null;
+    const sigConf = Math.max(0, Math.min(100, Number(ev.confidence) || 0));
+    const entry = Number(ev.entry), sl = Number(ev.sl), tp = Number(ev.tp);
+    const rr = Number.isFinite(entry) && Number.isFinite(sl) && Number.isFinite(tp) && Math.abs(entry - sl) > 0
+      ? Math.abs(tp - entry) / Math.abs(entry - sl) : 0;
+    let pct = band != null ? 0.55 * conf + 0.30 * band + 0.15 * sigConf
+      : overall != null ? 0.65 * conf + 0.35 * overall
+      : conf;
+    pct += rr >= 3 ? 5 : rr >= 2 ? 3 : rr >= 1.5 ? 1 : rr > 0 && rr < 1 ? -8 : 0;
+    return Math.max(0, Math.min(99, Math.round(pct)));
   }
 
   // คัดแท่งเทียนที่มีแท่งใหม่จริงต่อไทม์เฟรม (แท่งก่อนหน้านิ่ง → ไม่ต้องขนไป renderer ซ้ำ)

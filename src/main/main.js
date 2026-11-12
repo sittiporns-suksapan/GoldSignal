@@ -52,6 +52,8 @@ const DEFAULT_SETTINGS = {
   minConfidence: 60,
   maxSignalsPerDay: 3,   // โควตาไม้ต่อวัน (สัญญาณ + ปุ่มคำสั่งจริงนับรวม) — ผู้ใช้เลือกได้ในแท็บตั้งค่า
   leastRisk: true,       // เข้าเฉพาะไม้ที่วิเคราะห์แล้วเสี่ยงน้อยที่สุดของรอบ
+  autoBestOnly: false,   // โหมด Auto Trader: เลือกไม้ที่ % สำเร็จคาดการณ์สูงสุดของรอบ (แทนเสี่ยงน้อยสุด)
+  autoMinPct: 65,        // คัดโอกาส: เข้าเองเมื่อ % โอกาสคาดการณ์ ≥ ค่านี้ (0 = เข้าไม้แรกที่ผ่านเกต)
   notifySignal: true,       // แจ้งเตือน macOS เมื่อโอกาสพร้อม
   autoStart: false,         // เปิดวิเคราะห์เองตอนเปิดเครื่อง
   cooldownMin: 15,
@@ -112,6 +114,8 @@ function sanitizeSettings(input) {
     minConfidence: num(s.minConfidence, 60, 0, 95),
     maxSignalsPerDay: Math.round(num(s.maxSignalsPerDay, 3, 1, 50)),
     leastRisk: s.leastRisk === false ? false : true,
+    autoBestOnly: !!s.autoBestOnly,
+    autoMinPct: num(s.autoMinPct, 65, 0, 95),   // คัดโอกาส: เข้าเองเมื่อ % โอกาส ≥ ค่านี้ (0 = ไม่คัด)
     cooldownMin: num(s.cooldownMin, 15, 0, 240),
     newsStop: !!s.newsStop,
     notifySignal: s.notifySignal === false ? false : true,
@@ -832,7 +836,22 @@ function boot() {
       return;
     }
     const now = Date.now();
-    const sig = (snap.signals || []).find((x) => !x.held && !autoEntered.has(sigKey(x)) && !(now - (autoRejectedAt.get(sigKey(x)) || 0) < 60_000));
+    const cands = (snap.signals || []).filter((x) => !x.held && !autoEntered.has(sigKey(x)) && !(now - (autoRejectedAt.get(sigKey(x)) || 0) < 60_000));
+    if (!cands.length) return;
+    // โหมด Auto Trader: คัดโอกาสดีสุด (ถ้าตั้งค่า % ขั้นต่ำ > 0)
+    const minPct = Math.max(0, Math.min(95, Number(s.autoMinPct) || 0));
+    let sig = cands[0];
+    if (Number(s.autoBestOnly) === true) {
+      sig = cands.reduce((a, b) => (Number(b.opp || 0) > Number(a.opp || 0) ? b : a));
+      const sc = Math.round(Number(sig.opp) || 0);
+      if (minPct > 0 && sc < minPct) {
+        if (!(engine._autoBestHoldAt > now - 120_000)) {
+          engine._autoBestHoldAt = now;
+          engine.pushLog('auto', `🤖 Auto Trader: โอกาสดีสุดของรอบ = ${sc}% (< ${minPct}% ที่ถอย) — ${sig.side.toUpperCase()} @ ${sig.entry} ยังไม่คุ้มตามเกณฑ์ รอโอกาสดีกว่า`, 'warn');
+        }
+        return;
+      }
+    }
     if (!sig || !Number.isFinite(sig.sl) || sig.sl <= 0) return;
     const key = sigKey(sig);
     const lot = Math.max(0.01, Number(sig.metrics && sig.metrics.lot) || 0.01);
@@ -842,8 +861,9 @@ function boot() {
     try { r = sendOrderReq({ side: sig.side, lot, sl: sig.sl, tp: sig.tp || 0, auto: true }); }
     catch (err) { r = { ok: false, reason: err.message }; }
     const c = snap.council && snap.council.confidence != null ? `มติสภา ${snap.council.confidence}%` : '-';
+    const oppTxt = s.autoBestOnly === true ? ` • โอกาส ${Math.round(Number(sig.opp) || 0)}% ≥ เกณฑ์ ${minPct}%` : '';
     if (r && r.ok) {
-      const msg = `เข้าไม้เองอัตโนมัติ: ${sig.side === 'buy' ? 'BUY' : 'SELL'} ล็อต ${r.metrics ? r.metrics.lot : lot} • SL ${sig.sl} • TP ${sig.tp || '-'} (${c}) — รอผลจาก MT5`;
+      const msg = `เข้าไม้เองอัตโนมัติ: ${sig.side === 'buy' ? 'BUY' : 'SELL'} ล็อต ${r.metrics ? r.metrics.lot : lot} • SL ${sig.sl} • TP ${sig.tp || '-'} (${c}${oppTxt}) — รอผลจาก MT5`;
       send('auto-enter', { ok: true, msg });
       notifyOnce('autoenter-' + key, 'GoldSignal: เข้าไม้อัตโนมัติ', msg);
     } else {
