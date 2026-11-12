@@ -440,7 +440,7 @@ function noSignalHtml(snap) {
          <div class="sig-grid">
            <div class="sig-cell"><small>เข้าตอน</small><b>${fmtTs(last.ts)}</b></div>
            <div class="sig-cell"><small>ฝั่ง</small><b class="${last.side === 'buy' ? 'up' : 'down'}">${last.side === 'buy' ? 'ซื้อ BUY' : 'ขาย SELL'}</b></div>
-           <div class="sig-cell"><small>ราคาเข้า</small><b>${r2(last.entry)}</b></div>
+           <div class="sig-cell sc-entry" data-sig-side="${esc(last.side)}" data-sig-entry="${r2(last.entry)}" data-sig-sl="${r2(last.sl)}" data-sig-tp="${r2(last.tp)}" title="คลิก = โยกลงคำสั่งรอล่วงหน้าฝั่งนี้"><small>ราคาเข้า ↘</small><b>${r2(last.entry)}</b></div>
            <div class="sig-cell"><small>Stop Loss</small><b class="down">${r2(last.sl)}</b></div>
            <div class="sig-cell"><small>Take Profit</small><b class="up">${r2(last.tp)}</b></div>
            <div class="sig-cell"><small>ความมั่นใจ</small><b>${Math.min(100, Math.max(0, Number(last.confidence) | 0))}%</b></div>
@@ -458,7 +458,7 @@ function noSignalHtml(snap) {
          <div class="sig-grid">
            <div class="sig-cell"><small>เปิดตอน</small><b>${fmtTs(vSim.openedAt)}</b></div>
            <div class="sig-cell"><small>ฝั่ง</small><b class="${vSim.side === 'buy' ? 'up' : 'down'}">${vSim.side === 'buy' ? 'ซื้อ BUY' : 'ขาย SELL'}</b></div>
-           <div class="sig-cell"><small>ราคาเข้า</small><b>${fmtD(vSim.entry, 2)}</b></div>
+           <div class="sig-cell sc-entry" data-sig-side="${esc(vSim.side)}" data-sig-entry="${fmtD(vSim.entry, 2)}" data-sig-sl="${fmtD(vSim.sl, 2)}" data-sig-tp="${fmtD(vSim.tp, 2)}" title="คลิก = โยกลงคำสั่งรอล่วงหน้าฝั่งนี้ (SL/TP เหมือนไม้จำลอง)"><small>ราคาเข้า ↘</small><b>${fmtD(vSim.entry, 2)}</b></div>
            <div class="sig-cell"><small>SL / TP</small><b>${fmtD(vSim.sl, 2)} / ${fmtD(vSim.tp, 2)}</b></div>
            <div class="sig-cell"><small>สภา ณ เปิดไม้</small><b class="${vSim.councilAtOpen.side === 'none' ? '' : (vSim.councilAtOpen.side === 'buy' ? 'up' : 'down')}">${vSim.councilAtOpen.side === 'none' ? `ไม่มีมติ ${vSim.councilAtOpen.confidence}%` : `${vSim.councilAtOpen.side === 'buy' ? 'ซื้อ' : 'ขาย'} ${vSim.councilAtOpen.confidence}%`}</b></div>
            <div class="sig-cell"><small>ผ่านไม้จริง</small><b>${(vSim.councilAtOpen.side !== 'none' && vSim.councilAtOpen.side === vSim.side) ? 'ผ่านสภา ✓' : vSim.councilAtOpen.side === 'none' ? 'ไม่ผ่าน (ไม่มีมติ)' : 'ไม่ผ่าน (สภาสวน)'}</b></div>
