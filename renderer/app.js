@@ -804,7 +804,9 @@ function openPendingAt(ev) {
   $(acCol(side, 'tp')).value = Number(tp.toFixed(d));
   // ตั้งค่าตรงไม่ยิง event → อัปเดตป้าย/ปุ่มลัดราคาเข้าเอง (ราคาจากชาร์ต ไม่ใช่จากปุ่มลัด)
   pendEntryPick = null;
+  pendStopMode[side] = { sl: null, tp: null };   // SL/TP จากดับเบิลคลิก = ค่าคำนวณของมันเอง → ยกเลิกโหมดชิป (กันวาดทับ)
   syncPendEntryLabels();
+  syncPendChipPressed(side);
   syncPendChips(true);
   const el = $('pend-card');
   el.classList.add('max'); $('pend-max').textContent = '↘ ย่อ';
@@ -1007,7 +1009,7 @@ document.addEventListener('click', (e) => {
     if (lastSnap) renderTradePanel(lastSnap);
     return;
   }
-  // คำสั่งรอ 2 ชุด: ปุ่มระยะ SL/TP ต่อคอลัมน์ SELL/BUY
+  // คำสั่งรอ 2 ชุด: ปุ่มระยะ SL/TP ต่อคอลัมน์ SELL/BUY — ระยะ = โหมด (จุด) • ราคา = คำนวณจากราคาเข้า ณ ตอนกด
   const pChip = e.target.closest('.qchip[data-psl], .qchip[data-ptp]');
   if (pChip && pChip.closest('.pside-col')) {
     const q = liveQuote();
@@ -1019,7 +1021,9 @@ document.addEventListener('click', (e) => {
     const entry = Number($(acCol(side, 'entry')).value) || (dir.base === 'ask' ? q.ask : q.bid);
     const isSl = pChip.hasAttribute('data-psl');
     const r = isSl ? pChip.getAttribute('data-psl') : pChip.getAttribute('data-ptp');
-    pChip.closest('.qchips').querySelectorAll('.qchip').forEach((x) => setAttrIf(x, 'aria-pressed', x === pChip ? 'true' : 'false'));
+    // โหมดระยะของฝั่งนี้ (จุด) — แก้ราคาเข้าหลังจากนี้ = คิด SL/TP ใหม่จากระยะเดิม (เท่า MetaTrader)
+    if (isSl) pendStopMode[side].sl = r === '' ? null : Number(r);
+    else pendStopMode[side].tp = r === '' ? null : Number(r);
     if (isSl) {
       const el = $(acCol(side, 'sl'));
       if (r === '') { el.value = ''; el.placeholder = 'อัตโนมัติ'; }
@@ -1031,6 +1035,7 @@ document.addEventListener('click', (e) => {
       if (r === '') { el.value = ''; el.placeholder = 'อัตโนมัติ'; }
       else el.value = (dir.sign === 1 ? entry - Number(r) * pt : entry + Number(r) * pt).toFixed(digits);
     }
+    syncPendChipPressed(side);
     return;
   }
   // คำสั่งรอ: ราคาเข้า ± จุด ต่อคอลัมน์
@@ -1071,13 +1076,63 @@ function buildStopChipRows() {
     el.innerHTML = `<span class="qlbl">SL</span>${pendSl.map((v) => chipHtml('pSl', v, String(v) === String(sl), 'อัตโนมัติ')).join('')}` +
       `<span class="qlbl">TP</span>${pendTp.map((v) => chipHtml('pTp', v, String(v) === String(tp), 'อัตโนมัติ')).join('')}`;
     // คงสถานะกดเดิมตามโหมดที่ผู้ใช้เลือกไว้
-    const m = pendStopMode[side];
-    el.querySelectorAll('.qchip[data-psl]').forEach((c) => setAttrIf(c, 'aria-pressed', modeMatch(c.getAttribute('data-psl'), m.sl) ? 'true' : 'false'));
-    el.querySelectorAll('.qchip[data-ptp]').forEach((c) => setAttrIf(c, 'aria-pressed', modeMatch(c.getAttribute('data-ptp'), m.tp) ? 'true' : 'false'));
+    syncPendChipPressed(side);
   }
   syncStopChips('sl'); syncStopChips('tp');
 }
+// เท่า MetaTrader: ชิป = โหมดระยะของฝั่งนั้น • แก้ "ราคาเข้า" = SL/TP คิดใหม่จากระยะที่เลือกไว้ทันที
+function pendDigits() { return Number(((lastSnap && lastSnap.meta) || {}).digits) || 2; }
+function syncPendChipPressed(side) {
+  const el = $(side === 'sell' ? 'psell-sltp-chips' : 'pbuy-sltp-chips');
+  if (!el) return;
+  const m = pendStopMode[side];
+  el.querySelectorAll('.qchip[data-psl]').forEach((c) => setAttrIf(c, 'aria-pressed', modeMatch(c.getAttribute('data-psl'), m.sl) ? 'true' : 'false'));
+  el.querySelectorAll('.qchip[data-ptp]').forEach((c) => setAttrIf(c, 'aria-pressed', modeMatch(c.getAttribute('data-ptp'), m.tp) ? 'true' : 'false'));
+}
+function refillPendStopsFromEntry(side) {
+  const entry = Number($(acCol(side, 'entry')).value);
+  if (!Number.isFinite(entry) || entry <= 0) return;
+  const m = pendStopMode[side], d = pendDigits(), pt = pointOf(d);
+  const dir = PEND_DIR[pendActiveKind(side)] || PEND_DIR[PEND_KINDS[side]];
+  if (m.sl != null) $(acCol(side, 'sl')).value = (dir.sign === 1 ? entry + m.sl * pt : entry - m.sl * pt).toFixed(d);
+  if (m.tp != null && m.tp !== 0) { const v = (dir.sign === 1 ? entry - m.tp * pt : entry + m.tp * pt).toFixed(d); $(acCol(side, 'tp')).value = v; }
+}
+// ราคาเข้า ± จุด (ชิปใต้ป้าย "ราคาเข้า = BID/ASK") — วางค่าตามทิศของคำสั่ง + SL/TP ตามโหมด
+function fillPendEntry(side, pts) {
+  const q = liveQuote();
+  const dir = PEND_DIR[pendActiveKind(side)] || PEND_DIR[PEND_KINDS[side]];
+  if (!q || !Number.isFinite(q[dir.base])) { toast('ต้องเชื่อม MT5 ก่อน', 'err'); return false; }
+  const d = pendDigits();
+  const value = (q[dir.base] + dir.sign * pts * pointOf(d)).toFixed(d);
+  pendEntryPick[side] = { pts, value };
+  $(acCol(side, 'entry')).value = value;
+  refillPendStopsFromEntry(side);
+  return true;
+}
 buildStopChipRows();
+// ผูกตามราคาเข้า + คลายโหมดเมื่อกรอก SL/TP เอง (ไม่ใช่ค่าที่โหมดคำนวณ)
+for (const side of ['sell', 'buy']) {
+  $(acCol(side, 'entry')).addEventListener('input', () => refillPendStopsFromEntry(side));
+  $(acCol(side, 'sl')).addEventListener('input', () => {
+    const m = pendStopMode[side];
+    if (m.sl == null) return;
+    const d = pendDigits(), pt = pointOf(d);
+    const dir = PEND_DIR[pendActiveKind(side)] || PEND_DIR[PEND_KINDS[side]];
+    const entry = Number($(acCol(side, 'entry')).value);
+    const want = Number.isFinite(entry) ? (dir.sign === 1 ? entry + m.sl * pt : entry - m.sl * pt).toFixed(d) : '';
+    if ($(acCol(side, 'sl')).value.trim() !== want) { m.sl = null; syncPendChipPressed(side); }
+  });
+  $(acCol(side, 'tp')).addEventListener('input', () => {
+    const m = pendStopMode[side];
+    if (m.tp == null) return;
+    const d = pendDigits(), pt = pointOf(d);
+    const dir = PEND_DIR[pendActiveKind(side)] || PEND_DIR[PEND_KINDS[side]];
+    const entry = Number($(acCol(side, 'entry')).value);
+    const wantRaw = Number.isFinite(entry) ? (dir.sign === 1 ? entry - m.tp * pt : entry + m.tp * pt) : null;
+    const cur = $(acCol(side, 'tp')).value.trim();
+    if (wantRaw == null || cur !== wantRaw.toFixed(d)) { m.tp = cur === '0' ? 0 : null; syncPendChipPressed(side); }
+  });
+}
 // พิมพ์ราคาเอง = เลิกโหมดจุด (ปุ่มลัดดับ) • ลบจนว่าง = กลับเป็นอัตโนมัติ
 for (const k of ['sl', 'tp']) {
   $(STOP_INPUT[k]).addEventListener('input', () => {
