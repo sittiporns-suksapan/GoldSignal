@@ -1723,7 +1723,7 @@ $('btn-close-all').addEventListener('click', () => {
 $('t-buy').addEventListener('click', () => tryTrade('buy'));
 $('t-sell').addEventListener('click', () => tryTrade('sell'));
 
-function tryTrade(side) {
+function tryTrade(side, allow = {}) {
   if (!lastSnap || !lastSnap.meta || !Number.isFinite(lastSnap.meta.bid)) { toast('ต้องเชื่อม MT5 ก่อน — ราคา bid/ask ยังไม่มา (ลาก EA ลงชาร์ตแล้วรอ 5 วิ)', 'err'); return; }
   const lot = Number($('t-lot').value);
   const st = stopsFor(side, lastSnap);
@@ -1733,13 +1733,16 @@ function tryTrade(side) {
   const buy = side === 'buy';
   if (buy ? sl >= st.px : sl <= st.px) { toast(`SL ต้องอยู่${buy ? 'ต่ำกว่า' : 'สูงกว่า'}ราคา ${buy ? 'ASK' : 'BID'} สำหรับไม้${buy ? 'ซื้อ' : 'ขาย'} — ล้างช่อง SL เพื่อให้คิดอัตโนมัติ`, 'err'); return; }
   if (tp > 0 && (buy ? tp <= st.px : tp >= st.px)) { toast(`TP ต้องอยู่${buy ? 'สูงกว่า' : 'ต่ำกว่า'}ราคา สำหรับไม้${buy ? 'ซื้อ' : 'ขาย'} — ล้างช่อง TP เพื่อให้คิดอัตโนมัติ`, 'err'); return; }
-  // เข้าเลย — ไม่มีหน้ายืนยัน กดปุ่ม = ส่งทันที (เกตความเสี่ยง/มติสภา/โควตา ยังตรวจฝั่ง main เสมอ)
-  window.api.sendOrder({ side, lot, sl, tp: Number.isFinite(tp) ? tp : 0 }).then((r) => {
+  // เข้าเลย — ไม่มีหน้ายืนยัน (เกตความเสี่ยง/มติสภา/โควตา ตรวจฝั่ง main เสมอ) • เกินเพดานปุ่มกด = ถามยืนยัน 1 ครั้ง (SL/TP ไม่ถูกแก้)
+  window.api.sendOrder({ side, lot, sl, tp: Number.isFinite(tp) ? tp : 0, allowOverCap: allow.allowOverCap === true }).then((r) => {
     if (r.ok) {
-      toast(`📤 ส่งคำสั่งแล้ว (id ${r.id}) — ${buy ? 'BUY' : 'SELL'} ${lot} @ ${st.px.toFixed(2)} SL ${sl.toFixed(2)} — รอผลจาก MT5...`, 'ok');
+      toast(`📤 ส่งคำสั่งแล้ว (id ${r.id}) — ${buy ? 'BUY' : 'SELL'} ${lot} @ ${st.px.toFixed(2)} SL ${sl.toFixed(2)}${r.warn ? ' ' + r.warn : ''} — รอผลจาก MT5...`, 'ok', 9000);
       setTimeout(() => window.api.refreshNow(), 1500);
+    } else if (r.overCap && allow.allowOverCap !== true) {
+      if (confirm(`${r.reason}\n\nกด OK = ยืนยันเสี่ยงเกินเพดานเอง (SL/TP เดินตามที่ตั้งเหมือนเดิม — ไม่มีการแก้ค่า)`)) tryTrade(side, { allowOverCap: true });
+      else toast('ยกเลิก — ลดระยะ SL จุด หรือเพิ่มเพดานปุ่มกด % ในแท็บความเสี่ยงเพื่อวางผ่านเลย', '', 9000);
     } else {
-      toast('✗ ' + (r.reason || 'ส่งไม่ได้'), 'err');
+      toast('✗ ' + (r.reason || 'ส่งไม่ได้'), 'err', 9000);
     }
   }).catch((e) => toast('✗ ผิดพลาด: ' + e.message, 'err'));
 }
