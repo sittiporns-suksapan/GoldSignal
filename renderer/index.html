@@ -429,19 +429,19 @@
                 <small class="muted">เพดานไม้ที่ระบบส่งเอง (สัญญาณ/เข้าอัตโนมัติ) — ค่าแนะนำ 2% • ยกสูง = ยอมรับแพ้ติดกันใหญ่ขึ้น</small>
               </label>
             </div>
-            <!-- เครื่องคิดเลข: ล็อต + จุด SL ↔ ความเสี่ยง % (คำนวณบนหน้าอย่างเดียว ไม่ถูกส่งตอนบันทึก) -->
+            <!-- เครื่องคิดเลขและค่าตั้งจริง: ระยะ SL/TP เป็น "บาท" (แปลงเป็นจุด/ดอลลาร์ อัตโนมัติ แล้วบันทึกเป็นค่าตั้งระบบ) -->
             <div class="row2 row3" id="risk-calc">
               <label>ล็อต
                 <input type="number" id="rc-lot" step="any" inputmode="decimal" placeholder="0.01" />
               </label>
-              <label>จุด SL
-                <input type="number" id="rc-sl" step="any" inputmode="numeric" placeholder="เช่น 500" />
+              <label>ระยะ SL (บาท)
+                <input type="number" id="rc-sl" step="any" inputmode="decimal" placeholder="เช่น 200" />
               </label>
-              <label>จุด TP
-                <input type="number" id="rc-tp" step="any" inputmode="numeric" placeholder="เช่น 1000" />
+              <label>ระยะ TP (บาท)
+                <input type="number" id="rc-tp" step="any" inputmode="decimal" placeholder="เช่น 440" />
               </label>
             </div>
-            <small id="rc-out" class="muted rc-out">ใส่ล็อต + จุด SL เพื่อคำนวณความเสี่ยง % ให้อัตโนมัติ (1 จุด = 0.01)</small>
+            <small id="rc-out" class="muted rc-out">ใส่ระยะ SL เป็น "บาท" — ระบบแปลงเป็นจุดให้อัตโนมัติ บันทึกให้เป็นค่าตั้งจริง (ทุกกลยุทธ์/คำสั่งรอใช้) • แนะนำ 100–600 บาท</small>
             <label>เพดานเสี่ยงของปุ่มกดเอง % (2–100)
               <input type="number" id="s-manualriskmax" inputmode="decimal" min="2" max="100" step="0.5" />
               <small class="muted">ใช้กับปุ่มซื้อ/ขาย/คำสั่งรอ/แก้ SL ที่คุณกดเอง • 100 = ไม่มีดัก (เหลือแค่กดยืนยัน + SL บังคับ) • ยิ่งสูงยิ่งยอมเสี่ยง</small>
