@@ -949,15 +949,16 @@ function renderTradePanel(snap) {
   $('t-tp-hint').innerHTML = stopHint('tp');
   $('t-spread').textContent = live ? String(Math.round((meta.ask - meta.bid) * Math.pow(10, d))) : '—';
   syncLotChips(meta);
-  // ใส่ความเสี่ยง: เพ็ดันปุ่มกด = ระยะสูงสุด (จุด) ที่ระบบต้องบีบ — โชว์แผงคำสั่งรอ
+  // ใส่ความเสี่ยง: เพ็ดันปุ่มกด = ระยะสูงสุด (จุด) ที่ระบบต้องบีบ — โชว์แผงคำสั่งรอ (จุด = ค่าจุด MT5: $1 = 100 จุด ที่ XAUUSD)
   {
     const capEl = $('pend-cap-hint');
     if (capEl) {
       const eq = meta.account && meta.account.equityUSD > 0 ? meta.account.equityUSD : (Number(snap.risk && snap.risk.equity) || 0);
       const pct = clampPct(snap);
       const oz = (meta.spec && meta.spec.contractSize) || 100;
-      const dist = eq > 0 ? Math.floor((eq * pct / 100) / (0.01 * oz)) : null;
-      capEl.innerHTML = dist != null ? `เพดานปุ่มกด <b>${pct}%</b> ของทุน = ระยะ SL รับได้สุด <b>${dist}</b> จุด ที่ล็อต 0.01 — ปรับ % ที่แท็บความเสี่ยง` : '';
+      const lot = Math.max(0.01, Number($('psell-lot').value) || 0.01);
+      const dist = eq > 0 && lot > 0 ? Math.floor((eq * pct / 100) / (pointOf(d) * oz * lot)) : null;
+      capEl.innerHTML = dist != null ? `เพดานปุ่มกด <b>${pct}%</b> ของทุน = ระยะ SL รับได้สุด <b>${dist}</b> จุด = $${r2(dist * pointOf(d) * oz * lot, 2)} ที่ล็อต ${fmtD(lot, 2)} — ปรับ % ที่แท็บความเสี่ยง` : '';
     }
   }
   // syncPendChips เดิม (คิวราคาเข้า±จุด): โครงใหม่ 2 คอลัมน์ = ปุ่มลัดแต่ละคอลัมน์ disabled ตามราคาสด
