@@ -1141,6 +1141,26 @@ function fillPendEntry(side, pts) {
   return true;
 }
 buildStopChipRows();
+// คลิกป้าย "ราคาเข้า = BID/ASK" หรือดับเบิลคลิกช่อง = ดึงราคาตลาดสดวางเข้าช่อง (แทนพิมพ์) + SL/TP คิดตามโหมดชิปที่เลือกไว้
+function fillEntryFromLive(side) {
+  const q = liveQuote();
+  if (!q) { toast('ยังไม่มีราคาสด — เชื่อม MT5 ก่อน', 'err'); return; }
+  const dir = PEND_DIR[pendActiveKind(side)] || PEND_DIR[PEND_KINDS[side]];
+  const d = pendDigits();
+  const v = q[dir.base].toFixed(d);
+  pendEntryPick[side] = null;
+  $(acCol(side, 'entry')).value = v;
+  refillPendStopsFromEntry(side);
+  syncPendChips(true);
+  const hint = $('pend-hint');
+  if (hint) hint.innerHTML = `${side.toUpperCase()} — ราคาเข้า = ราคาสด <b>${v}</b> (${dir.base.toUpperCase()}) • SL/TP ตามชิประยะที่เลือก`;
+  return true;
+}
+for (const side of ['sell', 'buy']) {
+  const lb = $(acCol(side, 'entry-base'));
+  if (lb) { lb.style.cursor = 'pointer'; lb.title = 'คลิก = ใส่ราคา ณ ตลาดตอนนี้ (BID ฝั่งขาย / ASK ฝั่งซื้อ)'; lb.addEventListener('click', () => fillEntryFromLive(side)); }
+  $(acCol(side, 'entry')).addEventListener('dblclick', () => fillEntryFromLive(side));
+}
 // ผูกตามราคาเข้า + คลายโหมดเมื่อกรอก SL/TP เอง (ไม่ใช่ค่าที่โหมดคำนวณ)
 for (const side of ['sell', 'buy']) {
   $(acCol(side, 'entry')).addEventListener('input', () => refillPendStopsFromEntry(side));

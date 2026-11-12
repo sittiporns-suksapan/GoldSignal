@@ -1087,6 +1087,9 @@ body.chart-max::before { content: ""; position: fixed; inset: 0; background: rgb
 .pside-col.sell .pc-title { color: var(--down-text); }
 .pside-col.buy .pc-title { color: var(--up-text); }
 .pside-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* ป้าย "ราคาเข้า = BID/ASK" = คลิกได้: ดึงราคาสดวางในช่องราคาเข้า */
+.qlbl.entry-live { cursor: pointer; border-bottom: 1px dashed var(--line); padding-bottom: 1px; }
+.qlbl.entry-live:hover { color: var(--gold-hi); border-color: var(--gold-line); }
 .pside { display: grid; gap: 5px; }
 .psbtn {
   background: var(--inset); border: 1px solid var(--line); border-radius: 11px;
