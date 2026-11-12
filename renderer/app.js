@@ -1132,6 +1132,14 @@ function buildStopChipRows() {
 }
 // เท่า MetaTrader: ชิป = โหมดระยะของฝั่งนั้น • แก้ "ราคาเข้า" = SL/TP คิดใหม่จากระยะที่เลือกไว้ทันที
 function pendDigits() { return Number(((lastSnap && lastSnap.meta) || {}).digits) || 2; }
+// ป้าย "ราคาเข้า = BID/ASK" ตามชนิดคำสังรอ (LIMIT/STOP ต่างฐานราคา)
+function syncPendEntryLabels() {
+  for (const side of ['sell', 'buy']) {
+    const dir = PEND_DIR[pendActiveKind(side)] || PEND_DIR[PEND_KINDS[side]];
+    const lb = $(acCol(side, 'entry-base'));
+    if (lb) lb.textContent = `ราคาเข้า = ${dir.base.toUpperCase()}`;
+  }
+}
 function syncPendChipPressed(side) {
   const el = $(side === 'sell' ? 'psell-sltp-chips' : 'pbuy-sltp-chips');
   if (!el) return;
