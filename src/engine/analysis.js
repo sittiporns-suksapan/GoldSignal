@@ -57,19 +57,57 @@ function analyzeMarket(multiTf) {
       for (const l of s.lows) sw.push({ price: l, type: 's' });
     }
     const seen = new Set();
+    const sw2 = [];
     for (const p of sw) {
       const key = p.type + Math.round(p.price * 100);
       if (seen.has(key)) continue;
       seen.add(key);
-      const dist = Math.abs(p.price - price);
-      if (p.type === 's' && p.price < price && dist / price < 0.004) levels.supports.push(ind.round(p.price, 2));
-      if (p.type === 'r' && p.price > price && dist / price < 0.004) levels.resistances.push(ind.round(p.price, 2));
+      sw2.push(p);
     }
-    levels.supports.sort((a, b) => b - a); levels.resistances.sort((a, b) => a - b);
-    levels.supports = levels.supports.slice(0, 3);
-    levels.resistances = levels.resistances.slice(0, 3);
+    const cand = { sup: [], res: [] };
+    for (const p of sw2) {
+      const dist = Math.abs(p.price - price);
+      if (p.type === 's' && p.price < price && dist / price < 0.004) cand.sup.push(p.price);
+      if (p.type === 'r' && p.price > price && dist / price < 0.004) cand.res.push(p.price);
+    }
+    levels.supports = stickLevels(cand.sup, true, 'sup', price);
+    levels.resistances = stickLevels(cand.res, false, 'res', price);
   }
   return { bias, trendH1: h1 ? h1.trend : 'unknown', trendM15: m15 ? m15.trend : 'unknown', trendM5: m5 ? m5.trend : 'unknown', tf, levels, price };
 }
 
-module.exports = { analyzeTimeframe, analyzeMarket };
+// ---------- เส้นแบบแน่น (ยันเส้นไม่กระตุก) ----------
+// swing ใกล้ขอบหน้าต่างแท่งล่าสุดเกิด-หายทุก 1 รอบวิเคราะห์ → เส้นกระพริบ/กระโดด
+//   กติกา: ระดับใหม่ต้องเจอต่อเนื่อง ≥2 รอบค่อยโชว์ • อยู่ห่างระดับ <tol ถือว่าระดับเดิม (แสดงค่าให้นิ่ง) • หายไปจริง (เกินเวลา) จึงลบ
+const LVL_TOL = 0.8;         // ระยะ (USD) ถือว่าเป็นระดับเดิม — ค่าในเส้นไม่ขยับแม้ swing ขยับเล็กน้อย
+const LVL_CONFIRM = 2;       // จำนวนรอบที่ต้องยืนยันก่อนโชว์
+const LVL_KEEP_MS = 45_000;  // จำระดับไว้หลัง swing หายไป (กันแอบหาย-กลับมากระพริบ)
+const lvlMemo = { sup: new Map(), res: new Map() };
+const passLevel = (p, price, isSup) => {
+  if (price == null) return false;
+  const dist = Math.abs(p - price) / price;
+  return isSup ? p < price && dist < 0.004 : p > price && dist < 0.004;
+};
+function stickLevels(candidates, isSup, key, price) {
+  const map = lvlMemo[key] || (lvlMemo[key] = new Map());
+  const now = Date.now();
+  for (const [, e] of map) e.stale = true;
+  for (const p of candidates) {
+    // มีระดับเดิมใกล้ ๆ = อัปเดตระดับสู่ค่าเฉลี่ยถ่วงน้ำหนัก (ค่าเส้นนิ่ง) ไม่สร้างใหม่
+    let hit = null;
+    for (const [, e] of map) if (Math.abs(e.v - p) <= LVL_TOL) { hit = e; break; }
+    if (hit) { hit.v = Math.round(((hit.v * 3 + p) / 4) * 100) / 100; hit.hits = Math.min(LVL_CONFIRM, hit.hits + 1); hit.seen = now; hit.stale = false; }
+    else {
+      let addIt = true;
+      for (const [, e] of map) if (Math.abs(e.v - p) < LVL_TOL) { addIt = false; break; }
+      if (addIt) map.set(p.toFixed(1) + '/' + (isSup ? 's' : 'r'), { v: p, hits: 1, seen: now, stale: true });
+    }
+  }
+  for (const [k, e] of map) if (e.stale && now - e.seen > LVL_KEEP_MS) map.delete(k);
+  const out = [];
+  for (const [, e] of map) if (e.hits >= LVL_CONFIRM && passLevel(e.v, price, isSup)) out.push(e.v);
+  out.sort(isSup ? (a, b) => b - a : (a, b) => a - b);
+  return out.slice(0, 3);
+}
+
+module.exports = { analyzeTimeframe, analyzeMarket, stickLevels };
