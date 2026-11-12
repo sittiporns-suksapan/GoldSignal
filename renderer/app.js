@@ -615,18 +615,27 @@ function tryPendSubmit(side) {
   const meta = lastSnap.meta || {};
   const px = side === 'buy' ? meta.ask : meta.bid;
   const oz = (meta.spec && meta.spec.contractSize) || 100;
-  // บีบ SL ตามเพดานปุ่มกด — กดวาง = ผ่านเกตครั้งแรก
+  // บีบ SL ตามเพดานปุ่มกด — กดวาง = ผ่านเกตครั้งแรก (บอกตัวเลขเต็ม + วิธีผ่านที่ระยะเดิม)
   const capP = clampPct(lastSnap);
   const capEq = (meta.account && meta.account.equityUSD > 0 ? meta.account.equityUSD : (Number(lastSnap.risk && lastSnap.risk.equity) || 0));
   const capMoney = capEq * capP / 100;
   let slDist = Math.abs(entry - st.sl);
   if (slDist * lot * oz > capMoney * 1.001 && capMoney > 0) {
+    const origPts = Math.round(slDist / pointOf(pendDigits()));
     slDist = capMoney / (lot * oz);
+    const fitPts = Math.round(slDist / pointOf(pendDigits()));
+    const needPct = capEq > 0 ? (origPts * pointOf(pendDigits()) * lot * oz) / capEq * 100 : null;
     st = { ...st, sl: side === 'buy' ? entry - slDist : entry + slDist };
     // ระยะ TP ที่ผู้ใช้/ระบบวางไว้ใน st.tp ถูกต้องอยู่แล้ว — บีบ SL ไม่ใช่เหตุทับ TP ด้วย 2.5×SL (เดิมทิ้งระยะ TP ที่ตั้งไว้เสมอ)
     $(acCol(side, 'sl')).value = Number(st.sl.toFixed(2));
+    pendStopMode[side].sl = null;   // ค่าในช่อง = ค่าบีบแล้ว — ชิปไม่สื่ออีกต่อไป
+    syncPendChipPressed(side);
     if (Number(st.tp) > 0) $(acCol(side, 'tp')).value = Number(st.tp.toFixed(2));
-    toast(`↕ SL บีบตามเพดาน ${capP}% ($${capMoney.toFixed(2)}) — วางผ่านเกตแล้ว`, 'ok');
+    const why = `SL บีบจาก ${origPts} จุด → ${fitPts} จุด ตามเพดานปุ่มกด ${capP}% เท่ากับ $${capMoney.toFixed(0)} ที่ล็อตนี้`;
+    const fix = needPct != null ? `ผ่านที่ ${origPts} จุดได้เมื่อตั้งเพดาน ≥ ${Math.min(100, Math.ceil(needPct))}% (แท็บความเสี่ยง)` : 'ลดระยะ SL หรือล็อต';
+    toast(`↕ ${why} • ${fix}`, 'err', 12000);
+    $('pend-hint').innerHTML = `⚠ ${why} • ${fix}`;
+    return;   // หยุดที่นี่ — ให้ผู้ใช้เห็นเหตุผลแล้วกดยืนยันเอง (ไม่ส่งไม้ที่ระยะไม่ตรงของที่ตั้งเงียบ ๆ)
   }
   const above = (side === 'buy') === (ptype === 'stop');
   if (Number.isFinite(px)) {
@@ -940,6 +949,17 @@ function renderTradePanel(snap) {
   $('t-tp-hint').innerHTML = stopHint('tp');
   $('t-spread').textContent = live ? String(Math.round((meta.ask - meta.bid) * Math.pow(10, d))) : '—';
   syncLotChips(meta);
+  // ใส่ความเสี่ยง: เพ็ดันปุ่มกด = ระยะสูงสุด (จุด) ที่ระบบต้องบีบ — โชว์แผงคำสั่งรอ
+  {
+    const capEl = $('pend-cap-hint');
+    if (capEl) {
+      const eq = meta.account && meta.account.equityUSD > 0 ? meta.account.equityUSD : (Number(snap.risk && snap.risk.equity) || 0);
+      const pct = clampPct(snap);
+      const oz = (meta.spec && meta.spec.contractSize) || 100;
+      const dist = eq > 0 ? Math.floor((eq * pct / 100) / (0.01 * oz)) : null;
+      capEl.innerHTML = dist != null ? `เพดานปุ่มกด <b>${pct}%</b> ของทุน = ระยะ SL รับได้สุด <b>${dist}</b> จุด ที่ล็อต 0.01 — ปรับ % ที่แท็บความเสี่ยง` : '';
+    }
+  }
   // syncPendChips เดิม (คิวราคาเข้า±จุด): โครงใหม่ 2 คอลัมน์ = ปุ่มลัดแต่ละคอลัมน์ disabled ตามราคาสด
   for (const side of ['sell', 'buy']) {
     const chipsEl = $(acCol(side, 'entry-chips'));
