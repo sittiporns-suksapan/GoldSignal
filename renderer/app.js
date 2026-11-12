@@ -401,6 +401,7 @@ function signalCard(sig) {
       <span class="sig-price">@ ${r2(sig.entry)}</span>
     </div>
     <div class="sig-grid">
+      <div class="sig-cell sc-entry" data-sig-side="${esc(sig.side)}" data-sig-entry="${r2(sig.entry)}" data-sig-sl="${r2(sig.sl)}" data-sig-tp="${r2(sig.tp)}" title="คลิก = โยกลงคำสั่งรอล่วงหน้าฝั่งนี้ (ราคา + SL/TP ตามโอกาสนี้)"><small>ราคาเข้า ↘</small><b>${r2(sig.entry)}</b></div>
       <div class="sig-cell"><small>Stop Loss</small><b class="down">${r2(sig.sl)}</b></div>
       <div class="sig-cell"><small>Take Profit</small><b class="up">${r2(sig.tp)}</b></div>
       <div class="sig-cell"><small>ล็อตแนะนำ</small><b>${m.lot != null ? m.lot.toFixed(2) : '—'}</b></div>
@@ -1076,6 +1077,24 @@ document.addEventListener('click', (e) => {
     const side = col3.id === 'pbuy-col' ? 'buy' : 'sell';
     fillPendEntry(side, Number(eChip.dataset.pts));
     col3.querySelectorAll('.qchip[data-pts]').forEach((x) => setAttrIf(x, 'aria-pressed', x === eChip ? 'true' : 'false'));
+    return;
+  }
+  // การ์ดโอกาส: คลิกช่อง "ราคาเข้า" = โยกลงคำสั่งรอฝั่งนั้น (ราคา + SL/TP)
+  const sigCell = e.target.closest('.sig-cell[data-sig-entry]');
+  if (sigCell) {
+    const side = sigCell.dataset.sigSide === 'buy' ? 'buy' : 'sell';
+    pendEntryPick[side] = null;
+    pendStopMode[side] = { sl: null, tp: null };
+    $(acCol(side, 'entry')).value = Number(sigCell.dataset.sigEntry).toFixed(2);
+    $(acCol(side, 'sl')).value = Number(sigCell.dataset.sigSl).toFixed(2);
+    $(acCol(side, 'tp')).value = Number(sigCell.dataset.sigTp).toFixed(2);
+    syncPendChipPressed(side);
+    syncPendEntryLabels();
+    syncPendChips(true);
+    const card = $('pend-card');
+    if (card) { try { card.scrollIntoView({ block: 'nearest' }); } catch { void 0; } }
+    toast(`📥 โยกลงคำสั่งรอ ${side.toUpperCase()}: ราคา ${sigCell.dataset.sigEntry} • SL ${sigCell.dataset.sigSl} • TP ${sigCell.dataset.sigTp} — ตรวจแล้วกด "วางคำสั่งรอ ${side.toUpperCase()}"`, 'ok');
+    return;
   }
 });
 // ---------- ปุ่มลัดระยะ SL/TP: ชิปแรกหลัง "อัตโนมัติ" = ค่าตั้งของคุณ (ช่องจุด SL/TP) — ทุกแผงดึงจาก settings ----------

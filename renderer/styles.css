@@ -1090,6 +1090,10 @@ body.chart-max::before { content: ""; position: fixed; inset: 0; background: rgb
 /* ป้าย "ราคาเข้า = BID/ASK" = คลิกได้: ดึงราคาสดวางในช่องราคาเข้า */
 .qlbl.entry-live { cursor: pointer; border-bottom: 1px dashed var(--line); padding-bottom: 1px; }
 .qlbl.entry-live:hover { color: var(--gold-hi); border-color: var(--gold-line); }
+/* การ์ดโอกาส: ช่อง "ราคาเข้า" คลิกได้ = โยกลงคำสั่งรอ */
+.sig-cell.sc-entry { cursor: pointer; }
+.sig-cell.sc-entry:hover { border-color: var(--gold-line); background: rgba(217, 180, 106, .08); }
+.sig-cell.sc-entry b { color: var(--gold-hi); }
 .pside { display: grid; gap: 5px; }
 .psbtn {
   background: var(--inset); border: 1px solid var(--line); border-radius: 11px;
