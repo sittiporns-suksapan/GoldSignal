@@ -9,19 +9,24 @@
 // ============================================================
 
 const fs = require('fs');
-const { spawn, execFile, execFileSync } = require('child_process');
+const { spawn: spawnReal, execFile, execFileSync } = require('child_process');
 
 const BIN = {
   cloudflared: ['/opt/homebrew/bin/cloudflared', '/usr/local/bin/cloudflared'],
   ngrok: ['/opt/homebrew/bin/ngrok', '/usr/local/bin/ngrok'],
   tailscale: ['/Applications/Tailscale.app/Contents/MacOS/Tailscale', '/opt/homebrew/bin/tailscale', '/usr/local/bin/tailscale'],
 };
-const findBin = (name) => (BIN[name] || []).find((p) => { try { return fs.statSync(p).isFile(); } catch { return false; } }) || null;
-const run = (bin, args, timeout = 20_000) => new Promise((resolve) => {
+const findBinReal = (name) => (BIN[name] || []).find((p) => { try { return fs.statSync(p).isFile(); } catch { return false; } }) || null;
+const runReal = (bin, args, timeout = 20_000) => new Promise((resolve) => {
   execFile(bin, args, { timeout }, (err, stdout, stderr) => resolve({ code: err ? (err.code ?? 1) : 0, out: String(stdout || ''), err: String(stderr || '') }));
 });
 
-function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null } = {}) {
+// _deps (ไม่บังคับ — ใช้ในเทสต์): แทน findBin / run / spawn ได้ • ไม่ส่ง = ใช้ของจริง
+function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null, _deps = null } = {}) {
+  const findBin = (_deps && _deps.findBin) || findBinReal;
+  const run = (_deps && _deps.run) || runReal;
+  const spawn = (_deps && _deps.spawn) || spawnReal;
+  let gen = 0; // เพิ่มทุกครั้งที่สั่งปิดเอง — งานเปิดที่ค้างอยู่รู้ว่าถูกยกเลิกแล้ว
   let child = null, provider = null, port = null, url = null, state = 'off', msg = '', stopping = false, retry = 0, retryTimer = null, adopted = false;
   // สถานะ daemon ลงไฟล์: pid + url ล่าสุด — แอปปิด/อัปเดตใหม่ = adopt ลิงก์เดิมกลับมา (1033 หาย)
   const saveState = () => {
@@ -55,9 +60,35 @@ function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null } 
       logger('tunnel', `เปิด tunnel ${provider} แล้ว: ${u}${adopted ? ' (นำกลับใช้จากรอบก่อนได้)' : ''}`);
       if (child?.pid) saveState();
       onUrl(u, provider);
+      healthStart();
     }
   };
   const fail = (m) => { state = 'error'; msg = m; logger('tunnel', `tunnel ${provider}: ${m}`, 'warn'); };
+  // ---------- ตรวจสุขภาวะช่องทางจริงทุก 60 วิ ----------
+  // daemon มีชีวิต ≠ ช่องทางสด (trycloudflare/ngrok ตายเงียบ อยู่ข้ามเซสชัน) — ทดสอบ fetch URL ตัวเอง
+  // ล้ม 2 ครั้งติด = kill daemon → วง retry เดิมเปิดใหม่ให้ลิงก์ใหม่ → onUrl อัปเดตลิงก์ถาวรเอง (ซ่อมตัวเองโดยไม่ต้องมีคน)
+  let healthTimer = null, healthFails = 0, healthGen = -1;
+  const healthCheck = async () => {
+    if (stopping || gen !== healthGen || !url || (provider !== 'cloudflared' && provider !== 'ngrok')) return;
+    try {
+      const ac = AbortSignal.timeout ? AbortSignal.timeout(7000) : undefined;
+      const res = await fetch(url, { redirect: 'follow', signal: ac });
+      if (res.status > 0) healthFails = 0; else healthFails++;
+    } catch { healthFails++; }
+    if (healthFails >= 2 && child) {
+      logger('tunnel', `ตรวจ tunnel ${url} ล้ม ${healthFails} ครั้งติด — รีสตาร์ต daemon ขอลิงก์ใหม่`, 'warn');
+      healthFails = 0;
+      try { child.kill('SIGTERM'); } catch { void 0; }
+    }
+  };
+  const healthStart = () => {
+    clearInterval(healthTimer); healthTimer = null;
+    healthGen = gen; healthFails = 0;
+    if (!url) return;
+    healthTimer = setInterval(() => { healthCheck().catch(() => void 0); }, 60_000);
+    healthCheck().catch(() => void 0);
+  };
+  const healthStop = () => { clearInterval(healthTimer); healthTimer = null; };
 
   function spawnWatch(bin, args, parse) {
     const me = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -72,6 +103,15 @@ function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null } 
     };
     child.stdout.on('data', feed);
     child.stderr.on('data', feed);
+    // เปิดโปรแกรมไม่ได้ (ไฟล์หาย/ไม่มีสิทธิ์รัน) — ไม่มี 'exit' ตามมา → เดิมค้างที่ "starting" ตลอด
+    child.on('error', (err) => {
+      if (child !== me) return;
+      child = null;
+      clearState();
+      if (stopping) return;
+      url = null;
+      fail(`เปิดโปรแกรม ${provider} ไม่ได้ (${(err && (err.code || err.message)) || 'ไม่ทราบสาเหตุ'})`);
+    });
     child.on('exit', (code) => {
       // ตัวที่ถูกสั่งปิด/ถูกแทนแล้ว = ไม่ต้องเริ่มใหม่ (เดิม stop() คืน stopping=false ก่อน exit มาถึง
       // → exit คิดว่าล่มเอง → spawn ตัวที่สองซ้อน = cloudflared กำพร้าค้าง + ลิงก์เก่ายังเปิดอยู่)
@@ -102,11 +142,16 @@ function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null } 
       });
     }
     if (provider === 'tailscale') {
+      const myGen = gen;
       const r = await run(bin, ['funnel', '--bg', String(port)]);
+      // ถูกสั่งปิดระหว่างรอ funnel เปิด = ต้องปิด funnel ที่เพิ่งเปิดด้วย (ไม่งั้นหน้าจอบอกปิดแต่ยังเปิดสาธารณะ)
+      // (state ไม่ใช่ off = มีการสั่งเปิดรอบใหม่แล้ว funnel เป็นของรอบนั้น — ไม่แตะ)
+      if (myGen !== gen) { if (r.code === 0 && state === 'off') await run(bin, ['funnel', 'reset']); return undefined; }
       if (r.code !== 0) return fail(`เปิด Funnel ไม่ได้ — ${(r.err || r.out).trim().slice(0, 200) || 'ตรวจว่า Tailscale ล็อกอินอยู่และเปิด Funnel ใน tailnet แล้ว'}`);
       const s = await run(bin, ['status', '--json']);
       try {
         const dns = JSON.parse(s.out).Self.DNSName.replace(/\.$/, '');
+        if (myGen !== gen) { if (state === 'off') await run(bin, ['funnel', 'reset']); return undefined; }
         return setUrl(`https://${dns}`);
       } catch { return fail('อ่านชื่อเครื่อง Tailscale ไม่ได้'); }
     }
@@ -157,6 +202,7 @@ function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null } 
     },
     async start(p, prt) {
       await this.stop();
+      healthStop();
       reapOrphans(prt);
       provider = p; port = prt; stopping = false; retry = 0; adopted = false;
       await startInner();
@@ -166,9 +212,17 @@ function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null } 
       // opts.linger = ตอนแอปออก (before-quit): ไม่ฆ่า cloudflared — daemon คาบหอยไปต่อทั้งชับ update → ลิงก์เดิมใช้ต่อ
       if (!(opts && opts.linger)) {
         stopping = true;
+        gen++;
         clearTimeout(retryTimer);
+        healthStop();
         if (child) { const c = child; child = null; try { c.kill('SIGTERM'); } catch { void 0; } }
-        else if (adopted && provider === 'tailscale') { const bin = findBin('tailscale'); if (bin) await run(bin, ['funnel', 'reset']); }
+        // tailscale ไม่มี child/pid ให้ฆ่า: funnel --bg ค้างอยู่ใน tailscaled → สั่งปิดเอง = reset เสมอ
+        // (เดิม reset เฉพาะตอน adopted → เปิดจากรอบนี้แล้วกดปิด = หน้าจอบอกปิด แต่แผงยังเปิดสาธารณะ)
+        else if (provider === 'tailscale' && state !== 'off') {
+          const bin = findBin('tailscale');
+          const r = bin ? await run(bin, ['funnel', 'reset']) : null;
+          if (!r || r.code !== 0) logger('tunnel', `ปิด Tailscale Funnel ไม่สำเร็จ — ตรวจเองด้วยคำสั่ง tailscale funnel status${r ? ' (' + ((r.err || r.out).trim().slice(0, 160) || 'code ' + r.code) + ')' : ' (ไม่พบโปรแกรม tailscale)'}`, 'warn');
+        }
         else if (state === 'on' && url && provider !== 'tailscale') {
           // adopt จากรอบก่อน (สาย pid ไฟล์เดียว): อ่าน pid ล่าสุดจาก state แล้วฆ่าเชียแรงตอนกดปิดเอง
           try {
@@ -186,4 +240,4 @@ function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null } 
   };
 }
 
-module.exports = { createTunnel, findBin };
+module.exports = { createTunnel, findBin: findBinReal };

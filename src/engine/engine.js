@@ -11,7 +11,7 @@ const { EventEmitter } = require('events');
 const fs = require('fs');
 const path = require('path');
 const { analyzeMarket } = require('./analysis');
-const { runCouncil, gateSignal, AGENTS } = require('./council');
+const { runCouncil, gateSignal } = require('./council');
 const sessions = require('./sessions');
 const { buildEntryPlan } = require('./entryplan');
 const { SkillBook } = require('./skillbook');
@@ -20,13 +20,16 @@ const ind = require('./indicators');
 const risk = require('./risk');
 
 const ZONE_REENTRY_MS = 15 * 60_000;
+// โหมดอัตโนมัติ: MT5 ต้องหายต่อเนื่องนานเท่านี้ก่อนสลับไปข้อมูลฟรี (รอบเดียวที่อ่านพลาดไม่นับ)
+const MT5_FALLBACK_GRACE_MS = 20_000;
+const ACTIVE_MAX_AGE_MS = 4 * 3600_000;
 // ตัวชี้วัดชุดที่ plugin เห็น: แช่แข็ง (plugin แก้ฟังก์ชันที่สภา/กฎความเสี่ยงใช้ร่วมไม่ได้)
 const PLUGIN_IND = Object.freeze({ ...ind });
 // จำนวนแท่งที่ส่งให้ renderer ต่อไทม์เฟรม
 const CANDLE_LIMIT = { M1: 380, M5: 300, M15: 320, H1: 300 };
 
 class AnalysisEngine extends EventEmitter {
-  constructor({ settings, connectors, pluginLoader, logger = () => {}, skillsPath = null, zoneStorePath = null, roundStorePath = null, appVersion = '1.1.0' } = {}) {
+  constructor({ settings, connectors, pluginLoader, logger = () => {}, skillsPath = null, zoneStorePath = null, roundStorePath = null, stateStorePath = null, appVersion = '1.1.0' } = {}) {
     super();
     this.appVersion = appVersion;
     this.settings = settings;
@@ -50,6 +53,11 @@ class AnalysisEngine extends EventEmitter {
     this.day = new Date().toDateString();
     this.logs = [];
     this.manualToday = 0;   // จำนวนคำสั่งจริงที่ส่งมาจากปุ่มของผู้ใช้วันนี้ (นับรวมโควตากับสัญญาณ)
+    // โควตาวัน/คูลดาวน์/กันสัญญาณซ้ำ เก็บดิสก์ (โฟลเดอร์เดียวกับประวัติไม้เสมือน) — รีสตาร์ต/แครช/อัปเดตแล้วโควตาไม่รีเซ็ต
+    this.stateStorePath = stateStorePath || (zoneStorePath ? path.join(path.dirname(zoneStorePath), 'engine-state.json') : null);
+    this._stateSaved = null;
+    this._mt5DownSince = null;
+    this._loadState();
     this.pushLog = (tag, msg, lvl = 'info') => {
       this.logs.push({ t: Date.now(), tag, msg: String(msg).slice(0, 220), lvl });
       if (this.logs.length > 120) this.logs = this.logs.slice(-100);
@@ -64,7 +72,7 @@ class AnalysisEngine extends EventEmitter {
     this.tick();
   }
 
-  stop() { if (this.timer) clearInterval(this.timer); this.timer = null; }
+  stop() { if (this.timer) clearInterval(this.timer); this.timer = null; this._persistState(); }
 
   pickConnector() {
     const src = this.settings.source || 'auto';
@@ -85,6 +93,7 @@ class AnalysisEngine extends EventEmitter {
       this.pushLog('engine', `รอบวิเคราะห์ผิดพลาด: ${(err && err.message) || err}`, 'err');
     } finally {
       this.busy = false;
+      this._persistState();   // ครั้งเดียวต่อรอบวิเคราะห์ และเขียนเฉพาะเมื่อค่าเปลี่ยน
     }
   }
 
@@ -94,12 +103,18 @@ class AnalysisEngine extends EventEmitter {
       const { c, fallbackReason } = this.pickConnector();
       this._openedRefs = [];
       this._closedThisRound = [];
+      const mt5c = this.connectors.mt5, yahooC = this.connectors.yahoo;
+      const autoSrc = (this.settings.source || 'auto') === 'auto';
       let data;
+      // โหมดอัตโนมัติ + MT5 ไม่พร้อม (pickConnector เลือกข้อมูลฟรี): ถ้าเพิ่งใช้ราคา MT5 อยู่ ให้รอครบช่วงผ่อนผันก่อนสลับ
+      if (autoSrc && c === yahooC && c !== mt5c && this._holdForMt5()) return;
       try { data = await c.fetch(this.settings.yahooSymbol || 'GC=F'); }
       catch (err) { this.logger('engine', `${c.label}: ${err.message}`, 'warn'); }
-      // ถ้าแหล่งหลักล้ม ลองอีกตัว
-      if (!data && this.settings.source !== 'mt5' && c !== this.connectors.yahoo) {
-        try { data = await this.connectors.yahoo.fetch(this.settings.yahooSymbol || 'GC=F'); } catch (err) { this.logger('engine', `fallback: ${err.message}`, 'warn'); }
+      if (data && c === mt5c) this._mt5DownSince = null;
+      // ถ้าแหล่งหลักล้ม ลองอีกตัว (MT5 ล้มรอบเดียวยังไม่สลับ — ต้องหายต่อเนื่อง ~20 วิ)
+      if (!data && this.settings.source !== 'mt5' && c !== yahooC) {
+        if (autoSrc && c === mt5c && this._holdForMt5()) return;
+        try { data = await yahooC.fetch(this.settings.yahooSymbol || 'GC=F'); } catch (err) { this.logger('engine', `fallback: ${err.message}`, 'warn'); }
       }
       if (!data) {
         this.lastSnap = this._snapshot({ error: 'ไม่ได้ข้อมูลราคาจากทุกแหล่ง' });
@@ -110,8 +125,8 @@ class AnalysisEngine extends EventEmitter {
       if (this._priceSource && this._priceSource !== data.source) {
         this.skills.pending = [];
         this.councilStats.pending = [];   // โหวต/มติที่รอตรวจผลยังไม่จบ = ราคาคนละตลาด ถือเป็นผลไม่ได้
-        this.active.clear();
-        this.pushLog('engine', `แหล่งราคาเปลี่ยน ${this._priceSource} → ${data.source}: ล้างโหวตที่รอตรวจผล + สัญญาณที่เปิดอยู่ (ราคาคนละตลาด)`, 'warn');
+        // ไม่ล้าง this.active: รายการกันสัญญาณซ้ำต้องอยู่ต่อ (ไม้แรกอาจยังเปิดอยู่) — _staleActive ไม่ตัดสินด้วยราคาคนละแหล่ง
+        this.pushLog('engine', `แหล่งราคาเปลี่ยน ${this._priceSource} → ${data.source}: ล้างโหวตที่รอตรวจผล (ราคาคนละตลาด) • คงรายการกันสัญญาณซ้ำไว้`, 'warn');
       }
       this._priceSource = data.source;
       const candles = data.candles;
@@ -120,11 +135,13 @@ class AnalysisEngine extends EventEmitter {
       // ทุนที่ใช้คิดเสี่ยง: ยอดจริงจาก MT5 แปลงเป็น USD แล้ว (ไม่รู้อัตรา = ใช้ค่าที่ตั้ง) • ขนาดสัญญาจริงของโบรกเกอร์ถ้า EA ส่งมา
       const liveEquity = this._liveEquityUSD(data.meta && data.meta.account);
       const spec = data.meta && data.meta.spec;
+      // ทศนิยมราคาของโบรกเกอร์ (อยู่ใน data.meta.digits) — ไม่รู้ = ไม่ส่ง ให้ตัวช่วยระยะจุดใช้ค่าปริยาย 2
+      const digits = data.meta && Number(data.meta.digits) > 0 ? Number(data.meta.digits) : null;
       const effSettings = {
         ...this.settings,
         ...(liveEquity ? { equity: liveEquity } : {}),
         ...(spec ? { ozPerLot: spec.contractSize } : {}),
-        ...(Number(data.digits) > 0 ? { digits: Number(data.digits) } : {}),
+        ...(digits ? { digits } : {}),
       };
       // 1) สภาทีมเอเจนต์ (น้ำหนักปรับด้วยสกิลของแต่ละคน + เรียกก่อน plugins)
       this.skills.processTick(price, Date.now());
@@ -157,6 +174,7 @@ class AnalysisEngine extends EventEmitter {
       const raw = await this.plugins.runStrategies({
         analysis: structuredClone(analysis), candles: frozenCandles, price, settings: Object.freeze({ ...effSettings }), council: councilVerdict ? Object.freeze(structuredClone(councilVerdict)) : null,
         ind: PLUGIN_IND,
+        digits: digits || 2,
         log: (msg, lvl) => this.logger('plugin', msg, lvl),
       });
       // 3) ทำให้สมบูรณ์ + ตรวจกฎความเสี่ยง → เก็บผู้ผ่านด่านไว้ก่อน (รอเลือกเสี่ยงน้อยสุด)
@@ -379,15 +397,20 @@ class AnalysisEngine extends EventEmitter {
     // ชนะ = จบ TP หรือ หมดเวลาแต่กำไรลอยตัวสำคัญ (≥ +0.5 × ระยะ SL) • แพ้ = SL หรือขาดทุนจริงจัง
     const budget = (t.slDist || 0) * 100 * (Number(t.lot) || 0.01);
     const win = t.status === 'TP' ? 1 : t.status === 'SL' ? -1 : (t.pnl >= budget * 0.5 ? 1 : t.pnl <= -budget * 0.5 ? -1 : 0);
-    this.councilStats.observeTrade(c, win);
+    // สถิติสภา: นับเฉพาะรอบที่สภามีมติ และวัดผลเทียบ "ทิศของมติ" (มติสวนทิศไม้จำลอง = ผลกลับด้าน) — ไม่มีมติ = ไม่นับ
+    const hasVerdict = c.side === 'buy' || c.side === 'sell';
+    const councilWin = !hasVerdict ? 0 : (c.side === t.side ? win : -win);
+    if (hasVerdict) this.councilStats.observeTrade(c, councilWin);
+    let recorded = false;
     for (const v of (t.votesAtOpen || [])) {
       if (v.side === 'none' || (v.conf || 0) < 50) continue;
       let rec = win;
       if (rec !== 0 && v.side !== t.side) rec = -rec;    // โหวตสวนทิศไม้ = ผลสวน
-      if (rec !== 0) this.skills.recordAgent(v.id, rec);
+      if (rec !== 0) { this.skills.recordAgent(v.id, rec, { save: false }); recorded = true; }
     }
+    if (recorded) this.skills.save();   // บันทึกครั้งเดียวต่อไม้จำลอง (เดิมเขียนดิสก์ทุกโหวต)
     if (win !== 0) {
-      this.logger('skills', `เรียนรู้จากไม้จำลอง #${t.id}: สภา ${c.side === 'none' ? `ไม่มีมติ ${c.confidence}%` : `${c.side} ${c.confidence}%`} → ${win > 0 ? 'ผลจริงชนะ' : 'ผลจริงแพ้'} — ปรับสถิติสภา/เอเจนต์แล้ว`, win > 0 ? 'ok' : 'warn');
+      this.logger('skills', `เรียนรู้จากไม้จำลอง #${t.id}: สภา ${!hasVerdict ? `ไม่มีมติ ${c.confidence}% (ไม่นับสถิติสภา)` : `${c.side} ${c.confidence}% → ${councilWin > 0 ? 'มติถูก' : 'มติผิด'}`} • ไม้จำลอง${win > 0 ? 'ชนะ' : 'แพ้'} — ปรับสถิติ${hasVerdict ? 'สภา/' : ''}เอเจนต์แล้ว`, win > 0 ? 'ok' : 'warn');
     }
   }
 
@@ -540,8 +563,10 @@ class AnalysisEngine extends EventEmitter {
     const key = this._keySig(sig);
     const a = this.active.get(key);
     if (!a) return false;
-    const hit = sig.side === 'buy' ? price <= a.sl || price >= a.tp : price >= a.sl || price <= a.tp;
-    if (hit || Date.now() - a.ts > 4 * 3600_000) { this.active.delete(key); return false; }
+    // จดจากราคาอีกแหล่ง (MT5 ↔ ฟรี ต่างกัน $10-40): เทียบ SL/TP ด้วยราคานี้ไม่ได้ — คงไว้จนหมดอายุ 4 ชม.
+    const otherSource = !!(a.source && this._priceSource && a.source !== this._priceSource);
+    const hit = otherSource ? false : (sig.side === 'buy' ? price <= a.sl || price >= a.tp : price >= a.sl || price <= a.tp);
+    if (hit || Date.now() - a.ts > ACTIVE_MAX_AGE_MS) { this.active.delete(key); return false; }
     return true;
   }
 
@@ -553,7 +578,69 @@ class AnalysisEngine extends EventEmitter {
 
   _rememberIssue(key, sig) {
     this.lastIssue.set(key, Date.now());
-    this.active.set(key, { entry: sig.entry, sl: sig.sl, tp: sig.tp, ts: Date.now() });
+    this.active.set(key, { entry: sig.entry, sl: sig.sl, tp: sig.tp, ts: Date.now(), source: this._priceSource || null });
+  }
+
+  // โหมดอัตโนมัติ: MT5 ล้ม/ไม่พร้อมขณะที่กำลังใช้ราคา MT5 อยู่ → ยังไม่สลับจนกว่าจะหายต่อเนื่องครบ MT5_FALLBACK_GRACE_MS
+  // คืน true = ข้ามรอบนี้ (คง snapshot/แหล่งราคา/รายการกันซ้ำเดิม) • ยังไม่เคยได้ราคา MT5 หรือใช้ข้อมูลฟรีอยู่แล้ว = ไม่รอ
+  _holdForMt5() {
+    const mt5 = this.connectors && this.connectors.mt5;
+    if (!mt5 || !this._priceSource || this._priceSource !== mt5.id) return false;
+    const now = Date.now();
+    if (!this._mt5DownSince) {
+      this._mt5DownSince = now;
+      this.pushLog('engine', `MT5 ขาดหายชั่วคราว — รอ ${Math.round(MT5_FALLBACK_GRACE_MS / 1000)} วิ ก่อนสลับไปข้อมูลฟรี (ยังไม่วิเคราะห์ด้วยราคาคนละตลาด)`, 'warn');
+    }
+    return now - this._mt5DownSince < MT5_FALLBACK_GRACE_MS;
+  }
+
+  // ---------- โควตาวัน + คูลดาวน์ + กันสัญญาณซ้ำ: เก็บดิสก์ ----------
+  _stateJson() {
+    return JSON.stringify({
+      day: this.day,
+      dailyCount: this.dailyCount || 0,
+      manualToday: this.manualToday || 0,
+      lastIssue: [...this.lastIssue],
+      active: [...this.active],
+    });
+  }
+
+  _loadState() {
+    if (!this.stateStorePath) return;
+    try {
+      if (!fs.existsSync(this.stateStorePath)) return;
+      const j = JSON.parse(fs.readFileSync(this.stateStorePath, 'utf8'));
+      const now = Date.now();
+      const count = (x) => Math.max(0, Math.floor(Number(x)) || 0);
+      // ตัวนับโควตา: ใช้เฉพาะเมื่อเป็นของ "วันนี้" — ข้ามวันแล้ว = เริ่มนับใหม่
+      if (j && j.day === this.day) { this.dailyCount = count(j.dailyCount); this.manualToday = count(j.manualToday); }
+      // คูลดาวน์/กันซ้ำ: ยึดเวลาจริง (ไม่ผูกกับวัน) — ทิ้งรายการที่หมดอายุแล้ว
+      for (const row of Array.isArray(j && j.lastIssue) ? j.lastIssue : []) {
+        if (!Array.isArray(row)) continue;
+        const [k, ts] = row;
+        if (typeof k === 'string' && Number.isFinite(ts) && ts <= now && now - ts < 24 * 3600_000) this.lastIssue.set(k, ts);
+      }
+      for (const row of Array.isArray(j && j.active) ? j.active : []) {
+        if (!Array.isArray(row)) continue;
+        const [k, a] = row;
+        if (typeof k !== 'string' || !a || !Number.isFinite(a.sl) || !Number.isFinite(a.tp) || !Number.isFinite(a.ts)) continue;
+        if (a.ts <= now && now - a.ts <= ACTIVE_MAX_AGE_MS) this.active.set(k, { entry: a.entry, sl: a.sl, tp: a.tp, ts: a.ts, source: a.source || null });
+      }
+      this._stateSaved = this._stateJson();
+    } catch (e) { this.logger('engine', `โหลดสถานะโควตา/คูลดาวน์ล้ม: ${e.message}`, 'warn'); }
+  }
+
+  // เขียนเฉพาะเมื่อค่าเปลี่ยน (main แก้ manualToday ตรง ๆ → เก็บตกตอนจบรอบวิเคราะห์/ตอนหยุด) • เขียนแบบ tmp + rename
+  _persistState() {
+    if (!this.stateStorePath) return;
+    try {
+      const s = this._stateJson();
+      if (s === this._stateSaved) return;
+      fs.mkdirSync(path.dirname(this.stateStorePath), { recursive: true });
+      fs.writeFileSync(this.stateStorePath + '.tmp', s, 'utf8');
+      fs.renameSync(this.stateStorePath + '.tmp', this.stateStorePath);
+      this._stateSaved = s;
+    } catch (e) { this.logger('engine', `บันทึกสถานะโควตา/คูลดาวน์ล้ม: ${e.message}`, 'warn'); }
   }
 
   // เกทระดับระบบ: newsStop + โควตาต่อวัน (มาจาก settings แต่ไม่ปิดได้ในแง่ที่ทำให้เสี่ยง)
@@ -602,6 +689,8 @@ class AnalysisEngine extends EventEmitter {
 
   _snapshot(extra) {
     const s = this.settings;
+    // ค่าตั้งที่ส่งไปหน้าจอ/เว็บ: ไม่มีโทเคนแดชบอร์ดระยะไกล (ความลับ — หน้าตั้งค่าอ่านจาก get-settings เอง)
+    const { remoteDashboardToken: _omitToken, ...riskPub } = s || {};
     const now = Date.now();
     // ข้อมูลบัญชี/ไม้เปิด: จากรอบนี้ ถ้าไม่มี (ข้อมูลฟรี/รอบผิดพลาด) ใช้ของ MT5 ได้เฉพาะตอน MT5 ยังสด — ไม่ยกของเก่าค้างไปเรื่อย ๆ
     const mt5 = this.connectors && this.connectors.mt5;
@@ -632,7 +721,7 @@ class AnalysisEngine extends EventEmitter {
         activeCount: this.active.size,
         equityUsed: effectiveEquity || s.equity,
       },
-      risk: s,
+      risk: riskPub,
       account: liveAccount,
       // แบ่งโหลด: ส่งแท่งเทียนเฉพาะไทม์เฟรมที่ "มีแท่งใหม่จริง" นับแตรอบก่อน (กัน serialize 112KB ทุกรอบเลย)
       // ฝั่ง renderer เก็บของเดิมแล้วเติมเฉพาะที่มาใหม่
