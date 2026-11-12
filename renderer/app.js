@@ -333,6 +333,11 @@ document.querySelectorAll('#tf-buttons button').forEach((b) => {
 
 /* ---------- render helpers ---------- */
 function fmtTs(t) { return new Date(t).toLocaleTimeString('th-TH', { hour12: false }); }
+// วันที่+เวลาไทยเต็ม (พ.ศ.) — เช่น "ส. 7 พ.ย. 2569 03:40:12 น."
+function fmtTsTh(t) {
+  const s = new Date(t).toLocaleString('th-TH-u-ca-buddhist', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  return s;
+}
 
 function renderTicker(snap) {
   if (snap.price == null) { $('price').textContent = '—'; return; }
@@ -438,7 +443,7 @@ function noSignalHtml(snap) {
     ? `<div class="last-signal">
          <div class="ls-head">⏱ โอกาสล่าสุด <span class="muted small">${esc(last.pluginName || '')}</span></div>
          <div class="sig-grid">
-           <div class="sig-cell"><small>เข้าตอน</small><b>${fmtTs(last.ts)}</b></div>
+           <div class="sig-cell"><small>เข้าตอน (พ.ศ.)</small><b>${fmtTsTh(last.ts)}</b></div>
            <div class="sig-cell"><small>ฝั่ง</small><b class="${last.side === 'buy' ? 'up' : 'down'}">${last.side === 'buy' ? 'ซื้อ BUY' : 'ขาย SELL'}</b></div>
            <div class="sig-cell sc-entry" data-sig-side="${esc(last.side)}" data-sig-entry="${r2(last.entry)}" data-sig-sl="${r2(last.sl)}" data-sig-tp="${r2(last.tp)}" title="คลิก = โยกลงคำสั่งรอล่วงหน้าฝั่งนี้"><small>ราคาเข้า ↘</small><b>${r2(last.entry)}</b></div>
            <div class="sig-cell"><small>Stop Loss</small><b class="down">${r2(last.sl)}</b></div>
@@ -456,7 +461,7 @@ function noSignalHtml(snap) {
     ? `<div class="last-signal sim">
          <div class="ls-head">🧪 ไม้จำลองล่าสุด — มติสภา ณ ไม้เปิด <span class="muted small">${esc(vSim.levelType || '')} ${fmtD(vSim.zone, 2)}</span></div>
          <div class="sig-grid">
-           <div class="sig-cell"><small>เปิดตอน</small><b>${fmtTs(vSim.openedAt)}</b></div>
+           <div class="sig-cell"><small>เปิดตอน • ${esc(vSim.levelType || "โซน")} ${fmtD(vSim.zone, 2)}</small><b>${fmtTsTh(vSim.openedAt)}</b></div>
            <div class="sig-cell"><small>ฝั่ง</small><b class="${vSim.side === 'buy' ? 'up' : 'down'}">${vSim.side === 'buy' ? 'ซื้อ BUY' : 'ขาย SELL'}</b></div>
            <div class="sig-cell sc-entry" data-sig-side="${esc(vSim.side)}" data-sig-entry="${fmtD(vSim.entry, 2)}" data-sig-sl="${fmtD(vSim.sl, 2)}" data-sig-tp="${fmtD(vSim.tp, 2)}" title="คลิก = โยกลงคำสั่งรอล่วงหน้าฝั่งนี้ (SL/TP เหมือนไม้จำลอง)"><small>ราคาเข้า ↘</small><b>${fmtD(vSim.entry, 2)}</b></div>
            <div class="sig-cell"><small>SL / TP</small><b>${fmtD(vSim.sl, 2)} / ${fmtD(vSim.tp, 2)}</b></div>
@@ -972,16 +977,8 @@ function renderTradePanel(snap) {
       capEl.innerHTML = dist != null ? `เพดานปุ่มกด <b>${pct}%</b> ของทุน = ระยะ SL รับได้สุด <b>${dist}</b> จุด = $${r2(dist * pointOf(d) * oz * lot, 2)} ที่ล็อต ${fmtD(lot, 2)} — ปรับ % ที่แท็บความเสี่ยง` : '';
     }
   }
-  // syncPendChips เดิม (คิวราคาเข้า±จุด): โครงใหม่ 2 คอลัมน์ = ปุ่มลัดแต่ละคอลัมน์ disabled ตามราคาสด
-  for (const side of ['sell', 'buy']) {
-    const chipsEl = $(acCol(side, 'entry-chips'));
-    if (!chipsEl) continue;
-    chipsEl.querySelectorAll('.qchip[data-pts]').forEach((c) => {
-      if (live) { if (c.hasAttribute('aria-disabled')) c.removeAttribute('aria-disabled'); }
-      else setAttrIf(c, 'aria-disabled', 'true');
-      setAttrIf(c, 'aria-pressed', pendEntryPick[side] && Number(c.dataset.pts) === pendEntryPick[side].pts ? 'true' : 'false');
-    });
-  }
+  // syncPendChips: ปุ่มลัดราคาเข้า±จุด disabled ตามราคาสด (ฟังก์ชันเดียวใช้ทุกที่)
+  syncPendChips(live);
   // สถานะสวิตช์จากฝั่ง MT5 จริง (EA + AutoTrading)
   const gateTxt = live && !meta.spec
     ? '⚠ EA ใน MT5 รุ่นเก่า ส่งไม้ไม่ได้ — แท็บ MT5 → ติดตั้ง EA แล้วลากลงชาร์ตใหม่'
@@ -1138,6 +1135,18 @@ function syncPendEntryLabels() {
     const dir = PEND_DIR[pendActiveKind(side)] || PEND_DIR[PEND_KINDS[side]];
     const lb = $(acCol(side, 'entry-base'));
     if (lb) lb.textContent = `ราคาเข้า = ${dir.base.toUpperCase()}`;
+  }
+}
+// ปุ่มลัดราคาเข้า ± จุด: disabled เมื่อไม่มีราคาสด + ไฮไลต์ชิปที่จับค่าไว้
+function syncPendChips(live) {
+  for (const side of ['sell', 'buy']) {
+    const chipsEl = $(acCol(side, 'entry-chips'));
+    if (!chipsEl) continue;
+    chipsEl.querySelectorAll('.qchip[data-pts]').forEach((c) => {
+      if (live) { if (c.hasAttribute('aria-disabled')) c.removeAttribute('aria-disabled'); }
+      else setAttrIf(c, 'aria-disabled', 'true');
+      setAttrIf(c, 'aria-pressed', pendEntryPick[side] && Number(c.dataset.pts) === pendEntryPick[side].pts ? 'true' : 'false');
+    });
   }
 }
 function syncPendChipPressed(side) {
