@@ -76,7 +76,7 @@ function startWebServer({ port = BASE_PORT, getSnapshot, logger = () => {}, hand
       if (p === '/api/login' && req.method === 'POST') {
         let pw = '';
         try { pw = String(JSON.parse(body).password || ''); } catch { return send(res, 400, { ok: false, reason: 'ข้อมูลไม่ถูกต้อง' }); }
-        const r = auth.login(pw, ip);
+        const r = await auth.login(pw, ip, { local });
         if (!r.ok) { logger('web', `ล็อกอินเว็บไม่สำเร็จจาก ${ip}: ${r.reason}`, 'warn'); return send(res, r.locked ? 429 : 401, { ok: false, reason: r.reason }); }
         logger('web', `ล็อกอินเว็บสำเร็จจาก ${ip}`);
         return send(res, 200, { ok: true }, TYPES['.json'], { 'Set-Cookie': `${COOKIE}=${r.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${7 * 24 * 3600}${https ? '; Secure' : ''}` });

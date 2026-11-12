@@ -67,28 +67,28 @@ function createTunnel({ logger = () => {}, onUrl = () => {}, stateFile = null, _
   // ---------- ตรวจสุขภาวะช่องทางจริงทุก 60 วิ ----------
   // daemon มีชีวิต ≠ ช่องทางสด (trycloudflare/ngrok ตายเงียบ อยู่ข้ามเซสชัน) — ทดสอบ fetch URL ตัวเอง
   // ล้ม 2 ครั้งติด = kill daemon → วง retry เดิมเปิดใหม่ให้ลิงก์ใหม่ → onUrl อัปเดตลิงก์ถาวรเอง (ซ่อมตัวเองโดยไม่ต้องมีคน)
-  let healthTimer = null, healthFails = 0, healthGen = -1;
-  const healthCheck = async () => {
-    if (stopping || gen !== healthGen || !url || (provider !== 'cloudflared' && provider !== 'ngrok')) return;
+  let hpTimer = null, hpFails = 0, hpGen = -1;
+  const hpCheck = async () => {
+    if (stopping || gen !== hpGen || !url || (provider !== 'cloudflared' && provider !== 'ngrok')) return;
     try {
       const ac = AbortSignal.timeout ? AbortSignal.timeout(7000) : undefined;
       const res = await fetch(url, { redirect: 'follow', signal: ac });
-      if (res.status > 0) healthFails = 0; else healthFails++;
-    } catch { healthFails++; }
-    if (healthFails >= 2 && child) {
-      logger('tunnel', `ตรวจ tunnel ${url} ล้ม ${healthFails} ครั้งติด — รีสตาร์ต daemon ขอลิงก์ใหม่`, 'warn');
-      healthFails = 0;
+      if (res.status > 0) hpFails = 0; else hpFails++;
+    } catch { hpFails++; }
+    if (hpFails >= 2 && child) {
+      logger('tunnel', `ตรวจ tunnel ${url} ล้ม ${hpFails} ครั้งติด — รีสตาร์ต daemon ขอลิงก์ใหม่`, 'warn');
+      hpFails = 0;
       try { child.kill('SIGTERM'); } catch { void 0; }
     }
   };
   const healthStart = () => {
-    clearInterval(healthTimer); healthTimer = null;
-    healthGen = gen; healthFails = 0;
+    clearInterval(hpTimer); hpTimer = null;
+    hpGen = gen; hpFails = 0;
     if (!url) return;
-    healthTimer = setInterval(() => { healthCheck().catch(() => void 0); }, 60_000);
-    healthCheck().catch(() => void 0);
+    hpTimer = setInterval(() => { hpCheck().catch(() => void 0); }, 60_000);
+    hpCheck().catch(() => void 0);
   };
-  const healthStop = () => { clearInterval(healthTimer); healthTimer = null; };
+  const healthStop = () => { clearInterval(hpTimer); hpTimer = null; };
 
   function spawnWatch(bin, args, parse) {
     const me = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
