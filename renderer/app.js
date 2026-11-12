@@ -623,7 +623,7 @@ function tryPendSubmit(side) {
   if (slDist * lot * oz > capMoney * 1.001 && capMoney > 0) {
     slDist = capMoney / (lot * oz);
     st = { ...st, sl: side === 'buy' ? entry - slDist : entry + slDist };
-    if (Number(st.tp) > 0) st = { ...st, tp: side === 'buy' ? entry + slDist * 2.5 : entry - slDist * 2.5 };
+    // ระยะ TP ที่ผู้ใช้/ระบบวางไว้ใน st.tp ถูกต้องอยู่แล้ว — บีบ SL ไม่ใช่เหตุทับ TP ด้วย 2.5×SL (เดิมทิ้งระยะ TP ที่ตั้งไว้เสมอ)
     $(acCol(side, 'sl')).value = Number(st.sl.toFixed(2));
     if (Number(st.tp) > 0) $(acCol(side, 'tp')).value = Number(st.tp.toFixed(2));
     toast(`↕ SL บีบตามเพดาน ${capP}% ($${capMoney.toFixed(2)}) — วางผ่านเกตแล้ว`, 'ok');
@@ -788,15 +788,17 @@ function openPendingAt(ev) {
   const m15 = snap.analysis && snap.analysis.tf && snap.analysis.tf.M15;
   const atr = (m15 && Number.isFinite(m15.atr) && m15.atr > 0) ? Number(m15.atr) : mid * 0.0008;
   const entry = Number(px.toFixed(d));
-  // SL ให้ผ่านเกตจริง: ระยะ SL จำกัดตามเพดานปุ่มกด/ล็อต (ถ้า ATR กว้างเกิน = บีบ, TP ยึด RR 2.5 ตามระยะใหม่)
+  // SL ให้ผ่านเกตจริง: ระยะ SL จำกัดตามเพดานปุ่มกด/ล็อต (ถ้า ATR กว้างเกิน = บีบ) • TP ยึดระยะที่ผู้ใช้ตั้ง (บาท) เสมอ — สูตร 2.5×SL ใช้เฉพาะเมื่อไม่ได้ตั้ง TP
   const lot = Math.max(0.01, Number($(acCol(side, 'lot')).value) || 0.01);
   const capPct = clampPct(snap);
   const eqReal = (meta.account && Number.isFinite(meta.account.equityUSD)) ? meta.account.equityUSD : (Number(snap.risk && snap.risk.equity) || 0);
   const maxSlDist = eqReal > 0 ? (eqReal * capPct) / (lot * 100) : Infinity;
   const slDist = Math.min(atr * 1.8, maxSlDist);
   const riskTxt = slDist < atr * 1.8 ? ` (บีบ SL ตามเพดาน ${capPct}% — เดิม $${fmtD(atr * 1.8, 2)})` : '';
+  const userTpPt2 = Number(appSettings && appSettings.tpDistPts) > 0 ? Number(appSettings.tpDistPts) * pointOf(d) : null;
+  const tpDist2 = userTpPt2 != null ? userTpPt2 : slDist * 2.5; // ระยะ TP ที่ผู้ใช้ตั้ง (บาท) มาก่อนเสมอ — 2.5×SL ใช้เฉพาะเมื่อไม่ได้ตั้ง
   const sl = side === 'buy' ? entry - slDist : entry + slDist;
-  const tp = side === 'buy' ? entry + slDist * 2.5 : entry - slDist * 2.5;
+  const tp = side === 'buy' ? entry + tpDist2 : entry - tpDist2;
   $(acCol(side, 'entry')).value = entry;
   $(acCol(side, 'sl')).value = Number(sl.toFixed(d));
   $(acCol(side, 'tp')).value = Number(tp.toFixed(d));
