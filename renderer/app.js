@@ -144,12 +144,21 @@ function updateChart(candlesByTf, { fit = false } = {}) {
   chartKey = key;
   $('chart-sub').textContent = `${currentTf} • ${candles.length} แท่ง`;
   const bars = candles.map((c) => ({ time: c.t, open: c.o, high: c.h, low: c.l, close: c.c }));
+  // ไส้ไม่มีสิทธิ์หด: แท่งสุดท้ายเวลาเดิม = รวมสูงสุด/ต่ำสุดที่จากทิคไว้ (ตัวจาก snapshot อาจไม่ทัน 20 ทิค/วิ)
+  if (chartBars.length && bars.length) {
+    const pb = chartBars[chartBars.length - 1];
+    const lb = bars[bars.length - 1];
+    if (pb.time === lb.time) {
+      lb.high = Math.max(lb.high, pb.high);
+      lb.low = Math.min(lb.low, pb.low);
+    }
+  }
   // เก็บช่วงเวลาที่ผู้ใช้กำลังดู → อัปเดตข้อมูลแล้ววางกลับตรงเดิม (ซูมไม่หลุดระหว่างสตรีม)
   const before = chartBars.length ? chartM.timeScale().getVisibleRange() : null;
   const lastOldT = chartBars.length ? chartBars[chartBars.length - 1].time : null;
   const atRight = before && lastOldT != null && Number(before.to) >= Number(lastOldT) - 1.5; // ดูอยู่ขอบขวา = อยากตามราคา
   chartBars = bars;
-  lastBarLive = { t: lastC.t, o: lastC.o, h: lastC.h, l: lastC.l, c: lastC.c };
+  lastBarLive = { t: bars[bars.length - 1].t, o: bars[bars.length - 1].o, h: bars[bars.length - 1].h, l: bars[bars.length - 1].l, c: bars[bars.length - 1].c };
   candleSeries.setData(bars);
   const cl = candles.map((c) => c.c);
   const toLine = (arr) => bars.map((b, i) => arr[i] != null ? ({ time: b.time, value: arr[i] }) : null).filter(Boolean).slice(1);
@@ -1789,7 +1798,7 @@ function paintTick(q) {
   // แท่งสุดท้ายหายใจสด: อัปเดตเฉพาะแท่งเดียวด้วย update() — ไม่ยิง setData ทั้งก้อน (สเกล/ซูมคงเดิม)
   try {
     if (chartM && candleSeries && lastBarLive && chartBars.length && chartBars[chartBars.length - 1].time === lastBarLive.t) {
-      const px = (q.bid + q.ask) / 2;
+      const px = q.bid;   // ไป้วาดเทียนด้วย bid เดียวกับโบรก (เดิม mid = ไส้ลอยต่างจาก snapshot → ไส้เต้น)
       if (px > 0) {
         lastBarLive.c = px;
         if (px > lastBarLive.h) lastBarLive.h = px;
