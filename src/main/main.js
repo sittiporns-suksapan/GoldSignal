@@ -52,6 +52,8 @@ const DEFAULT_SETTINGS = {
   minConfidence: 60,
   maxSignalsPerDay: 3,   // โควตาไม้ต่อวัน (สัญญาณ + ปุ่มคำสั่งจริงนับรวม) — ผู้ใช้เลือกได้ในแท็บตั้งค่า
   leastRisk: true,       // เข้าเฉพาะไม้ที่วิเคราะห์แล้วเสี่ยงน้อยที่สุดของรอบ
+  mirrorZone: false,     // สวิตช์ซื้อตามไม้จำลอง: โซนจุดรอเข้า HIT = เปิดไม้จริงมิเรอร์ SL/TP/ระยะเดียวกัน
+  mirrorLot: 0,          // 0 = ล็อตตามสูตร 1% ของทุน (เท่าไม้จำลอง) • >0 = ใช้ล็อตนี้ตรง ๆ
   autoBestOnly: false,   // โหมด Auto Trader: เลือกไม้ที่ % สำเร็จคาดการณ์สูงสุดของรอบ (แทนเสี่ยงน้อยสุด)
   autoMinPct: 65,        // คัดโอกาส: เข้าเองเมื่อ % โอกาสคาดการณ์ ≥ ค่านี้ (0 = เข้าไม้แรกที่ผ่านเกต)
   notifySignal: true,       // แจ้งเตือน macOS เมื่อโอกาสพร้อม
@@ -114,6 +116,8 @@ function sanitizeSettings(input) {
     minConfidence: num(s.minConfidence, 60, 0, 95),
     maxSignalsPerDay: Math.round(num(s.maxSignalsPerDay, 3, 1, 50)),
     leastRisk: s.leastRisk === false ? false : true,
+    mirrorZone: !!s.mirrorZone,
+    mirrorLot: num(s.mirrorLot, 0, 0, 5),   // ล็อตไม้ซื้อตามไม้จำลอง (0 = ตามสูตร 1% ของทุนจริง)
     autoBestOnly: !!s.autoBestOnly,
     autoMinPct: num(s.autoMinPct, 65, 0, 95),   // คัดโอกาส: เข้าเองเมื่อ % โอกาส ≥ ค่านี้ (0 = ไม่คัด)
     cooldownMin: num(s.cooldownMin, 15, 0, 240),
@@ -427,6 +431,7 @@ function boot() {
   engine.on('snapshot', async (snap) => {
     send('snapshot', snap);
     autoEnterMain(snap); // เข้าไม้อัตโนมัติฝั่ง main — ทำงานต่อแม้ปิดหน้าต่าง
+    mirrorZoneMain(snap); // ซื้อตามไม้จำลอง (สวิตช์ mirrorZone)
     // ระบบรอเข้า: แจ้งเตือนทันทีที่โอกาสผ่านทุกเกต (ครั้งเดียวต่อสัญญาณ)
     const approved = (snap.signals || []).filter((x) => !x.held);
     // ไม้เสมือน: แจ้งรายการใหม่ในประวัติรอบ (ลง/ปิดไม้เสมือน)
@@ -633,10 +638,12 @@ function boot() {
       allowOverCap: req.allowOverCap === true,
     });
     if (!v.pass) { engine.pushLog('order', `ปฏิเสธคำสั่ง ${side}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, warn: v.warn, metrics: v.metrics, overCap: v.overCap === true }; }
-    // มติสภาบังคับเหมือนสัญญาณ (สวนมติ/ไร้มติ = กรอง ตามโหมดเข้ม)
-    const councilVerdict = g.snap.council || null;
-    const gate = gateSignal({ side }, councilVerdict, engine.settings);
-    if (!gate.ok) { engine.pushLog('order', `ปฏิเสธคำสั่ง ${side}: ${gate.reason}`, 'warn'); return { ok: false, reason: gate.reason, metrics: v.metrics }; }
+    // มติสภาบังคับเหมือนสัญญาณ (สวนมติ/ไร้มติ = กรอง ตามโหมดเข้ม) — ยกเว้นไม้มิเรอร์ตามไม้จำลอง (สวิตช์ของผู้ใช้ = ยืนยันแทนสภาเสมอ)
+    if (req.mirror !== true) {
+      const councilVerdict = g.snap.council || null;
+      const gate = gateSignal({ side }, councilVerdict, engine.settings);
+      if (!gate.ok) { engine.pushLog('order', `ปฏิเสธคำสั่ง ${side}: ${gate.reason}`, 'warn'); return { ok: false, reason: gate.reason, metrics: v.metrics }; }
+    }
     try {
       const { id } = engine.connectors.mt5.sendOrder({ side, lot: v.metrics.lot, sl: Number(req.sl), tp: Number(req.tp) || 0 });
       engine.manualToday++;
@@ -874,11 +881,35 @@ function boot() {
     }
   }
 
+  // ---------- ซื้อ/ขายจริง "ตามไม้จำลอง" (mirrorZone) — โซนจุดรอเข้า HIT → ไม้จริงมิเรอร์ SL/TP/ล็อตเดียวกัน 1:1 ----------
+  function mirrorZoneMain(snap) {
+    const s = engine.settings;
+    const list = (s.mirrorZone === true && s.realOrdersEnabled === true && Array.isArray(snap.zoneMirror)) ? snap.zoneMirror : [];
+    if (!list.length) return;
+    engine._zoneMirrored = engine._zoneMirrored || new Set();
+    for (const t of list) {
+      const key = t.id || `z-${t.side}-${t.openedAt}`;
+      if (!key || engine._zoneMirrored.has(key)) continue;
+      engine._zoneMirrored.add(key);
+      if (engine._zoneMirrored.size > 100) engine._zoneMirrored.delete(engine._zoneMirrored.values().next().value);
+      const lot = Math.max(0.01, Math.min(Number(s.mirrorLot) > 0 ? Number(s.mirrorLot) : (Number(t.lot) || 0.01), 5));
+      let r;
+      try { r = sendOrderReq({ side: t.side, lot, sl: t.sl, tp: t.tp, auto: false, mirror: true, allowOverCap: true }); }
+      catch (err) { r = { ok: false, reason: err.message }; }
+      const msg = r && r.ok
+        ? `เข้าตามไม้จำลอง: ${t.side === 'buy' ? 'BUY' : 'SELL'} ล็อต ${r.metrics ? r.metrics.lot : lot} @ ${t.entry} • SL ${t.sl} • TP ${t.tp} (โซน ${t.zone}) — มิเรอร์ 1:1 รอผลจาก MT5`
+        : `ไม้ตามไม้จำลอง ${key} ยังส่งไม่ได้ — ${(r && r.reason) || 'เกตไม่ผ่าน'}`;
+      send('auto-enter', { ok: !!(r && r.ok), msg });
+      engine.pushLog('auto', `🔁 ${msg}`, r && r.ok ? 'ok' : 'warn');
+      notifyOnce('zmirror-' + key, 'GoldSignal: ซื้อตามไม้จำลอง', msg);
+    }
+  }
+
   // ---------- กันเครื่องหลับ: เปิดเมื่อระบบอัตโนมัติใดทำงาน (เข้าไม้เอง / ปิดอัตโนมัติ) ----------
   let keepAwakeId = null;
   function syncKeepAwake() {
     const s = engine.settings;
-    const need = (s.realOrdersEnabled === true && s.autoEnter === true) || s.autoCloseAll === true || s.autoCloseLoss === true || s.autoCloseAllPts === true || s.autoClosePoints === true || s.autoCloseLosingOnly === true;
+    const need = (s.realOrdersEnabled === true && (s.autoEnter === true || s.mirrorZone === true)) || s.autoCloseAll === true || s.autoCloseLoss === true || s.autoCloseAllPts === true || s.autoClosePoints === true || s.autoCloseLosingOnly === true;
     const on = keepAwakeId != null && powerSaveBlocker.isStarted(keepAwakeId);
     if (need && !on) { keepAwakeId = powerSaveBlocker.start('prevent-app-suspension'); engine.pushLog('app', 'กันเครื่องหลับ: เปิด (ระบบอัตโนมัติทำงานอยู่ — จอดับได้ แต่เครื่องไม่หลับ)'); }
     else if (!need && on) { powerSaveBlocker.stop(keepAwakeId); keepAwakeId = null; engine.pushLog('app', 'กันเครื่องหลับ: ปิด (ไม่มีระบบอัตโนมัติเปิดอยู่)'); }

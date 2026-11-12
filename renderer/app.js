@@ -2463,6 +2463,8 @@ async function loadSettingsToForm() {
   $('s-modifyabsmax').value = s.modifyAbsMaxPct != null ? s.modifyAbsMaxPct : 10;
   $('s-atbest').checked = s.autoBestOnly === true;
   $('s-atmin').value = Number(s.autoMinPct) > 0 ? Number(s.autoMinPct) : 0;
+  $('s-mirrorzone').checked = s.mirrorZone === true;
+  $('s-mirrorlot').value = Number(s.mirrorLot) > 0 ? Number(s.mirrorLot) : '';
   // กลุ่ม "ระยะ SL/TP (จุด)" = ค่าตั้งจริงของระบบ (จุด — กรอกตรงเหมือน MT5) — ว่าง = อัตโนมัติ ATR
   $('rc-sl').value = Number(s.slDistPts) > 0 ? Math.round(Number(s.slDistPts)) : '';
   $('rc-tp').value = Number(s.tpDistPts) > 0 ? Math.round(Number(s.tpDistPts)) : '';
@@ -2596,6 +2598,8 @@ $('form-risk').addEventListener('submit', async (e) => {
     modifyAbsMaxPct: Number($('s-modifyabsmax').value),
     autoBestOnly: $('s-atbest').checked,
     autoMinPct: Number($('s-atmin').value),
+    mirrorZone: $('s-mirrorzone').checked,
+    mirrorLot: Number($('s-mirrorlot').value) || 0,
     minRR: Number($('s-minrr').value),
     minConfidence: Number($('s-minconf').value),
     maxSignalsPerDay: Number($('s-maxday').value),

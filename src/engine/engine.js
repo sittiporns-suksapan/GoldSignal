@@ -259,6 +259,8 @@ class AnalysisEngine extends EventEmitter {
       lastSnap.zoneHistory = this.zoneHistory.slice(-25);
       lastSnap.zoneOpen = this.zoneOpen;
       lastSnap.zoneSummary = this._zoneSummary();
+      // ซื้อตามไม้จำลอง (mirrorZone): ไม้จำลองที่เปิดในรอบนี้ → ส่งให้ main ยิงไม้จริงตาม SL/TP/ล็อตเดียวกัน
+      lastSnap.zoneMirror = this.settings.mirrorZone === true ? this.zoneOpen.filter((t) => t.openedAt === lastSnap.ts) : [];
       lastSnap.roundLog = this._recordRound(lastSnap);
       lastSnap.commentary = this._commentary(lastSnap);
       this.lastSnap = lastSnap;
