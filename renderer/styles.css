@@ -981,6 +981,8 @@ form input[type=number]:hover:not(:focus), form input[type=text]:hover:not(:focu
 .stopbox.tp .qchip[aria-pressed="true"] { background: var(--up-bg); border-color: var(--up-line); color: var(--up-text); }
 .pentry .qchip[aria-pressed="true"] { background: rgba(50, 116, 236, .13); border-color: rgba(50, 116, 236, .5); color: #9db9ff; }
 .qchip[aria-disabled="true"] { opacity: .4; cursor: not-allowed; }
+/* ชิปค่าตั้งของผู้ใช้ (ดึงจากช่องจุด SL/TP) — เด่นกว่าชิปด่วนทั่วไป */
+.qchip.own { border-color: var(--gold-line); color: var(--gold-hi); box-shadow: 0 0 0 1px rgba(217, 180, 106, .25); }
 .lotchips { justify-content: center; margin-top: 10px; }
 .pend .pentry { margin: 2px 0 4px; }
 .tquote { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; margin-top: 8px; }

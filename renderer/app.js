@@ -994,15 +994,90 @@ function syncStopChips(k) {
     setAttrIf(c, 'aria-pressed', on ? 'true' : 'false');
   });
 }
-document.querySelectorAll('.qchip[data-stop]').forEach((c) => c.addEventListener('click', () => {
-  const k = c.dataset.stop, v = c.dataset.pts;
-  stopPts[k] = v === '' ? null : v === 'none' ? 'none' : Number(v);
-  const el = $(STOP_INPUT[k]);
-  el.value = '';
-  el.placeholder = stopPts[k] == null ? 'อัตโนมัติ' : stopPts[k] === 'none' ? 'ไม่ตั้ง TP' : `ระยะ ${stopPts[k]} จุด`;
-  syncStopChips(k);
-  if (lastSnap) renderTradePanel(lastSnap);
-}));
+document.addEventListener('click', (e) => {
+  // แผงส่งคำสั่ง (ไม้สด): ปุ่มระยะ SL/TP — กรอกราคาให้ตรงตามทิศฝั่งที่จะกด
+  const tChip = e.target.closest('.qchip[data-stop]');
+  if (tChip && tChip.closest('.stopbox')) {
+    const k = tChip.dataset.stop, v = tChip.dataset.pts;
+    stopPts[k] = v === '' ? null : v === 'none' ? 'none' : Number(v);
+    const el = $(STOP_INPUT[k]);
+    el.value = '';
+    el.placeholder = stopPts[k] == null ? 'อัตโนมัติ' : stopPts[k] === 'none' ? 'ไม่ตั้ง TP' : `ระยะ ${stopPts[k]} จุด`;
+    syncStopChips(k);
+    if (lastSnap) renderTradePanel(lastSnap);
+    return;
+  }
+  // คำสั่งรอ 2 ชุด: ปุ่มระยะ SL/TP ต่อคอลัมน์ SELL/BUY
+  const pChip = e.target.closest('.qchip[data-psl], .qchip[data-ptp]');
+  if (pChip && pChip.closest('.pside-col')) {
+    const q = liveQuote();
+    if (!q) { toast('ยังไม่มีราคาสด — เชื่อม MT5 ก่อน', 'err'); return; }
+    const col2 = pChip.closest('.pside-col');
+    const side = col2.id === 'pbuy-col' ? 'buy' : 'sell';
+    const digits = q.d, pt = pointOf(digits);
+    const dir = PEND_DIR[pendActiveKind(side)] || PEND_DIR[PEND_KINDS[side]];
+    const entry = Number($(acCol(side, 'entry')).value) || (dir.base === 'ask' ? q.ask : q.bid);
+    const isSl = pChip.hasAttribute('data-psl');
+    const r = isSl ? pChip.getAttribute('data-psl') : pChip.getAttribute('data-ptp');
+    pChip.closest('.qchips').querySelectorAll('.qchip').forEach((x) => setAttrIf(x, 'aria-pressed', x === pChip ? 'true' : 'false'));
+    if (isSl) {
+      const el = $(acCol(side, 'sl'));
+      if (r === '') { el.value = ''; el.placeholder = 'อัตโนมัติ'; }
+      else el.value = (dir.sign === 1 ? entry + Number(r) * pt : entry - Number(r) * pt).toFixed(digits);
+    } else if (r === '0') {
+      $(acCol(side, 'tp')).value = '0';
+    } else {
+      const el = $(acCol(side, 'tp'));
+      if (r === '') { el.value = ''; el.placeholder = 'อัตโนมัติ'; }
+      else el.value = (dir.sign === 1 ? entry - Number(r) * pt : entry + Number(r) * pt).toFixed(digits);
+    }
+    return;
+  }
+  // คำสั่งรอ: ราคาเข้า ± จุด ต่อคอลัมน์
+  const eChip = e.target.closest('.pside-col .qchip[data-pts]');
+  if (eChip) {
+    const col3 = eChip.closest('.pside-col');
+    const side = col3.id === 'pbuy-col' ? 'buy' : 'sell';
+    fillPendEntry(side, Number(eChip.dataset.pts));
+    col3.querySelectorAll('.qchip[data-pts]').forEach((x) => setAttrIf(x, 'aria-pressed', x === eChip ? 'true' : 'false'));
+  }
+});
+// ---------- ปุ่มลัดระยะ SL/TP: ชิปแรกหลัง "อัตโนมัติ" = ค่าตั้งของคุณ (ช่องจุด SL/TP) — ทุกแผงดึงจาก settings ----------
+const modeMatch = (key, m) => key === '' ? m == null : (key === 'none' ? m === 'none' : Number(key) === m);
+function chipHtml(mode, v, own, autoLabel) {
+  if (v == null) {
+    const a = mode === 'pSl' ? 'data-psl=""' : mode === 'pTp' ? 'data-ptp=""' : `data-stop="${mode === 'tSl' ? 'sl' : 'tp'}" data-pts=""`;
+    return `<button type="button" class="qchip" ${a} aria-pressed="true" title="อัตโนมัติจาก ATR">${autoLabel}</button>`;
+  }
+  const none = v === 'none' || v === 0;
+  const label = none ? 'ไม่ตั้ง' : String(v);
+  const title = none ? 'ไม่ตั้ง TP — ต้องปิดไม้เอง' : `ระยะ ${v} จุด${own ? ' — ค่าตั้งของคุณ (ช่องจุด SL/TP)' : ''}`;
+  const a = mode === 'pSl' ? `data-psl="${v}"` : mode === 'pTp' ? `data-ptp="${v}"` : `data-stop="${mode === 'tSl' ? 'sl' : 'tp'}" data-pts="${v}"`;
+  return `<button type="button" class="qchip${own ? ' own' : ''}" ${a} title="${title}">${label}</button>`;
+}
+function buildStopChipRows() {
+  const s = appSettings || {};
+  const sl = Number(s.slDistPts) > 0 ? Math.round(Number(s.slDistPts)) : null;
+  const tp = Number(s.tpDistPts) > 0 ? Math.round(Number(s.tpDistPts)) : null;
+  const dedupe = (a) => { const seen = new Set(); const out = []; for (const v of a) { const k = String(v); if (!seen.has(k)) { seen.add(k); out.push(v); } } return out; };
+  const setTrade = (id, mode, list, auto) => { const el = $(id); if (el) el.innerHTML = dedupe(list).map((v) => chipHtml(mode, v, String(v) === String(mode === 'tSl' ? sl : tp), auto)).join(''); };
+  setTrade('t-sl-chips', 'tSl', [null, sl, 300, 500, 1000], 'ออโต้');
+  setTrade('t-tp-chips', 'tTp', [null, tp, 1000, 2000, 'none'], 'ออโต้');
+  const pendTp = dedupe([null, tp, 1000, 0]);
+  for (const side of ['sell', 'buy']) {
+    const el = $(side === 'sell' ? 'psell-sltp-chips' : 'pbuy-sltp-chips');
+    if (!el) continue;
+    const pendSl = dedupe([null, sl, 300, 500]);
+    el.innerHTML = `<span class="qlbl">SL</span>${pendSl.map((v) => chipHtml('pSl', v, String(v) === String(sl), 'อัตโนมัติ')).join('')}` +
+      `<span class="qlbl">TP</span>${pendTp.map((v) => chipHtml('pTp', v, String(v) === String(tp), 'อัตโนมัติ')).join('')}`;
+    // คงสถานะกดเดิมตามโหมดที่ผู้ใช้เลือกไว้
+    const m = pendStopMode[side];
+    el.querySelectorAll('.qchip[data-psl]').forEach((c) => setAttrIf(c, 'aria-pressed', modeMatch(c.getAttribute('data-psl'), m.sl) ? 'true' : 'false'));
+    el.querySelectorAll('.qchip[data-ptp]').forEach((c) => setAttrIf(c, 'aria-pressed', modeMatch(c.getAttribute('data-ptp'), m.tp) ? 'true' : 'false'));
+  }
+  syncStopChips('sl'); syncStopChips('tp');
+}
+buildStopChipRows();
 // พิมพ์ราคาเอง = เลิกโหมดจุด (ปุ่มลัดดับ) • ลบจนว่าง = กลับเป็นอัตโนมัติ
 for (const k of ['sl', 'tp']) {
   $(STOP_INPUT[k]).addEventListener('input', () => {
@@ -1018,37 +1093,6 @@ const PEND_DIR = {
   'buy-stop': { base: 'ask', sign: 1 }, 'sell-stop': { base: 'bid', sign: -1 },
 };
 let pendEntryPick = {};   // { sell: { pts, value }, buy: {...} }
-document.querySelectorAll('[data-psl], [data-ptp]').forEach((c) => c.addEventListener('click', () => {
-  const q = liveQuote();
-  if (!q) { toast('ยังไม่มีราคาสด — เชื่อม MT5 ก่อน', 'err'); return; }
-  const col = c.closest('.pside-col'); if (!col) return;
-  const side = col.id === 'pbuy-col' ? 'buy' : 'sell';
-  const digits = q.d, pt = pointOf(digits);
-  const dir = PEND_DIR[pendActiveKind(side)] || PEND_DIR[PEND_KINDS[side]];
-  const entry = Number($(acCol(side, 'entry')).value) || (dir.base === 'ask' ? q.ask : q.bid);
-  const isSl = c.hasAttribute('data-psl');
-  const r = isSl ? c.getAttribute('data-psl') : c.getAttribute('data-ptp');
-  c.closest('.qchips').querySelectorAll('.qchip').forEach((x) => setAttrIf(x, 'aria-pressed', x === c ? 'true' : 'false'));
-  if (isSl) {
-    const el = $(acCol(side, 'sl'));
-    if (r === '') { el.value = ''; el.placeholder = 'อัตโนมัติ'; }
-    else el.value = (dir.sign === 1 ? entry + Number(r) * pt : entry - Number(r) * pt).toFixed(digits);
-  } else if (r === '0') {
-    $(acCol(side, 'tp')).value = '0';
-  } else {
-    const el = $(acCol(side, 'tp'));
-    if (r === '') { el.value = ''; el.placeholder = 'อัตโนมัติ'; }
-    else el.value = (dir.sign === 1 ? entry - Number(r) * pt : entry + Number(r) * pt).toFixed(digits);
-  }
-}));
-// ราคาเข้า ± จุด chips ต่อคอลัมน์
-document.querySelectorAll('.pside-col .qchip[data-pts]').forEach((c) => c.addEventListener('click', () => {
-  const col = c.closest('.pside-col'); if (!col) return;
-  const side = col.id === 'pbuy-col' ? 'buy' : 'sell';
-  fillPendEntry(side, Number(c.dataset.pts));
-  col.querySelectorAll('.qchip[data-pts]').forEach((x) => setAttrIf(x, 'aria-pressed', x === c ? 'true' : 'false'));
-}));
-
 // ล็อตด่วน: ปุ่มที่ต่ำกว่าล็อตขั้นต่ำของโบรกเกอร์ = aria-disabled (กดแล้วบอกเหตุผล)
 function syncLotChips(meta) {
   const v = Number($('t-lot').value);
@@ -2357,6 +2401,7 @@ async function loadSettingsToForm() {
   $('bridge-path').textContent = s.mt5BridgePath ? 'ไฟล์: ' + s.mt5BridgePath : '';
   updateCalcExample(s);
   appSettings = s;
+  buildStopChipRows(); // ชิปค่าตั้ง SL/TP ของคุณ — สร้างใหม่ทุกครั้งที่บันทึกค่าตั้ง
   rcFromPct(); // เครื่องคิดเลข: ล็อตคงที่ → เติมจุด SL จาก % ที่โหลดมา (ไม่แก้ % ตอนโหลด)
   return s;
 }
