@@ -1671,24 +1671,37 @@ function renderAutoClose(meta, list) {
   const live = list.length && Number.isFinite(bid) && Number.isFinite(ask);
   const total = list.reduce((s, p) => s + (Number(p.profit) || 0), 0);
   const best = live ? Math.max(...list.map((p) => Number(p.profit) || 0)) : null;
+  // จุดสดต่อไม้ (ซื้อปิดที่ BID / ขายปิดที่ ASK) — ตรงกับที่ main ใช้ตัดสิน
+  const point = Math.pow(10, -(Number(meta && meta.digits) || 2));
+  const ptsOf = (p) => ((p.type === 'buy' ? bid - Number(p.open) : Number(p.open) - ask) / point);
+  const totalPts = live ? list.reduce((s, p) => s + ptsOf(p), 0) : null;
+  const bestPts = live ? Math.max(...list.map(ptsOf)) : null;
+  // แต่ละแถว: กรอกเป็นจุด → แถบ/ตัวเลขเป็นจุด • กรอกเป็นบาท → เป็นบาท
+  const isPts = (vk) => !!appSettings && Number(appSettings[vk + 'Pts']) > 0;
+  const tgtOf = (vk) => (appSettings ? (isPts(vk) ? Number(appSettings[vk + 'Pts']) : Number(appSettings[vk])) || 0 : 0);
   const m = (x) => `${x >= 0 ? '+' : ''}${fmtD(x, 2)}`;
-  bar('ac-all', list.length ? total : null, appSettings ? Number(appSettings.autoCloseAllProfit) || 0 : 0, m);
-  bar('ac-allpts', list.length ? total : null, appSettings ? Number(appSettings.autoCloseAllPtsValue) || 0 : 0, m);
-  bar('ac-pts', live ? best : null, appSettings ? Number(appSettings.autoClosePointsValue) || 0 : 0, m);
-  // ตัดขาดทุน: เทียบขนาดขาดทุน (บวก) กับเพดาน
-  const loss = list.length ? Math.max(0, -total) : null;
-  const lossTarget = appSettings ? Number(appSettings.autoCloseLossValue) || 0 : 0;
-  const lossOnlyTarget = appSettings ? Number(appSettings.autoCloseLosingOnlyValue) || 0 : 0;
+  const mp = (x) => `${x >= 0 ? '+' : ''}${Math.round(x)} จุด`;
+  const gain = (id, vk, money, pts) => bar(id, isPts(vk) ? pts : money, tgtOf(vk), isPts(vk) ? mp : m);
+  gain('ac-all', 'autoCloseAllProfit', list.length ? total : null, totalPts);
+  gain('ac-allpts', 'autoCloseAllPtsValue', list.length ? total : null, totalPts);
+  gain('ac-pts', 'autoClosePointsValue', live ? best : null, bestPts);
+  // ตัดขาดทุน: เทียบขนาดขาดทุน (บวก) กับเพดาน — หน่วยตามที่กรอก
+  const lossIn = (vk) => (isPts(vk) ? (totalPts == null ? null : Math.max(0, -totalPts)) : (list.length ? Math.max(0, -total) : null));
+  const unit = (vk) => (isPts(vk) ? 'จุด' : 'บาท');
+  const fmtU = (vk, x) => (isPts(vk) ? String(Math.round(x)) : fmtD(x, 2));
+  const loss = lossIn('autoCloseLossValue');
+  const lossTarget = tgtOf('autoCloseLossValue');
   $('ac-loss-bar').style.width = (loss && lossTarget > 0 ? Math.min(100, (loss / lossTarget) * 100) : 0) + '%';
-  $('ac-loss-now').textContent = loss == null ? '—' : `ขาดทุน ${fmtD(loss, 2)} / ${fmtD(lossTarget, 2)} บาท`;
+  $('ac-loss-now').textContent = loss == null ? '—' : `ขาดทุน ${fmtU('autoCloseLossValue', loss)} / ${fmtU('autoCloseLossValue', lossTarget)} ${unit('autoCloseLossValue')}`;
   // ตัดขาดทุนเฉพาะไม้แดง: แถบเดียวกัน — แสดงครบเมื่อไม้เปิด + สรุปกี่ไม้แดงที่จะถูกปิดเมื่อทำงาน
   const lossOnlyEl = $('ac-lossonly-bar');
   if (lossOnlyEl) {
-    lossOnlyEl.style.width = (loss && lossOnlyTarget > 0 ? Math.min(100, (loss / lossOnlyTarget) * 100) : 0) + '%';
+    const lo = lossIn('autoCloseLosingOnlyValue');
+    const lossOnlyTarget = tgtOf('autoCloseLosingOnlyValue');
+    lossOnlyEl.style.width = (lo && lossOnlyTarget > 0 ? Math.min(100, (lo / lossOnlyTarget) * 100) : 0) + '%';
     const nowEl = $('ac-lossonly-now');
-    const sumLoss = list.reduce((s, p) => s + (Number(p.profit) < 0 ? Number(p.profit) : 0), 0);
     const nRed = list.filter((p) => Number(p.profit) < 0).length;
-    if (nowEl) nowEl.textContent = loss == null ? '—' : `แดง ${nRed} ไม้ • ลอยตัว ${fmtD(sumLoss, 2)} / ตั้ง ${fmtD(lossOnlyTarget, 2)} บาท`;
+    if (nowEl) nowEl.textContent = lo == null ? '—' : `แดง ${nRed} ไม้ • ขาดทุนรวม ${fmtU('autoCloseLosingOnlyValue', lo)} / ตั้ง ${fmtU('autoCloseLosingOnlyValue', lossOnlyTarget)} ${unit('autoCloseLosingOnlyValue')}`;
   }
   $('ac-status').textContent = list.length
     ? `ไม้ที่เปิด ${list.length} ไม้ • กำไรรวม ${money(total, acctCur, true)}${best != null ? ` • กำไรรายไม้สูงสุด ${money(best, acctCur, true)}` : ''}`
@@ -1733,36 +1746,41 @@ const AC_ROWS = [
   { sw: 'ac-loss', th: 'ac-loss-th', p: 'ac-loss-p', key: 'autoCloseLoss', valKey: 'autoCloseLossValue', label: 'ตัดขาดทุนรวบ' },
   { sw: 'ac-lossonly', th: 'ac-lossonly-th', p: 'ac-lossonly-p', key: 'autoCloseLosingOnly', valKey: 'autoCloseLosingOnlyValue', label: 'ตัดขาดทุนเฉพาะไม้แดง' },
 ];
-// sync คู่ช่องทั้งหมดจากค่าบาทที่จัดเก็บ — ช่องที่กำลังพิมพ์ = เว้น (ไม่แย่งคีย์บอร์ด)
+// sync คู่ช่องทั้งหมดจากค่าที่จัดเก็บ — ช่องที่ผู้ใช้กรอก (บาท หรือ จุด) = ค่าจริง อีกช่องแปลงให้ดู • ช่องที่กำลังพิมพ์ = เว้น
 function acSyncInputs() {
   const per = acMoneyPerPoint().per || 0;
   for (const row of AC_ROWS) {
     const thb = appSettings ? Number(appSettings[row.valKey]) || 0 : 0;
+    const pts = appSettings ? Number(appSettings[row.valKey + 'Pts']) || 0 : 0;
     const th = $(row.th), pi = $(row.p);
-    if (th && document.activeElement !== th) th.value = thb ? Math.round(thb) : '';
-    if (pi && document.activeElement !== pi) pi.value = thb && per ? Math.round(thb / per) : '';
+    if (th && document.activeElement !== th) th.value = pts ? (per ? Math.round(pts * per) : '') : (thb ? Math.round(thb) : '');
+    if (pi && document.activeElement !== pi) pi.value = pts || (thb && per ? Math.round(thb / per) : '');
   }
 }
 function bindAutoClose(row) {
   const { sw, th, p, key, valKey: vk, label } = row;
-  const per = () => acMoneyPerPoint().per || 0;
-  const save = async (thb) => { const r = await saveAutoClose({ [vk]: Math.max(0, Math.round((thb || 0) * 100) / 100) }); acSyncInputs(); return r; };
+  const tgtTxt = () => {
+    const pts = appSettings ? Number(appSettings[vk + 'Pts']) || 0 : 0;
+    return pts ? `${pts} จุด` : `${(appSettings ? Number(appSettings[vk]) || 0 : 0).toFixed(2)} บาท`;
+  };
+  // กรอกช่องไหน = เป้าเป็นหน่วยนั้น (จุด → ระบบตัดสินด้วยจุด, บาท → ด้วยเงิน) • ไม่แตะสวิตช์
   const commit = async (srcId) => {
     const raw = Number($(srcId).value);
-    const thb = srcId === th ? raw : acPtsToMoney(raw);
-    if (!Number.isFinite(thb) || thb <= 0) { toast(`ใส่${label}ก่อน (>0) — บาท หรือ จุด ก็ได้`, 'err'); $(sw).checked = false; acSyncInputs(); return; }
-    $(sw).checked = true;
-    const r = await save(thb);
-    if (r) toast(`🔒 ${label}: ${thb.toFixed(2)} บาท (≈ ${Math.round((thb / (per() || 1)) * 10) / 10} จุด / 0.01 ล็อต)`, 'ok');
+    if (!Number.isFinite(raw) || raw <= 0) { toast(`ใส่${label}ก่อน (>0) — บาท หรือ จุด ก็ได้`, 'err'); acSyncInputs(); return; }
+    const byPts = srcId === p;
+    const thb = byPts ? acPtsToMoney(raw) : raw; // ฝั่งบาทของเป้าจุด = ไว้โชว์อย่างเดียว
+    const r = await saveAutoClose({ [vk]: Math.max(0.01, Math.round(thb * 100) / 100), [vk + 'Pts']: byPts ? Math.round(raw) : 0 });
+    acSyncInputs();
+    if (r) toast(`🔒 ${label}: เป้า ${tgtTxt()}${$(sw).checked ? '' : ' — สวิตช์ยังปิด (ยังไม่ทำงาน)'}`, 'ok');
   };
   $(th).addEventListener('change', () => commit(th));
   $(p).addEventListener('change', () => commit(p));
+  // สวิตช์ = ตัวเปิด/ปิดระบบจริง (บันทึกลง main) — ปิดสวิตช์ = หยุดปิดไม้อัตโนมัติทันที
   $(sw).addEventListener('change', async (e) => {
     const on = e.target.checked;
-    const cur = appSettings ? Number(appSettings[vk]) || 0 : ($(th).value ? Number($(th).value) : 0);
-    if (on && !(cur > 0)) { e.target.checked = false; toast(`ตั้ง${label}ที่ช่องบาท/จุดก่อน (>0)`, 'err'); return; }
-    if (on && !confirm(`เปิด${label}อัตโนมัติ?\n\nเป้าปัจจุบัน ${cur.toFixed(2)} บาท (≈ ${Math.round((cur / (per() || 1)) * 10) / 10} จุด)\nถึงเป้า = ส่งคำสั่งปิดจริงใน MT5 ทันที (ไม่ถามซ้ำ) • แอป + MT5 ควรเปิดไว้`)) { e.target.checked = false; return; }
-    await save(cur);
+    if (on && !confirm(`เปิด${label}อัตโนมัติ?\n\nเป้า ${tgtTxt()}\nถึงเป้า = ส่งคำสั่งปิดจริงใน MT5 ทันที (ไม่ถามซ้ำ) • แอป + MT5 ควรเปิดไว้`)) { e.target.checked = false; return; }
+    const r = await saveAutoClose({ [key]: on }, on ? `🔒 เปิด${label}: เป้า ${tgtTxt()}` : `ปิด${label}อัตโนมัติแล้ว`);
+    if (!r) e.target.checked = !on;
   });
 }
 bindAutoClose(AC_ROWS[0]); bindAutoClose(AC_ROWS[1]); bindAutoClose(AC_ROWS[2]); bindAutoClose(AC_ROWS[3]); bindAutoClose(AC_ROWS[4]);
@@ -2445,6 +2463,21 @@ function renderKpis(snap) {
 
 const rendererErrorMemo = {};   // กันอุทกภัย spam: จุดเดียวพังซ้ำ = รายงานบ่อยน้อยลง
 const rendererErrorCount = {};
+// เอเจนต์หลัก: สถานะ + ผลวัดจริง (ไม้เสมือนของเอเจนต์ / ไม้เงาที่ใช้ปรับเทียบ)
+function renderMainAgent(ma) {
+  const el = $('ma-status');
+  if (!el || !ma) return;
+  const on = (appSettings || {}).mainAgent === true;
+  const st = ma.stats || {}, a = st.all || {}, c = st.calib || {};
+  const fmt = (x) => (x.n ? `${x.n} ไม้ • ชนะ ${x.winRate}% • คาดหวัง ${x.expectancy}R • รวม ${x.sumR}R` : 'ยังไม่มีไม้');
+  const open = ma.open ? `ถือ ${ma.open.side.toUpperCase()} @ ${ma.open.entry} SL ${ma.open.sl} TP ${ma.open.tp || '-'} (คาดหวัง ${ma.open.ev}R)` : 'ไม่มีไม้ถืออยู่';
+  el.innerHTML = `<b>🤖 เอเจนต์หลัก: ${on ? 'เปิด' : 'ปิด'}</b> • ${esc(open)}<br>`
+    + `ตัดสินใจล่าสุด: ${esc((ma.last && ma.last.why) || '-')}<br>`
+    + `ผลไม้เสมือนของเอเจนต์: ${esc(fmt(a))}<br>`
+    + `ผลสัญญาณทั้งหมดที่ใช้ปรับเทียบ: ${esc(fmt(c))}<br>`
+    + `ส่งไม้จริง: ${(appSettings || {}).mainAgentReal === true ? '✅ เปิด — เข้าเกณฑ์แล้วส่งจริงทันที' : 'ปิด (ลงไม้เสมือนอย่างเดียว)'}`;
+}
+
 function applySnapshot(snap, first) {
   if (!snap) return;
   lastSnap = snap;
@@ -2484,6 +2517,7 @@ function applySnapshot(snap, first) {
   guard('entryplan', () => renderEntryPlan(snap));
   guard('trade', () => renderTradePanel(snap));
   guard('autoEnter', () => autoEnterTick(snap));
+  guard('mainAgent', () => renderMainAgent(snap.mainAgent));
   guard('positions', () => renderPositions(snap.meta));
   guard('pendings', () => renderPendings(snap));
   guard('connBadge', () => badgeFor(snap.connectorStatuses, (snap.risk && snap.risk.source) || $('source-sel').value));
@@ -2521,26 +2555,15 @@ async function loadSettingsToForm() {
   $('s-atmin').value = Number(s.autoMinPct) > 0 ? Number(s.autoMinPct) : 0;
   $('s-mirrorzone').checked = s.mirrorZone === true;
   $('s-mirrorlot').value = Number(s.mirrorLot) > 0 ? Number(s.mirrorLot) : '';
+  $('s-mainagent').checked = s.mainAgent === true;
+  $('s-mainagentreal').checked = s.mainAgentReal === true;
+  $('s-mainagentminev').value = s.mainAgentMinEV != null ? s.mainAgentMinEV : 0.2;
   // กลุ่ม "ระยะ SL/TP (จุด)" = ค่าตั้งจริงของระบบ (จุด — กรอกตรงเหมือน MT5) — ว่าง = อัตโนมัติ ATR
   $('rc-sl').value = Number(s.slDistPts) > 0 ? Math.round(Number(s.slDistPts)) : '';
   $('rc-tp').value = Number(s.tpDistPts) > 0 ? Math.round(Number(s.tpDistPts)) : '';
   $('t-auto').checked = !!s.autoEnter;
   $('t-real').checked = !!s.realOrdersEnabled;
-  $('ac-all').checked = !!s.autoCloseAll;
-  $('ac-all-th').value = Number(s.autoCloseAllProfit) > 0 ? Math.round(s.autoCloseAllProfit) : '';
-  $('ac-all-p').value = Number(s.autoCloseAllProfit) > 0 ? Math.round(s.autoCloseAllProfit / (acMoneyPerPoint().per || 1)) : '';
-  $('ac-loss').checked = !!s.autoCloseLoss;
-  $('ac-loss-th').value = Number(s.autoCloseLossValue) > 0 ? Math.round(s.autoCloseLossValue) : '';
-  $('ac-loss-p').value = Number(s.autoCloseLossValue) > 0 ? Math.round(s.autoCloseLossValue / (acMoneyPerPoint().per || 1)) : '';
-  if ($('ac-lossonly')) $('ac-lossonly').checked = !!s.autoCloseLosingOnly;
-  if ($('ac-lossonly-th')) $('ac-lossonly-th').value = Number(s.autoCloseLosingOnlyValue) > 0 ? Math.round(s.autoCloseLosingOnlyValue) : '';
-  if ($('ac-lossonly-p')) $('ac-lossonly-p').value = Number(s.autoCloseLosingOnlyValue) > 0 ? Math.round(s.autoCloseLosingOnlyValue / (acMoneyPerPoint().per || 1)) : '';
-  $('ac-allpts').checked = !!s.autoCloseAllPts;
-  $('ac-allpts-th').value = Number(s.autoCloseAllPtsValue) > 0 ? Math.round(s.autoCloseAllPtsValue) : '';
-  $('ac-allpts-p').value = Number(s.autoCloseAllPtsValue) > 0 ? Math.round(s.autoCloseAllPtsValue / (acMoneyPerPoint().per || 1)) : '';
-  $('ac-pts').checked = !!s.autoClosePoints;
-  $('ac-pts-th').value = Number(s.autoClosePointsValue) > 0 ? Math.round(s.autoClosePointsValue) : '';
-  $('ac-pts-p').value = Number(s.autoClosePointsValue) > 0 ? Math.round(s.autoClosePointsValue / (acMoneyPerPoint().per || 1)) : '';
+  for (const row of AC_ROWS) if ($(row.sw)) $(row.sw).checked = s[row.key] === true; // ช่องบาท/จุด เติมโดย acSyncInputs หลังตั้ง appSettings
   $('s-councilon').checked = s.councilEnabled !== false;
   $('s-councilstrict').checked = s.councilStrict !== false;
   $('s-quorumauto').checked = s.councilQuorumAuto !== false;
@@ -2550,6 +2573,7 @@ async function loadSettingsToForm() {
   $('bridge-path').textContent = s.mt5BridgePath ? 'ไฟล์: ' + s.mt5BridgePath : '';
   updateCalcExample(s);
   appSettings = s;
+  acSyncInputs();
   buildStopChipRows(); // ชิปค่าตั้ง SL/TP ของคุณ — สร้างใหม่ทุกครั้งที่บันทึกค่าตั้ง
   rcFromPct(); // เครื่องคิดเลข: ล็อตคงที่ → เติมจุด SL จาก % ที่โหลดมา (ไม่แก้ % ตอนโหลด)
   return s;
@@ -2656,6 +2680,9 @@ $('form-risk').addEventListener('submit', async (e) => {
     autoMinPct: Number($('s-atmin').value),
     mirrorZone: $('s-mirrorzone').checked,
     mirrorLot: Number($('s-mirrorlot').value) || 0,
+    mainAgent: $('s-mainagent').checked,
+    mainAgentReal: $('s-mainagentreal').checked,
+    mainAgentMinEV: Number($('s-mainagentminev').value),
     minRR: Number($('s-minrr').value),
     minConfidence: Number($('s-minconf').value),
     maxSignalsPerDay: Number($('s-maxday').value),

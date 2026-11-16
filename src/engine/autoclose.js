@@ -31,14 +31,13 @@ function plan({ positions = [], bid, ask, spec, digits, settings = {}, skip = ne
     .map((p) => livePosition(p, bid, ask, spec, digits));
   out.total = out.live.reduce((s, x) => s + x.profit, 0);
   out.totalPts = out.live.reduce((s, x) => s + x.pts, 0);
-  const target = Number(settings.autoCloseAllProfit);
-  const targetPts = Number(settings.autoCloseAllPtsValue);
-  const maxLoss = Number(settings.autoCloseLossValue);
-  const losingTarget = Number(settings.autoCloseLosingOnlyValue);
-  if (settings.autoCloseLoss === true && maxLoss > 0 && out.total <= -maxLoss) out.trigger = 'loss';
-  else if (settings.autoCloseLosingOnly === true && losingTarget > 0 && out.total <= -losingTarget) out.trigger = 'lossonly';
-  else if (settings.autoCloseAll === true && target > 0 && out.total >= target) out.trigger = 'money';
-  else if (settings.autoCloseAllPts === true && targetPts > 0 && out.total >= targetPts) out.trigger = 'points';
+  // เป้าแต่ละแถว: <valKey>Pts > 0 = ผู้ใช้กรอกเป็น "จุด" → เทียบจุด (รวม = ผลรวมจุดทุกไม้) • ไม่งั้นเทียบเงินสกุลบัญชี
+  const tgt = (k) => { const p = Number(settings[k + 'Pts']); return p > 0 ? { pts: true, v: p } : { pts: false, v: Number(settings[k]) }; };
+  const hitTotal = (on, k, sign) => { const t = tgt(k); return on === true && t.v > 0 && sign * (t.pts ? out.totalPts : out.total) >= t.v; };
+  if (hitTotal(settings.autoCloseLoss, 'autoCloseLossValue', -1)) out.trigger = 'loss';
+  else if (hitTotal(settings.autoCloseLosingOnly, 'autoCloseLosingOnlyValue', -1)) out.trigger = 'lossonly';
+  else if (hitTotal(settings.autoCloseAll, 'autoCloseAllProfit', 1)) out.trigger = 'money';
+  else if (hitTotal(settings.autoCloseAllPts, 'autoCloseAllPtsValue', 1)) out.trigger = 'points';
   if (out.trigger) {
     // 'lossonly' = ปิดเฉพาะไม้แดง (ติดลบ) เก็บไม้ที่บวกไว้ — ที่เหลือปิดรวบ
     if (out.trigger === 'lossonly') {
@@ -48,9 +47,9 @@ function plan({ positions = [], bid, ask, spec, digits, settings = {}, skip = ne
     out.closeAll = out.live.map((x) => x.ticket).filter((t) => !skip.has(t));
     return out; // ปิดรวบครอบทุกไม้แล้ว ไม่ต้องดูรายไม้
   }
-  const needMoney = Number(settings.autoClosePointsValue);   // เป้ารายไม้ (บาท)
-  if (settings.autoClosePoints === true && needMoney > 0) {
-    out.singles = out.live.filter((x) => x.profit >= needMoney && !skip.has(x.ticket));
+  const one = tgt('autoClosePointsValue'); // เป้ารายไม้ (บาท หรือ จุด ตามที่กรอก)
+  if (settings.autoClosePoints === true && one.v > 0) {
+    out.singles = out.live.filter((x) => (one.pts ? x.pts : x.profit) >= one.v && !skip.has(x.ticket));
   }
   return out;
 }

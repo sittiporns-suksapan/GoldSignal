@@ -16,6 +16,7 @@ const sessions = require('./sessions');
 const { buildEntryPlan } = require('./entryplan');
 const { SkillBook } = require('./skillbook');
 const { CouncilStats } = require('./councilstats');
+const { MainAgent } = require('./mainagent');
 const ind = require('./indicators');
 const risk = require('./risk');
 
@@ -39,6 +40,8 @@ class AnalysisEngine extends EventEmitter {
     this.skills = new SkillBook({ storePath: skillsPath, logger });
     // สมุดผลงานของสภาทั้งคณะ: จดมติทุกรอบ → ตรวจผลหลัง 30 นาที → ปรับความมั่นใจของมติใหม่ตามอัตราชนะจริง
     this.councilStats = new CouncilStats({ storePath: skillsPath ? skillsPath.replace(/agent-skills\.json$/, 'council-stats.json') : null, logger });
+    // เอเจนต์หลัก (สวิตช์ mainAgent): ตัดสินใจเข้าไม้เองด้วย expectancy ที่ปรับเทียบจากผลจริง
+    this.mainAgent = new MainAgent({ storePath: skillsPath ? skillsPath.replace(/agent-skills\.json$/, 'main-agent.json') : null, logger });
     this.zoneOpen = [];      // ไม้เสมือนที่เปิดจากจุดรอเข้า (ยังไม่จบ)
     this.zoneHistory = [];   // ไม้เสมือนที่จบแล้ว (ring)
     this.zoneStorePath = zoneStorePath || null;
@@ -261,6 +264,16 @@ class AnalysisEngine extends EventEmitter {
       lastSnap.zoneSummary = this._zoneSummary();
       // ซื้อตามไม้จำลอง (mirrorZone): ไม้จำลองที่เปิดในรอบนี้ → ส่งให้ main ยิงไม้จริงตาม SL/TP/ล็อตเดียวกัน
       lastSnap.zoneMirror = this.settings.mirrorZone === true ? this.zoneOpen.filter((t) => t.openedAt === lastSnap.ts) : [];
+      // เอเจนต์หลัก: ตัดสินไม้เสมือน/ไม้เงาเดิมก่อน → ตัดสินใจรอบนี้ (main.js ส่งไม้จริงตามเมื่อสวิตช์ mainAgentReal เปิด)
+      const maDone = this.mainAgent.update(price, lastSnap.ts, this._priceSource);
+      if (maDone) this.pushLog('agent', `🤖 เอเจนต์หลัก: ไม้เสมือน ${maDone.side.toUpperCase()} จบ ${maDone.result} → ${maDone.r >= 0 ? '+' : ''}${maDone.r}R`, maDone.r > 0 ? 'ok' : 'warn');
+      lastSnap.mainAgentOpened = null;
+      if (this.settings.mainAgent === true) {
+        const minEV = Number.isFinite(Number(this.settings.mainAgentMinEV)) ? Number(this.settings.mainAgentMinEV) : 0.2;
+        lastSnap.mainAgentOpened = this.mainAgent.decide(signals, { minEV, now: lastSnap.ts, source: this._priceSource });
+        if (lastSnap.mainAgentOpened) this.pushLog('agent', `🤖 เอเจนต์หลัก: ${this.mainAgent.lastDecision.why} • เข้า ${lastSnap.mainAgentOpened.entry} SL ${lastSnap.mainAgentOpened.sl} TP ${lastSnap.mainAgentOpened.tp || '-'}`, 'ok');
+      }
+      lastSnap.mainAgent = this.mainAgent.snapshot();
       lastSnap.roundLog = this._recordRound(lastSnap);
       lastSnap.commentary = this._commentary(lastSnap);
       this.lastSnap = lastSnap;

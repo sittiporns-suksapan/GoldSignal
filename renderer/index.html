@@ -440,6 +440,18 @@
             <label>ล็อตไม้ตามไม้จำลอง (0 = ตามสูตรเสี่ยง 1% ของทุนจริง)
               <input type="number" id="s-mirrorlot" inputmode="decimal" min="0" max="5" step="0.01" placeholder="ตามสูตร 1%" />
             </label>
+            <label class="toggle">
+              <input type="checkbox" id="s-mainagent" />
+              <span>🤖 เอเจนต์หลัก — ตัดสินใจเองตัวเดียว: เลือกไม้ที่คาดหวังกำไร (R) สูงสุดจากสัญญาณที่ผ่านทุกเกต แล้วลงไม้เสมือน (เปิดแล้ว "เข้าอัตโนมัติ" เดิมหยุด กันเข้าซ้ำ)</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="s-mainagentreal" />
+              <span>เอเจนต์หลักส่งไม้จริงตามไม้เสมือน (เข้าเกณฑ์แล้วส่งจริงทันที • ต้องเปิด "ส่งออร์เดอร์จริง" • SL/เพดานเสี่ยง/โควตา/ข้อมูลสด ยังตรวจเหมือนเดิม)</span>
+            </label>
+            <label>เอเจนต์หลัก: เข้าเมื่อคาดหวังกำไร ≥ (R, 0–2)
+              <input type="number" id="s-mainagentminev" inputmode="decimal" min="0" max="2" step="0.05" />
+            </label>
+            <div id="ma-status" class="calc fx-result muted">เอเจนต์หลัก: รอรอบวิเคราะห์</div>
             <label>คัดโอกาส: เข้าเมื่อ โอกาส% ≥ (0–95)
               <input type="number" id="s-atmin" inputmode="numeric" min="0" max="95" step="1" />
               <small class="muted">ใช้เมื่อ Auto Trader เปิด + สวิตช์ "เข้าอัตโนมัติ" เปิด • 0 = เข้าไม้แรกที่ผ่านด่านตามเดิม • 65 = สมเหตุผลเริ่มต้น • % โอกาสต่อสัญญาณแสดงบนการ์ดโอกาส</small>

@@ -23,6 +23,7 @@ const { analyzeMarket } = require(path.join(root, 'src', 'engine', 'analysis'));
 const { runCouncil, gateSignal } = require(path.join(root, 'src', 'engine', 'council'));
 const risk = require(path.join(root, 'src', 'engine', 'risk'));
 const { PluginLoader } = require(path.join(root, 'src', 'engine', 'plugins'));
+const { expectedR, rrOf } = require(path.join(root, 'src', 'engine', 'mainagent'));
 
 const SETTINGS = {
   equity: 10000, riskPct: 1, minRR: 1.5, minConfidence: 60,
@@ -183,6 +184,16 @@ const summary = (Rs) => {
     const rejAll = [];
     for (const name of stratNames) rejAll.push(...strict.stat[name].rejected);
     console.log(`\nสัญญาณสวนมติที่สภายับยั้ง: ${rejAll.length} ใบ ถ้าปล่อยผ่าน: ชนะ ${rejAll.length ? Math.round((rejAll.filter((r) => r > 0).length / rejAll.length) * 100) : '-'}% รวม ${Math.round(rejAll.reduce((s, r) => s + r, 0) * 100) / 100} R (ลบ = สภากรองไม้แพ้ได้จริง)`);
+    console.log('\nเอเจนต์หลัก (mainAgent — EV ปรับเทียบด้วยผลจริงของสัญญาณ, ถือทีละ 1 ไม้):');
+    console.log('  เกณฑ์EV   ไม้   ชนะ%   รวมR  เฉลี่ยR    PF  | ครึ่งแรก R/ไม้  ครึ่งหลัง R/ไม้');
+    const cands = strict.agentCands.sort((a, b) => a.i - b.i);
+    const midIdx = Math.floor(m5.length / 2);
+    report.mainAgent = { candidates: summary(cands.map((c) => c.R)), byMinEV: {} };
+    for (const minEV of [0, 0.1, 0.2, 0.3, 0.5]) {
+      const r = simMainAgent(cands, minEV, midIdx);
+      report.mainAgent.byMinEV[minEV] = r;
+      console.log(`  ${String(minEV).padStart(6)}R ${String(r.all.n).padStart(5)} ${String(r.all.winrate).padStart(5)}% ${String(r.all.totalR).padStart(7)} ${String(r.all.avgR).padStart(7)} ${String(r.all.pf === Infinity ? '∞' : r.all.pf).padStart(5)}  | ${String(r.first.n).padStart(3)} ไม้ ${String(r.first.avgR).padStart(6)}   ${String(r.second.n).padStart(3)} ไม้ ${String(r.second.avgR).padStart(6)}`);
+    }
     report.council = { rejected: rejAll.length, ifPassedWinrate: rejAll.length ? Math.round((rejAll.filter((r) => r > 0).length / rejAll.length) * 100) : null, ifPassedTotalR: Math.round(rejAll.reduce((s, r) => s + r, 0) * 100) / 100 };
 
     fs.writeFileSync(path.join(root, 'backtest-report.json'), JSON.stringify(report, null, 2));
@@ -199,6 +210,7 @@ async function runPassAsync(args) {
   const { m5, m15, h1, map15, map1h, plugins, stratNames, mode } = args;
   const stat = Object.fromEntries(stratNames.map((n) => [n, blankStat()]));
   const busyUntil = Object.fromEntries(stratNames.map((n) => [n, -1]));
+  const agentCands = [];
   let decisions = 0;
   let i0 = 600;
   while (i0 < m5.length && (map15[i0] < 70 || map1h[i0] < 70)) i0++;
@@ -237,10 +249,32 @@ async function runPassAsync(args) {
         const aligned = verdictSide === ev.side;
         if (mode === 'strict' && !aligned) continue;
         (aligned ? st.aligned : st.neutral).push(res.R);
+        if (mode === 'strict') {
+          // ผู้สมัครของเอเจนต์หลัก: % โอกาสแบบ engine.opportunityPct ตอนยังไม่มีสถิติ (มติ + โบนัส RR)
+          const rr = rrOf(ev);
+          const conf = councilV && councilV.confidence != null ? councilV.confidence : (ev.confidence || 0);
+          const opp = Math.max(0, Math.min(99, conf + (rr >= 3 ? 5 : rr >= 2 ? 3 : rr >= 1.5 ? 1 : rr < 1 ? -8 : 0)));
+          agentCands.push({ i, closeIdx: res.closeIdx, R: res.R, opp, rr });
+        }
         busyUntil[s.id] = res.closeIdx + 1;
         break;
       }
     }
   }
-  return { decisions, stat };
+  return { decisions, stat, agentCands };
+}
+
+// เอเจนต์หลัก (src/engine/mainagent.js) เดินตามเวลา: เรียนรู้เฉพาะไม้เงาที่จบก่อนจุดตัดสินใจ (ไม่มี lookahead)
+// ถือทีละ 1 ไม้ • เข้าเมื่อ EV ≥ minEV
+function simMainAgent(cands, minEV, midIdx) {
+  const taken = [];
+  let busy = -1;
+  for (const c of cands) {
+    const known = cands.filter((x) => x.closeIdx < c.i);
+    const e = expectedR({ opp: c.opp, rr: c.rr, wins: known.filter((x) => x.R > 0).length, n: known.length });
+    if (c.i <= busy || e.ev < minEV) continue;
+    taken.push(c);
+    busy = c.closeIdx;
+  }
+  return { all: summary(taken.map((t) => t.R)), first: summary(taken.filter((t) => t.i < midIdx).map((t) => t.R)), second: summary(taken.filter((t) => t.i >= midIdx).map((t) => t.R)) };
 }

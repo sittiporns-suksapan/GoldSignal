@@ -59,6 +59,7 @@ src/engine/          สมองวิเคราะห์ (ไม่พึ่
   autoclose.js       ปิดรวบ/ตัดขาดทุน/ปิดรายไม้ (คำนวณอย่างเดียว)
   entryplan.js       โซนรอเข้า + ไม้เสมือน
   skillbook.js       สถิติผลงานรายเอเจนต์ → ปรับน้ำหนัก
+  mainagent.js       เอเจนต์หลัก: เลือกไม้ด้วย expectancy (R) ที่ปรับเทียบจากผลจริง + ไม้เสมือน/ไม้เงา
   connectors/mt5.js  อ่าน bridge JSON / เขียนคำสั่งให้ EA / คอมไพล์ EA ผ่าน Wine
   connectors/yahoo.js ราคาสำรอง COMEX GC=F
 renderer/            หน้าจอ (ใช้ทั้งในแอปและบนเว็บ)

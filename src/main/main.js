@@ -56,6 +56,9 @@ const DEFAULT_SETTINGS = {
   mirrorLot: 0,          // 0 = ล็อตตามสูตร 1% ของทุน (เท่าไม้จำลอง) • >0 = ใช้ล็อตนี้ตรง ๆ
   autoBestOnly: false,   // โหมด Auto Trader: เลือกไม้ที่ % สำเร็จคาดการณ์สูงสุดของรอบ (แทนเสี่ยงน้อยสุด)
   autoMinPct: 65,        // คัดโอกาส: เข้าเองเมื่อ % โอกาสคาดการณ์ ≥ ค่านี้ (0 = เข้าไม้แรกที่ผ่านเกต)
+  mainAgent: false,      // เอเจนต์หลัก: ตัดสินใจเองตัวเดียว (ลงไม้เสมือน) — เปิดแล้ว "เข้าอัตโนมัติ" เดิมหยุด กันเข้าซ้ำ
+  mainAgentReal: false,  // ส่งไม้จริงตามไม้เสมือนของเอเจนต์หลัก (ยังต้องเปิด realOrdersEnabled + ผ่านเกตเดิมทุกชั้น)
+  mainAgentMinEV: 0.2,   // เข้าเมื่อคาดหวังกำไร ≥ ค่านี้ (หน่วย R)
   notifySignal: true,       // แจ้งเตือน macOS เมื่อโอกาสพร้อม
   autoStart: false,         // เปิดวิเคราะห์เองตอนเปิดเครื่อง
   cooldownMin: 15,
@@ -120,6 +123,9 @@ function sanitizeSettings(input) {
     mirrorLot: num(s.mirrorLot, 0, 0, 5),   // ล็อตไม้ซื้อตามไม้จำลอง (0 = ตามสูตร 1% ของทุนจริง)
     autoBestOnly: !!s.autoBestOnly,
     autoMinPct: num(s.autoMinPct, 65, 0, 95),   // คัดโอกาส: เข้าเองเมื่อ % โอกาส ≥ ค่านี้ (0 = ไม่คัด)
+    mainAgent: s.mainAgent === true,
+    mainAgentReal: s.mainAgentReal === true,
+    mainAgentMinEV: num(s.mainAgentMinEV, 0.2, 0, 2),
     cooldownMin: num(s.cooldownMin, 15, 0, 240),
     newsStop: !!s.newsStop,
     notifySignal: s.notifySignal === false ? false : true,
@@ -151,6 +157,12 @@ function sanitizeSettings(input) {
     autoCloseAllPtsValue: Math.round(num(s.autoCloseAllPtsValue, 300, 1, 1e6)),
     autoClosePoints: s.autoClosePoints === true,
     autoClosePointsValue: Math.round(num(s.autoClosePointsValue, 300, 1, 1e6)),
+    // เป้าเป็น "จุด" ต่อแถว (0 = ใช้ค่าเงินด้านบน) — ผู้ใช้กรอกช่องจุด = ตัดสินด้วยจุด
+    autoCloseAllProfitPts: Math.round(num(s.autoCloseAllProfitPts, 0, 0, 1e6)),
+    autoCloseAllPtsValuePts: Math.round(num(s.autoCloseAllPtsValuePts, 0, 0, 1e6)),
+    autoClosePointsValuePts: Math.round(num(s.autoClosePointsValuePts, 0, 0, 1e6)),
+    autoCloseLossValuePts: Math.round(num(s.autoCloseLossValuePts, 0, 0, 1e6)),
+    autoCloseLosingOnlyValuePts: Math.round(num(s.autoCloseLosingOnlyValuePts, 0, 0, 1e6)),
   };
 }
 
@@ -432,6 +444,7 @@ function boot() {
     send('snapshot', snap);
     autoEnterMain(snap); // เข้าไม้อัตโนมัติฝั่ง main — ทำงานต่อแม้ปิดหน้าต่าง
     mirrorZoneMain(snap); // ซื้อตามไม้จำลอง (สวิตช์ mirrorZone)
+    mainAgentMain(snap);  // เอเจนต์หลัก: ไม้เสมือนเปิดใหม่ → ไม้จริงตาม (สวิตช์ mainAgentReal)
     // ระบบรอเข้า: แจ้งเตือนทันทีที่โอกาสผ่านทุกเกต (ครั้งเดียวต่อสัญญาณ)
     const approved = (snap.signals || []).filter((x) => !x.held);
     // ไม้เสมือน: แจ้งรายการใหม่ในประวัติรอบ (ลง/ปิดไม้เสมือน)
@@ -828,6 +841,7 @@ function boot() {
   const sigKey = (x) => `${x.plugin || '?'}|${x.side}|${x.ts || ''}`;
   function autoEnterMain(snap) {
     const s = engine.settings;
+    if (s.mainAgent === true) return;   // เอเจนต์หลักตัดสินใจตัวเดียว — กันเข้าซ้ำสองระบบ
     if (s.realOrdersEnabled !== true || s.autoEnter !== true) {
       // มีโอกาสผ่านทุกด่านแต่สวิตช์ยังปิด = บอกเหตุผลลง log (ครั้งเดียว / 10 นาที ไม่กลั่นแกล้ง log)
       const approved = (snap.signals || []).find((x) => !x.held);
@@ -905,11 +919,28 @@ function boot() {
     }
   }
 
+  // ---------- เอเจนต์หลัก (mainAgent) — ไม้เสมือนที่เพิ่งเปิด → ไม้จริงตาม SL/TP เดียวกัน ----------
+  // ผ่าน sendOrderReq แบบ auto: เพดานไม้อัตโนมัติ (autoRiskMaxPct) + มติสภา + โควตา + ข้อมูลสด + สวิตช์ส่งออร์เดอร์จริง
+  function mainAgentMain(snap) {
+    const t = snap.mainAgentOpened;
+    const s = engine.settings;
+    if (!t || s.mainAgent !== true || s.mainAgentReal !== true) return;
+    let r;
+    try { r = sendOrderReq({ side: t.side, lot: t.lot, sl: t.sl, tp: t.tp || 0, auto: true }); }
+    catch (err) { r = { ok: false, reason: err.message }; }
+    const msg = r && r.ok
+      ? `เอเจนต์หลักส่งไม้จริง: ${t.side === 'buy' ? 'BUY' : 'SELL'} ล็อต ${r.metrics ? r.metrics.lot : t.lot} • SL ${t.sl} • TP ${t.tp || '-'} (คาดหวัง ${t.ev}R) — รอผลจาก MT5`
+      : `เอเจนต์หลักลงไม้เสมือนแต่ไม่ส่งไม้จริง — ${(r && r.reason) || 'เกตไม่ผ่าน'}`;
+    engine.pushLog('agent', `🤖 ${msg}`, r && r.ok ? 'ok' : 'warn');
+    send('auto-enter', { ok: !!(r && r.ok), msg });
+    if (r && r.ok) notifyOnce('mainagent-' + t.id, 'GoldSignal: เอเจนต์หลักเข้าไม้จริง', msg);
+  }
+
   // ---------- กันเครื่องหลับ: เปิดเมื่อระบบอัตโนมัติใดทำงาน (เข้าไม้เอง / ปิดอัตโนมัติ) ----------
   let keepAwakeId = null;
   function syncKeepAwake() {
     const s = engine.settings;
-    const need = (s.realOrdersEnabled === true && (s.autoEnter === true || s.mirrorZone === true)) || s.autoCloseAll === true || s.autoCloseLoss === true || s.autoCloseAllPts === true || s.autoClosePoints === true || s.autoCloseLosingOnly === true;
+    const need = (s.realOrdersEnabled === true && (s.autoEnter === true || s.mirrorZone === true || (s.mainAgent === true && s.mainAgentReal === true))) || s.autoCloseAll === true || s.autoCloseLoss === true || s.autoCloseAllPts === true || s.autoClosePoints === true || s.autoCloseLosingOnly === true;
     const on = keepAwakeId != null && powerSaveBlocker.isStarted(keepAwakeId);
     if (need && !on) { keepAwakeId = powerSaveBlocker.start('prevent-app-suspension'); engine.pushLog('app', 'กันเครื่องหลับ: เปิด (ระบบอัตโนมัติทำงานอยู่ — จอดับได้ แต่เครื่องไม่หลับ)'); }
     else if (!need && on) { powerSaveBlocker.stop(keepAwakeId); keepAwakeId = null; engine.pushLog('app', 'กันเครื่องหลับ: ปิด (ไม่มีระบบอัตโนมัติเปิดอยู่)'); }
@@ -931,15 +962,17 @@ function boot() {
     const skip = new Set([...autoCloseBusy.keys(), ...[...mt5.pending.values()].filter((c) => c.action === 'close').map((c) => Number(c.ticket))]);
     const p = autoclose.plan({ positions: meta.positions, bid: lastQ.bid, ask: lastQ.ask, spec: meta.spec, digits: meta.digits, settings: s, skip });
     const cur = (meta.account && meta.account.currency) || '';
+    const tgtTxt = (k) => (s[k + 'Pts'] > 0 ? `${s[k + 'Pts']} จุด` : `${s[k]} ${cur}`);
+    const nowTxt = `${p.total.toFixed(2)} ${cur} (${Math.round(p.totalPts)} จุด)`;
     try {
       if (p.closeAll.length) {
         mt5.requestCloseAll(p.closeAll);
         p.closeAll.forEach((t) => autoCloseBusy.set(t, now));
         const why = p.trigger === 'loss'
-          ? `ขาดทุนรวม ≈ ${p.total.toFixed(2)} ${cur} ถึงจุดตัด -${s.autoCloseLossValue} ${cur}`
+          ? `ขาดทุนรวม ≈ ${nowTxt} ถึงจุดตัด -${tgtTxt('autoCloseLossValue')}`
           : p.trigger === 'points'
-          ? `จุดรวมเงิน: กำไรรวม ${p.total.toFixed(2)} ${cur} ถึงเป้า ${s.autoCloseAllPtsValue} ${cur}`
-          : `กำไรรวม ≈ ${p.total.toFixed(2)} ${cur} ถึงเป้า ${s.autoCloseAllProfit} ${cur}`;
+          ? `เป้าที่สอง: กำไรรวม ${nowTxt} ถึงเป้า ${tgtTxt('autoCloseAllPtsValue')}`
+          : `กำไรรวม ≈ ${nowTxt} ถึงเป้า ${tgtTxt('autoCloseAllProfit')}`;
         const msg = `${p.trigger === 'loss' ? 'ตัดขาดทุนรวบอัตโนมัติ' : 'ปิดรวบอัตโนมัติ'}: ${why} — สั่งปิด ${p.closeAll.length} ไม้`;
         engine.pushLog('order', '🔒 ' + msg, 'warn');
         send('auto-close', { kind: 'all', msg, tickets: p.closeAll });
@@ -950,8 +983,8 @@ function boot() {
         mt5.requestClose(x.ticket);
         autoCloseBusy.set(x.ticket, now);
         const msg = p.trigger === 'lossonly'
-          ? `ตัดขาดทุนเฉพาะไม้แดง: ขาดทุนรวม ${p.total.toFixed(2)} ${cur} ถึงเป้า ${s.autoCloseLosingOnlyValue} ${cur} — ปิดไม้ #${x.ticket} (ลอยตัว ${x.profit.toFixed(2)} ${cur}) เก็บไม้ที่บวกไว้`
-          : `ปิดไม้ #${x.ticket} อัตโนมัติ: กำไรรายไม้ ${x.profit.toFixed(2)} ${cur} ถึงเป้า ${s.autoClosePointsValue} ${cur}`;
+          ? `ตัดขาดทุนเฉพาะไม้แดง: ขาดทุนรวม ${nowTxt} ถึงเป้า ${tgtTxt('autoCloseLosingOnlyValue')} — ปิดไม้ #${x.ticket} (ลอยตัว ${x.profit.toFixed(2)} ${cur}) เก็บไม้ที่บวกไว้`
+          : `ปิดไม้ #${x.ticket} อัตโนมัติ: กำไรรายไม้ ${x.profit.toFixed(2)} ${cur} (${Math.round(x.pts)} จุด) ถึงเป้า ${tgtTxt('autoClosePointsValue')}`;
         engine.pushLog('order', '🔒 ' + msg, 'warn');
         send('auto-close', { kind: 'one', msg, tickets: [x.ticket] });
         notifyOnce('autoclose-' + x.ticket, p.trigger === 'lossonly' ? 'GoldSignal: ตัดขาดทุนเฉพาะไม้แดง' : 'GoldSignal: ปิดไม้เซฟกำไร', msg);

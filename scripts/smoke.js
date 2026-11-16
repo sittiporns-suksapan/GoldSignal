@@ -270,6 +270,13 @@ ok('ปิดอัตโนมัติ: ปิดรวบเมื่อก�
   assert.deepEqual(ac.plan({ ...q, settings: { autoClosePoints: true, autoClosePointsValue: 300 } }).singles.length, 0, 'รายไม้ยังไม่ถึง 300 บาท');
   const busy = ac.plan({ ...q, settings: { autoClosePoints: true, autoClosePointsValue: 300 }, skip: new Set([11]) });
   assert.equal(busy.singles.length, 0, 'ไม้ที่สั่งปิดแล้วไม่ส่งซ้ำ');
+  // เป้าเป็น "จุด" (กรอกช่องจุด): ตัดสินด้วยจุด ไม่ใช่เงิน — ค่าเงินในแถวเดียวกันถูกเมิน
+  assert.deepEqual(ac.plan({ ...q, settings: { autoClosePoints: true, autoClosePointsValue: 9999, autoClosePointsValuePts: 400 } }).singles.map((x) => x.ticket), [11], 'รายไม้ +500 จุด ≥ 400 จุด → ปิด #11');
+  assert.equal(ac.plan({ ...q, settings: { autoClosePoints: true, autoClosePointsValue: 1, autoClosePointsValuePts: 600 } }).singles.length, 0, '+500 จุด < 600 จุด (แม้เงินเกิน 1 บาท)');
+  assert.deepEqual(ac.plan({ ...q, settings: { autoCloseAll: true, autoCloseAllProfit: 9999, autoCloseAllProfitPts: 350 } }).closeAll, [11, 12], 'รวม +350 จุด ≥ 350 → ปิดทุกไม้');
+  assert.equal(ac.plan({ ...q, settings: { autoCloseAll: true, autoCloseAllProfit: 1, autoCloseAllProfitPts: 351 } }).closeAll.length, 0, 'รวม 350 จุด < 351');
+  assert.equal(ac.plan({ ...lossQ, settings: { autoCloseLoss: true, autoCloseLossValue: 9999, autoCloseLossValuePts: 250 } }).trigger, 'loss', 'ขาดทุนรวม −250 จุด ถึงจุดตัด 250 จุด');
+  assert.equal(ac.plan({ ...q, settings: { autoClosePoints: false, autoClosePointsValuePts: 1 } }).singles.length, 0, 'สวิตช์ปิด = ไม่ปิดแม้ถึงเป้าจุด');
 });
 
 ok('validateModify: แก้ SL/TP — ห้ามลบ SL / ฝั่งถูก / เพดาน 2% ยกเว้นลดความเสี่ยง', () => {
@@ -1210,6 +1217,64 @@ console.log('\n[7.5] ความปลอดภัยออร์เดอร�
     ok('plugin async: ได้สัญญาณจริง (เดิมกลายเป็น [Promise] แล้วถูกทิ้ง)', () => {
       assert.equal(got.length, 1);
       assert.equal(got[0].side, 'buy');
+    });
+  }
+
+console.log('\n[7.6] เอเจนต์หลัก (mainAgent)');
+  {
+    const { MainAgent, expectedR } = require(path.join(root, 'src', 'engine', 'mainagent'));
+    const sig = (o) => ({ plugin: 'p', side: 'buy', entry: 100, sl: 99, tp: 102.2, opp: 70, held: null, metrics: { lot: 0.02 }, ...o });
+    ok('mainAgent: เลือก EV สูงสุด • ข้ามไม้ held • ถือทีละ 1 ไม้', () => {
+      const a = new MainAgent();
+      const t = a.decide([sig({ opp: 90, held: 'โควตาเต็ม' }), sig({ plugin: 'q', side: 'sell', entry: 100, sl: 101, tp: 97, opp: 60 }), sig({ opp: 60 })], { minEV: 0, now: 1 });
+      assert.equal(t.plugin, 'q', 'RR 3 ชนะ RR 2.2 ที่ p เท่ากัน • held ไม่ถูกเลือก');
+      assert.equal(t.lot, 0.02);
+      assert.equal(a.decide([sig({ entry: 101, sl: 100, tp: 104 })], { minEV: 0, now: 2 }), null, 'มีไม้ถืออยู่ = ไม่เปิดซ้อน');
+    });
+    ok('mainAgent: EV ต่ำกว่าเกณฑ์ = ไม่เข้า (ไม่มีสัญญาณ = รอ)', () => {
+      const a = new MainAgent();
+      assert.equal(a.decide([sig({ opp: 30, tp: 101 })], { minEV: 0.2, now: 1 }), null);
+      assert.equal(a.lastDecision.action, 'skip');
+      assert.equal(a.decide([], { now: 2 }), null);
+      assert.equal(a.lastDecision.action, 'wait');
+    });
+    ok('mainAgent: ไม้เงาแพ้ต่อเนื่อง → p ลด → หยุดเข้าเอง (ไม่เชื่อ % ระบบดิบ)', () => {
+      const a = new MainAgent();
+      assert.ok(expectedR({ opp: 70, rr: 2.2 }).ev > 0.2, 'ยังไม่มีข้อมูล: % ระบบ 70 = EV บวก');
+      for (let i = 0; i < 12; i++) {
+        a.decide([sig({ entry: 100 + i * 0.01 })], { minEV: 99, now: i });   // เกณฑ์สูง = ติดตามเป็นไม้เงาอย่างเดียว
+        a.update(98, i + 1);                                              // ทุกไม้โดน SL
+      }
+      assert.equal(a.learned.length, 12);
+      assert.ok(a.learned.every((r) => r === -1));
+      assert.equal(a.decide([sig({ entry: 105, sl: 104, tp: 107.2 })], { minEV: 0.2, now: 100 }), null, 'ผลจริงแพ้หมด = ไม่เข้า');
+      assert.ok(a.expectedR(sig()).ev < 0);
+    });
+    ok('mainAgent: จบ TP = +RR • SL = −1R • ครบ 4 ชม. = TIME • ราคาคนละแหล่งไม่ตัดสิน • บันทึก/โหลดไฟล์', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsma-'));
+      const file = path.join(dir, 'main-agent.json');
+      const a = new MainAgent({ storePath: file });
+      a.decide([sig()], { minEV: 0, now: 0, source: 'mt5' });
+      assert.equal(a.update(103, 1, 'yahoo'), null, 'ราคาคนละแหล่ง');
+      const w = a.update(102.5, 1, 'mt5');
+      assert.equal(w.result, 'TP'); assert.equal(w.r, 2.2);
+      a.decide([sig({ entry: 101, sl: 100, tp: 103 })], { minEV: 0, now: 2, source: 'mt5' });
+      assert.equal(a.update(99.9, 3, 'mt5').r, -1);
+      a.decide([sig({ entry: 102, sl: 101, tp: 105 })], { minEV: 0, now: 4, source: 'mt5' });
+      assert.equal(a.update(102.5, 4 + 4 * 3600_000 + 1, 'mt5').result, 'TIME');
+      const b = new MainAgent({ storePath: file });
+      fs.rmSync(dir, { recursive: true, force: true });
+      assert.equal(b.history.length, 3, 'โหลดประวัติกลับได้');
+      assert.equal(b.snapshot().stats.all.n, 3);
+    });
+    ok('mainAgent: main.js ต่อสายครบ — ค่าตั้งบีบกรอบ, เข้าอัตโนมัติเดิมหยุด, ไม้จริงส่งทันทีผ่าน sendOrderReq auto', () => {
+      const src = fs.readFileSync(path.join(root, 'src', 'main', 'main.js'), 'utf8');
+      assert.ok(/mainAgent: s\.mainAgent === true/.test(src) && /mainAgentReal: s\.mainAgentReal === true/.test(src) && /mainAgentMinEV: num\(s\.mainAgentMinEV, 0\.2, 0, 2\)/.test(src), 'sanitizeSettings');
+      assert.ok(/function autoEnterMain\(snap\) \{\s*const s = engine\.settings;\s*if \(s\.mainAgent === true\) return;/.test(src), 'autoEnter เดิมหยุดเมื่อเอเจนต์หลักเปิด');
+      const fn = src.slice(src.indexOf('function mainAgentMain'), src.indexOf('function syncKeepAwake'));
+      assert.ok(/s\.mainAgentReal !== true\) return/.test(fn) && /sendOrderReq\(\{[^}]*auto: true \}\)/.test(fn), 'ส่งจริงผ่านเกตเดิม');
+      assert.ok(!/realAllowed/.test(fn), 'ไม่มีเงื่อนไขสะสมไม้เสมือนก่อนส่งจริง');
+      assert.ok(!/allowOverCap|mirror: true/.test(fn), 'ห้ามข้ามเพดาน/มติสภา');
     });
   }
 
