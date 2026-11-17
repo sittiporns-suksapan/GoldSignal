@@ -158,7 +158,7 @@ const summary = (Rs) => {
 
     const plugins = new PluginLoader({ builtInDir: path.join(root, 'plugins'), userDir: path.join(__dirname, '.none'), logger: () => {} });
     plugins.reload();
-    const stratNames = ['pullback-trend', 'bb-squeeze-breakout', 'momentum-ignition', 'council-consensus'];
+    const stratNames = ['pullback-trend', 'bb-squeeze-breakout', 'momentum-ignition', 'council-consensus', 'price-action'];
 
     const strictP = runPassAsync({ m5, m15, h1, map15, map1h, plugins, stratNames, mode: 'strict' });
     const laxP = runPassAsync({ m5, m15, h1, map15, map1h, plugins, stratNames, mode: 'lax' });

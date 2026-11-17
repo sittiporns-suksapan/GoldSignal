@@ -226,7 +226,7 @@ function boot() {
     logger: engine.pushLog,
     // จาก backtest 60 วัน (scripts/backtest.js): สองกลยุทธ์นี้แพ้ทั้งโหมดเข้ม/ธรรมดา
     // ปิดเป็นค่าตั้งต้น — เปิดกลับได้ในแท็บ PLUGINS
-    defaultOff: ['bb-squeeze-breakout', 'momentum-ignition'],
+    defaultOff: ['bb-squeeze-breakout', 'momentum-ignition', 'price-action'],   // price-action: backtest 60 วัน ครึ่งแรกติดลบ
   });
   plugins.reload();
   engine.plugins = plugins;

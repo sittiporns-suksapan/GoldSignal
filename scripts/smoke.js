@@ -1278,6 +1278,51 @@ console.log('\n[7.6] เอเจนต์หลัก (mainAgent)');
     });
   }
 
+console.log('\n[7.7] อ่านกราฟ Price Action (กฎร่วม plugin + skill)');
+  {
+    const pa = require(path.join(root, 'plugins', 'price-action')).rules(ind);
+    ok('price action: รูปแท่ง pin bar / engulfing / inside bar', () => {
+      assert.equal(pa.candlePattern({ o: 100, h: 100.6, l: 97, c: 100.4 }).side, 'buy', 'ไส้ล่างยาว');
+      assert.equal(pa.candlePattern({ o: 100.4, h: 103.5, l: 100, c: 100.1 }).side, 'sell', 'ไส้บนยาว');
+      assert.equal(pa.candlePattern({ o: 99, h: 101.2, l: 98.9, c: 101 }, { o: 100.5, h: 100.6, l: 99.2, c: 99.5 }).name, 'bullish engulfing');
+      assert.equal(pa.candlePattern({ o: 100, h: 100.5, l: 99.6, c: 100.2 }, { o: 99, h: 101, l: 99, c: 100.8 }).name, 'inside bar');
+    });
+    ok('price action: แนวใกล้กันรวมเป็นระดับเดียว + แยกรับ/ต้านตามราคา', () => {
+      const H1 = Array.from({ length: 40 }, (_, i) => { const m = 100 + (i % 10 === 5 ? 5 : i % 10 === 0 ? -5 : 0); return { t: i, o: m, h: m + 0.5, l: m - 0.5, c: m }; });
+      const lv = pa.keyLevels({ H1, M15: [] }, 100, 2);
+      assert.ok(lv.resistances.length >= 1 && lv.supports.length >= 1);
+      assert.ok(lv.resistances[0].touches >= 2, 'swing สูงซ้ำระดับเดิม = แตะหลายครั้ง');
+      assert.ok(lv.resistances.every((l) => l.price > 100) && lv.supports.every((l) => l.price < 100));
+    });
+    ok('price action: แผนต้องตามเทรนด์ H1 • ไม่มีรูปแท่งที่แนว = ไม่เข้า • มีแผน = SL ฝั่งถูก + RR ≥ 1.5', () => {
+      const base = { price: 100, atr: 2, trend: { H1: 'up', M15: 'up' }, levels: { supports: [], resistances: [{ price: 106, strength: 2, touches: 2 }] } };
+      const pin = { side: 'buy', name: 'pin bar ขาขึ้น', wickEnd: 98.5 };
+      assert.equal(pa.planTrade({ ...base, trend: { H1: 'side', M15: 'up' }, _pat: pin, touched: { price: 98.6, strength: 2, touches: 3 } }).side, 'none', 'H1 ไม่มีเทรนด์');
+      assert.equal(pa.planTrade({ ...base, _pat: { side: 'none', name: 'doji' }, touched: null }).side, 'none', 'ไม่มีรูปแท่ง');
+      assert.equal(pa.planTrade({ ...base, _pat: pin, touched: { price: 98.6, strength: 1, touches: 1 } }).side, 'none', 'แนวอ่อน');
+      const p = pa.planTrade({ ...base, _pat: pin, touched: { price: 98.6, strength: 2, touches: 3 } });
+      assert.equal(p.side, 'buy');
+      assert.ok(p.sl < p.entry && p.tp > p.entry && p.rr >= 1.5, JSON.stringify(p));
+      assert.equal(p.tp, 106, 'TP = แนวต้านถัดไป');
+    });
+    await (async () => {
+      // แอปที่ build แล้ว: plugins อยู่ Resources/plugins นอก app.asar — plugin ต้องโหลดได้จากโฟลเดอร์อื่น (ห้าม require ../src)
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gspa-'));
+      fs.copyFileSync(path.join(root, 'plugins', 'price-action.js'), path.join(dir, 'price-action.js'));
+      const pl = new PluginLoader({ builtInDir: dir, userDir: path.join(dir, 'none') });
+      pl.reload();
+      const got = await pl.runStrategies({ candles: {}, price: 100, ind, log: () => {} });
+      fs.rmSync(dir, { recursive: true, force: true });
+      ok('price action: plugin โหลดได้นอกโฟลเดอร์โปรเจกต์ (เหมือนแอปที่ build แล้ว)', () => {
+        assert.equal(pl.plugins.length, 1, 'โหลด plugin ได้');
+        assert.deepEqual(got, [], 'ข้อมูลไม่พอ = ไม่มีสัญญาณ ไม่ล้ม');
+      });
+    })();
+    ok('price action: plugin อยู่ในรายการปิดตั้งต้น (backtest ยังติดลบ)', () => {
+      assert.ok(/defaultOff: \[[^\]]*'price-action'/.test(fs.readFileSync(path.join(root, 'src', 'main', 'main.js'), 'utf8')));
+    });
+  }
+
 console.log('\n[8] Network (Yahoo จริง)');
   if (process.env.SMOKE_NETWORK === '1') {
     try {
