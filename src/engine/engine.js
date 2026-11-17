@@ -227,7 +227,8 @@ class AnalysisEngine extends EventEmitter {
         : (this.settings.leastRisk === false ? null : this._pickLeastRisk(passers, sessionNow.quality));
       for (const ev of passers) {
         const hold = !chosen || ev === chosen ? this._gate() : { reason: this.settings.autoBestOnly === true ? `โอกาสน้อยกว่าไม้ที่เลือกในรอบนี้ (${Math.round(ev.opp || 0)}% < ${Math.round(Number(chosen && chosen.opp) || 0)}%)` : 'เสี่ยงกว่าไม้ที่เลือกในรอบนี้ (โหมดเสี่ยงน้อยที่สุด)' };
-        signals.push({ ...ev, ts: Date.now(), riskScore: risk.riskScore(ev, sessionNow.quality), held: hold.reason ? hold.reason : null });
+        // notChosen = พักเพราะ "ไม่ใช่ไม้ที่โหมดเลือกของรอบ" เท่านั้น (ผ่านเกตอื่นครบ) — เอเจนต์หลักยังพิจารณาได้
+        signals.push({ ...ev, ts: Date.now(), riskScore: risk.riskScore(ev, sessionNow.quality), held: hold.reason ? hold.reason : null, notChosen: !!chosen && ev !== chosen });
         if (!hold.reason) {
           this._rememberIssue(this._keySig(ev), ev);
           this.dailyCount++;
@@ -270,7 +271,13 @@ class AnalysisEngine extends EventEmitter {
       lastSnap.mainAgentOpened = null;
       if (this.settings.mainAgent === true) {
         const minEV = Number.isFinite(Number(this.settings.mainAgentMinEV)) ? Number(this.settings.mainAgentMinEV) : 0.2;
-        lastSnap.mainAgentOpened = this.mainAgent.decide(signals, { minEV, now: lastSnap.ts, source: this._priceSource });
+        // เห็นทุกใบที่ผ่านเกต: ใบที่ไม่ถูกเลือกใช้ได้เมื่อโควตา/หยุดข่าวยังผ่าน (ตรวจหลังนับไม้ที่เลือกของรอบแล้ว)
+        const gateNow = this._gate();
+        const pool = signals.filter((s) => !s.held || (s.notChosen && !gateNow.reason));
+        lastSnap.mainAgentOpened = this.mainAgent.decide(pool, { minEV, now: lastSnap.ts, source: this._priceSource });
+        const o = lastSnap.mainAgentOpened;
+        const src = o && pool.find((s) => s.notChosen && s.held && s.plugin === o.plugin && s.side === o.side && Number(s.entry) === o.entry);
+        if (src) { this._rememberIssue(this._keySig(src), src); this.dailyCount++; }   // นับโควตา + คูลดาวน์เหมือนไม้ที่ถูกเลือก
         if (lastSnap.mainAgentOpened) this.pushLog('agent', `🤖 เอเจนต์หลัก: ${this.mainAgent.lastDecision.why} • เข้า ${lastSnap.mainAgentOpened.entry} SL ${lastSnap.mainAgentOpened.sl} TP ${lastSnap.mainAgentOpened.tp || '-'}`, 'ok');
       }
       lastSnap.mainAgent = this.mainAgent.snapshot();

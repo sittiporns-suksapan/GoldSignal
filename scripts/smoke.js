@@ -1231,6 +1231,18 @@ console.log('\n[7.6] เอเจนต์หลัก (mainAgent)');
       assert.equal(t.lot, 0.02);
       assert.equal(a.decide([sig({ entry: 101, sl: 100, tp: 104 })], { minEV: 0, now: 2 }), null, 'มีไม้ถืออยู่ = ไม่เปิดซ้อน');
     });
+    ok('mainAgent: เห็นใบที่ไม่ถูกโหมดเลือก (notChosen) แต่ไม่แตะใบที่ติดโควตา/หยุดข่าว', () => {
+      const a = new MainAgent();
+      const t = a.decide([
+        sig({ plugin: 'chosen', tp: 101.6, opp: 60 }),
+        sig({ plugin: 'other', tp: 103, opp: 60, held: 'โอกาสน้อยกว่าไม้ที่เลือกในรอบนี้', notChosen: true }),
+        sig({ plugin: 'quota', tp: 105, opp: 90, held: 'ครบโควตา 3 ไม้ต่อวันแล้ว' }),
+      ], { minEV: 0, now: 1 });
+      assert.equal(t.plugin, 'other', 'RR 3 ที่ไม่ถูกเลือก ชนะ RR 1.6 • ใบติดโควตาไม่ถูกเลือก');
+      const src = fs.readFileSync(path.join(root, 'src', 'engine', 'engine.js'), 'utf8');
+      assert.ok(/const gateNow = this\._gate\(\);\s*const pool = signals\.filter\(\(s\) => !s\.held \|\| \(s\.notChosen && !gateNow\.reason\)\)/.test(src), 'engine กรองโควตา/หยุดข่าวก่อนส่งใบ notChosen');
+      assert.ok(/this\._rememberIssue\(this\._keySig\(src\), src\); this\.dailyCount\+\+;/.test(src), 'เข้าใบ notChosen = นับโควตา + คูลดาวน์');
+    });
     ok('mainAgent: EV ต่ำกว่าเกณฑ์ = ไม่เข้า (ไม่มีสัญญาณ = รอ)', () => {
       const a = new MainAgent();
       assert.equal(a.decide([sig({ opp: 30, tp: 101 })], { minEV: 0.2, now: 1 }), null);

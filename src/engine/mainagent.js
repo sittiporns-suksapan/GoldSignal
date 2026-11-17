@@ -98,7 +98,8 @@ class MainAgent {
 
   // เลือกไม้ EV สูงสุดของรอบ — คืนไม้เสมือนที่เปิดใหม่ หรือ null
   decide(signals, { minEV = 0.2, now = Date.now(), source = null } = {}) {
-    const cands = (signals || []).filter((s) => !s.held && Number(s.sl) > 0 && rrOf(s) > 0);
+    // held ที่ notChosen = ผ่านเกตครบแต่ไม่ใช่ไม้ที่โหมดเลือก (engine กรองโควตา/หยุดข่าวมาแล้ว)
+    const cands = (signals || []).filter((s) => (!s.held || s.notChosen) && Number(s.sl) > 0 && rrOf(s) > 0);
     for (const s of cands) this._track(s, now, source);
     if (this.open) { this.lastDecision = { ts: now, action: 'hold', why: 'ถือไม้เสมือนอยู่ 1 ไม้ — รอจบก่อน' }; return null; }
     if (!cands.length) { this.lastDecision = { ts: now, action: 'wait', why: 'ไม่มีสัญญาณผ่านทุกเกตในรอบนี้' }; return null; }
