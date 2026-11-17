@@ -2464,13 +2464,170 @@ function renderKpis(snap) {
 const rendererErrorMemo = {};   // กันอุทกภัย spam: จุดเดียวพังซ้ำ = รายงานบ่อยน้อยลง
 const rendererErrorCount = {};
 // เอเจนต์หลัก: สถานะ + ผลวัดจริง (ไม้เสมือนของเอเจนต์ / ไม้เงาที่ใช้ปรับเทียบ)
+// สมองไฟฟ้า 3 มิติของเอเจนต์หลัก (canvas 2D + ฉายภาพมุมมอง ไม่พึ่งไลบรารี)
+// จุดประสาทบนผิวสมองสองซีก หมุนช้า ๆ • กระแสไฟวิ่งตามเส้นประสาท — เร็ว/สีตามสถานะ
+// ปิด = เทาเงียบ • เฝ้ารอ/ข้าม = ฟ้า • ถือไม้ = ทอง • เพิ่งเข้าไม้ = เขียวระเบิดแสง
+const maBrain = (() => {
+  const cv = document.getElementById('ma-brain');
+  if (!cv) return { set() {} };
+  const ctx = cv.getContext('2d');
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const css = (n, d) => (getComputedStyle(document.documentElement).getPropertyValue(n).trim() || d);
+  const rgb = (hex) => { const h = hex.replace('#', ''); const n = parseInt(h.length === 3 ? h.replace(/./g, '$&$&') : h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const COL = { off: rgb(css('--muted', '#9a978f')), wait: rgb(css('--accent', '#8ea2ff')), skip: rgb(css('--accent', '#8ea2ff')), hold: rgb(css('--gold', '#d9b46a')), enter: rgb(css('--up', '#22c58b')) };
+  const RATE = { off: 0.6, wait: 3, skip: 5, hold: 9, enter: 14 };   // กระแสใหม่ต่อวินาที
+  // จุดประสาท: fibonacci sphere → สมองใหญ่สองซีก (รอยหยัก gyri + กลีบขมับ) + สมองน้อย + ก้านสมอง
+  // แกน: x = ซ้าย/ขวา, y = บน(−)/ล่าง(+), z = หน้า(+)/หลัง(−)
+  const nodes = [];
+  const fib = (n, fn) => { for (let i = 0; i < n; i++) { const y = 1 - (i / (n - 1)) * 2, r = Math.sqrt(1 - y * y), th = i * 2.399963; fn(Math.cos(th) * r, y, Math.sin(th) * r, th); } };
+  fib(300, (x, y, z, th) => {
+    if (y < -0.55) return;                                          // ตัดฐานล่างให้แบน (ใต้สมองใหญ่)
+    const side = x >= 0 ? 1 : -1;
+    const wr = 1 + 0.09 * Math.sin(9 * th + 4 * y) * Math.sin(6 * y + 2 * z) + 0.05 * Math.sin(13 * z + th);
+    let X = (Math.abs(x) * 0.78 + 0.1) * side, Y = -y * 0.8, Z = z * 1.25;
+    if (Y > 0.05 && Z > -0.35 && Z < 0.75) X += side * 0.12 * Math.min(1, Y * 3);   // กลีบขมับป่องข้างล่าง
+    if (Z > 0.6) Y -= 0.08 * (Z - 0.6);                             // หน้าผากโค้งขึ้นเล็กน้อย
+    nodes.push({ x: X * wr, y: Y * wr, z: Z * wr, side, fire: 0 });
+  });
+  fib(70, (x, y, z) => {                                            // สมองน้อย: หลัง-ล่าง ลายขวาง
+    if (z > 0.35) return;
+    const wr = 1 + 0.1 * Math.sin(y * 14);
+    nodes.push({ x: x * 0.62 * wr, y: 0.52 + y * 0.22 * wr, z: -0.85 + z * 0.38 * wr, side: x >= 0 ? 1 : -1, fire: 0 });
+  });
+  for (let i = 0; i < 9; i++) nodes.push({ x: 0, y: 0.35 + i * 0.07, z: -0.35 - i * 0.03, side: 0, fire: 0 });   // ก้านสมอง
+  const N = nodes.length - 9;
+  for (let i = 0; i < 30; i++) nodes.push({ x: (Math.random() - 0.5) * 1.0, y: (Math.random() - 0.6) * 0.7, z: (Math.random() - 0.5) * 1.6, side: 0, fire: 0 });
+  // เส้นประสาท: เพื่อนบ้านใกล้สุด 3 จุด (ซีกเดียวกัน) + สะพานข้ามซีก (corpus callosum)
+  const edges = [], adj = nodes.map(() => []);
+  const d2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2;
+  const addE = (i, j) => { if (adj[i].some((e) => edges[e].b === j || edges[e].a === j)) return; const k = edges.push({ a: i, b: j }) - 1; adj[i].push(k); adj[j].push(k); };
+  nodes.forEach((n, i) => {
+    nodes.map((m, j) => ({ j, d: d2(n, m) })).filter((o) => o.j !== i && (n.side === 0 || nodes[o.j].side === 0 || nodes[o.j].side === n.side))
+      .sort((p, q) => p.d - q.d).slice(0, 3).forEach((o) => addE(i, o.j));
+  });
+  for (let k = 0; k < 14; k++) { const i = (k * 37) % N; if (!nodes[i].side) continue; let best = -1, bd = Infinity; nodes.forEach((m, j) => { if (m.side === -nodes[i].side && m.side) { const d = d2(nodes[i], m); if (d < bd) { bd = d; best = j; } } }); if (best >= 0) addE(i, best); }
+  let state = 'off', pulses = [], ang = 0, last = 0, raf = 0, spawnAcc = 0, visible = true, w = 0, h = 0;
+  const resize = () => {
+    const dpr = Math.min(2, window.devicePixelRatio || 1), r = cv.getBoundingClientRect();
+    w = r.width; h = r.height;
+    cv.width = Math.max(1, Math.round(w * dpr)); cv.height = Math.max(1, Math.round(h * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (reduce || !raf) frame(performance.now(), true);
+  };
+  const spawn = (from) => {
+    const i = from != null ? from : Math.floor(Math.random() * nodes.length);
+    if (!adj[i].length) return;
+    const e = adj[i][Math.floor(Math.random() * adj[i].length)];
+    pulses.push({ e, fwd: edges[e].a === i, t: 0, v: 1.2 + Math.random() * 1.8 + (state === 'enter' ? 1.5 : 0), hop: 0 });
+  };
+  function frame(now, still) {
+    const dt = Math.min(0.05, last ? (now - last) / 1000 : 0.016); last = now;
+    if (!still) ang += dt * (state === 'off' ? 0.18 : 0.4);
+    // ส่ายมุม 3/4 (ไม่หมุนรอบเต็ม — มองเห็นทรงสมองตลอด)
+    const yaw = 1.1 + Math.sin(ang * 0.6) * 0.75, ca = Math.cos(yaw), sa = Math.sin(yaw), tilt = 0.32, ct = Math.cos(tilt), st = Math.sin(tilt);
+    const S = Math.min(w * 0.3, h * 0.44), cx = w / 2, cy = h / 2 - 4;
+    const P = nodes.map((n) => {
+      const x = n.x * ca + n.z * sa, z0 = -n.x * sa + n.z * ca;
+      const y = n.y * ct - z0 * st, z = n.y * st + z0 * ct;
+      const p = 3.2 / (3.2 + z);
+      return { x: cx + x * S * p, y: cy + y * S * p, z, d: Math.max(0, Math.min(1, (1.3 - z) / 2.6)) };
+    });
+    const [r, g, b] = COL[state] || COL.wait;
+    ctx.clearRect(0, 0, w, h);
+    ctx.lineWidth = 0.7;
+    for (const e of edges) {
+      const p = P[e.a], q = P[e.b], d = (p.d + q.d) / 2;
+      ctx.strokeStyle = `rgba(${r},${g},${b},${(0.05 + d * 0.22).toFixed(3)})`;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'lighter';
+    if (!still) {
+      spawnAcc += dt * RATE[state];
+      while (spawnAcc >= 1) { spawn(); spawnAcc -= 1; }
+      const chain = state === 'off' ? 0.2 : state === 'enter' ? 0.85 : 0.6;
+      const next = [];
+      for (const pu of pulses) {
+        pu.t += dt * pu.v;
+        const E = edges[pu.e], to = pu.fwd ? E.b : E.a;
+        if (pu.t >= 1) {
+          nodes[to].fire = 1;
+          if (pu.hop < 6 && Math.random() < chain) { const k = pulses.length; spawn(to); if (pulses.length > k) { const np = pulses.pop(); np.hop = pu.hop + 1; next.push(np); } }
+          continue;
+        }
+        next.push(pu);
+        const a = P[pu.fwd ? E.a : E.b], c = P[to];
+        const x = a.x + (c.x - a.x) * pu.t, y = a.y + (c.y - a.y) * pu.t, al = 0.35 + 0.65 * ((a.d + c.d) / 2);
+        const tx = a.x + (c.x - a.x) * Math.max(0, pu.t - 0.35), ty = a.y + (c.y - a.y) * Math.max(0, pu.t - 0.35);
+        ctx.strokeStyle = `rgba(${r},${g},${b},${al.toFixed(3)})`; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(x, y); ctx.stroke();
+        ctx.fillStyle = `rgba(255,255,255,${(al * 0.9).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(x, y, 1.6, 0, 6.283); ctx.fill();
+      }
+      pulses = next.slice(-400);
+    }
+    for (let i = 0; i < nodes.length; i++) {
+      const p = P[i], n = nodes[i];
+      const glow = n.fire, rad = 0.8 + p.d * 1.6 + glow * 2.6;
+      if (glow > 0.05) {
+        const gr = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rad * 4);
+        gr.addColorStop(0, `rgba(${r},${g},${b},${(glow * 0.8).toFixed(3)})`); gr.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(p.x, p.y, rad * 4, 0, 6.283); ctx.fill();
+      }
+      ctx.fillStyle = `rgba(${r},${g},${b},${(0.25 + p.d * 0.6 + glow * 0.3).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, 6.283); ctx.fill();
+      if (!still) n.fire = Math.max(0, n.fire - dt * 2.2);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  const loop = (now) => { raf = 0; if (!visible || document.hidden || !w) return; frame(now, false); raf = requestAnimationFrame(loop); };
+  const kick = () => { if (!reduce && !raf && visible && !document.hidden) { last = 0; raf = requestAnimationFrame(loop); } };
+  new ResizeObserver(resize).observe(cv);
+  new IntersectionObserver((es) => { visible = es.some((e) => e.isIntersecting); if (visible) kick(); }).observe(cv);
+  document.addEventListener('visibilitychange', kick);
+  kick();
+  return {
+    set(s) {
+      if (s === state) return;
+      if (s === 'enter' && !reduce) for (let i = 0; i < 40; i++) spawn();   // เพิ่งเข้าไม้ = ระเบิดกระแส
+      state = s;
+      if (reduce) frame(performance.now(), true); else kick();
+    },
+  };
+})();
+
 function renderMainAgent(ma) {
-  const el = $('ma-status');
-  if (!el || !ma) return;
-  const on = (appSettings || {}).mainAgent === true;
+  if (!ma) return;
+  const cfg = appSettings || {};
+  const on = cfg.mainAgent === true, real = cfg.mainAgentReal === true;
   const st = ma.stats || {}, a = st.all || {}, c = st.calib || {};
   const fmt = (x) => (x.n ? `${x.n} ไม้ • ชนะ ${x.winRate}% • คาดหวัง ${x.expectancy}R • รวม ${x.sumR}R` : 'ยังไม่มีไม้');
   const open = ma.open ? `ถือ ${ma.open.side.toUpperCase()} @ ${ma.open.entry} SL ${ma.open.sl} TP ${ma.open.tp || '-'} (คาดหวัง ${ma.open.ev}R)` : 'ไม่มีไม้ถืออยู่';
+  const act = !on ? 'off' : ma.open ? 'hold' : (ma.last && ma.last.action) || 'wait';
+  // ช่อง KPI ด้านบน + การ์ดสมอง
+  const kpi = {
+    off: ['ปิดอยู่', ''],
+    hold: [`ถือ ${ma.open ? ma.open.side.toUpperCase() : ''} • คาดหวัง ${ma.open ? ma.open.ev : '-'}R${real ? ' • จริง' : ' • เสมือน'}`, 'up'],
+    enter: [`เข้าไม้แล้ว${real ? ' • จริง' : ' • เสมือน'}`, 'up'],
+    skip: ['ข้าม — คาดหวังต่ำกว่าเกณฑ์', ''],
+    wait: ['เฝ้ารอสัญญาณ', ''],
+  }[act] || ['เฝ้ารอสัญญาณ', ''];
+  if ($('kpi-main')) setKpi('kpi-main', kpi[0], kpi[1]);
+  const badge = $('ma-badge');
+  if (badge) {
+    badge.textContent = { off: 'ปิด', hold: 'ถือไม้', enter: 'เข้าไม้', skip: 'ข้าม', wait: 'เฝ้ารอ' }[act] || 'เฝ้ารอ';
+    badge.className = 'badge' + (act === 'hold' || act === 'enter' ? ' ok' : act === 'skip' ? ' warn' : '');
+  }
+  if ($('ma-why')) {
+    $('ma-why').textContent = on ? ((ma.last && ma.last.why) || 'รอรอบวิเคราะห์') : 'ปิดอยู่ — เปิดได้ที่แท็บตั้งค่า "🤖 เอเจนต์หลัก"';
+    $('ma-open').textContent = open;
+    $('ma-st-own').textContent = a.n ? `${a.n} ไม้ • ชนะ ${a.winRate}%` : 'ยังไม่มีไม้';
+    setKpi('ma-st-exp', a.n ? `${a.expectancy > 0 ? '+' : ''}${a.expectancy}R (รวม ${a.sumR}R)` : '—', a.n ? (a.expectancy > 0 ? 'up' : 'down') : '');
+    $('ma-st-cal').textContent = c.n ? `${c.n} ไม้ • ชนะ ${c.winRate}%` : 'ยังไม่มีข้อมูล';
+    setKpi('ma-st-real', real ? 'เปิด — ส่งทันที' : 'ปิด (เสมือน)', real ? 'up' : '');
+  }
+  maBrain.set(act);
+  const el = $('ma-status');
+  if (!el) return;
   el.innerHTML = `<b>🤖 เอเจนต์หลัก: ${on ? 'เปิด' : 'ปิด'}</b> • ${esc(open)}<br>`
     + `ตัดสินใจล่าสุด: ${esc((ma.last && ma.last.why) || '-')}<br>`
     + `ผลไม้เสมือนของเอเจนต์: ${esc(fmt(a))}<br>`

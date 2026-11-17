@@ -31,6 +31,7 @@
     <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z" /><circle cx="12" cy="10" r="2.3" /></symbol>
     <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14a6.5 6.5 0 0 1 3.5 6" /></symbol>
     <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4" /></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 5a3 3 0 0 0-5.6-1.4A3 3 0 0 0 3.5 7.5a3.5 3.5 0 0 0 .3 6 3.5 3.5 0 0 0 4.2 4.8A3 3 0 0 0 12 19.5zM12 5a3 3 0 0 1 5.6-1.4 3 3 0 0 1 2.9 3.9 3.5 3.5 0 0 1-.3 6 3.5 3.5 0 0 1-4.2 4.8A3 3 0 0 1 12 19.5zM12 5v14.5" /><path d="M8 9.5l2 1.5M16 9.5l-2 1.5M8.5 14.5h2M15.5 14.5h-2" /></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></symbol>
     <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4 7h15a1 1 0 0 1 1 1v11H5a1 1 0 0 1-1-1V6a2 2 0 0 1 2-2h11v3" /><path d="M16 13h.01" /></symbol>
     <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="m15.5 8.5-2 5-5 2 2-5Z" /></symbol>
@@ -91,6 +92,7 @@
       <div class="kpis">
         <div class="kpi"><svg class="ic"><use href="#i-compass" /></svg><div><small>แนวโน้มรวม</small><b id="kpi-bias">—</b></div></div>
         <div class="kpi"><svg class="ic"><use href="#i-users" /></svg><div><small>มติทีมเอเจนต์</small><b id="kpi-council">—</b></div></div>
+        <div class="kpi"><svg class="ic"><use href="#i-brain" /></svg><div><small>เอเจนต์หลัก</small><b id="kpi-main">—</b></div></div>
         <div class="kpi"><svg class="ic"><use href="#i-target" /></svg><div><small>โควตาวันนี้</small><b id="kpi-quota">—</b></div></div>
         <div class="kpi"><svg class="ic"><use href="#i-wallet" /></svg><div><small>ทุนสุทธิ</small><b id="kpi-equity">—</b></div></div>
       </div>
@@ -362,6 +364,23 @@
           <div class="card">
             <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-pin" /></svg>จุดรอเข้า</h2><span id="ep-atr" class="muted small"></span></div>
             <div id="entryplan" class="entryplan"><div class="empty">รอข้อมูล...</div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2 class="ct"><svg class="ic"><use href="#i-brain" /></svg>เอเจนต์หลัก</h2><span id="ma-badge" class="badge">ปิด</span></div>
+            <div class="ma-card">
+              <canvas id="ma-brain" class="ma-brain" role="img" aria-label="สมองเอเจนต์หลัก: แสงวิ่งเร็วเมื่อกำลังตัดสินใจเข้าไม้"></canvas>
+              <div class="ma-info">
+                <div id="ma-why" class="ma-why">รอรอบวิเคราะห์</div>
+                <div id="ma-open" class="muted small">ไม่มีไม้ถืออยู่</div>
+                <div class="ma-stats">
+                  <div><small>ไม้เสมือนของเอเจนต์</small><b id="ma-st-own">—</b></div>
+                  <div><small>คาดหวังต่อไม้</small><b id="ma-st-exp">—</b></div>
+                  <div><small>ผลสัญญาณที่ใช้ปรับเทียบ</small><b id="ma-st-cal">—</b></div>
+                  <div><small>ส่งไม้จริง</small><b id="ma-st-real">—</b></div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="card">

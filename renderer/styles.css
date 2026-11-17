@@ -233,7 +233,7 @@ details.more[open] summary { margin-bottom: 10px; }
 .sb-session .badge { padding: 1px 8px; font-size: 10.5px; }
 .sb-notes { color: var(--faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .sb-notes:empty { display: none; }
-.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap); }
+.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--gap); }
 .kpi { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); min-width: 0; }
 .kpi > .ic { width: 34px; height: 34px; padding: 8px; border-radius: 11px; color: var(--gold); background: var(--gold-bg); border: 1px solid var(--gold-line); stroke-width: 1.5; }
 .kpi div { min-width: 0; }
@@ -1113,3 +1113,18 @@ body.chart-max::before { content: ""; position: fixed; inset: 0; background: rgb
   box-shadow: 0 0 0 1px var(--gold-line);
 }
 .psbtn[aria-pressed="true"] small { color: var(--gold); }
+
+/* ---------- เอเจนต์หลัก: ช่อง KPI + การ์ดสมอง 3 มิติ ---------- */
+@media (max-width: 1000px) {
+  .kpis > .kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }   /* 5 ช่องใน 2 คอลัมน์: ช่องท้ายเต็มแถว */
+}
+.ma-card { display: grid; gap: 12px; }   /* คอลัมน์ขวาแคบ: สมองด้านบน ข้อมูลด้านล่าง */
+.ma-brain { width: 100%; height: 210px; display: block; border-radius: var(--radius-sm); background: radial-gradient(ellipse at 50% 55%, rgba(142, 162, 255, .08), transparent 70%), var(--inset); border: 1px solid var(--line-soft); }
+.ma-info { display: grid; gap: 8px; min-width: 0; }
+.ma-why { color: var(--text); font-size: 14px; line-height: 1.45; }
+.ma-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 4px; }
+.ma-stats > div { padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--line-soft); min-width: 0; }
+.ma-stats small { display: block; color: var(--muted); font-size: 11px; }
+.ma-stats b { display: block; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ma-stats b.up { color: var(--up-text); }
+.ma-stats b.down { color: var(--down-text); }
