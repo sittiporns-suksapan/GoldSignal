@@ -154,6 +154,29 @@ class MT5Connector {
     ];
   }
 
+  // หา bridge ทุกไฟล์จากเทอร์มินัล MT5 ทุกตัวที่เครื่องนี้ติดตั้ง (ใช้กับปุ่ม "สลับพอร์ต")
+  static findAllBridges() {
+    const found = [];
+    for (const base of MT5Connector.candidateDirs()) {
+      if (!fs.existsSync(base)) continue;
+      let budget = 8000;
+      const stack = [base];
+      while (stack.length && budget-- > 0) {
+        const dir = stack.pop();
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+        for (const e of entries) {
+          const p = path.join(dir, e.name);
+          if (e.isFile() && e.name === BRIDGE_FILENAME && !found.includes(p)) found.push(p);
+          if (e.isDirectory() && !e.name.startsWith('.') && e.name !== 'Logs' && e.name !== 'cache' && e.name !== 'Profiles') stack.push(p);
+        }
+      }
+    }
+    const pub = path.join(os.homedir(), 'Documents', 'GoldSignal', BRIDGE_FILENAME);
+    if (fs.existsSync(pub) && !found.includes(pub)) found.push(pub);
+    return found;
+  }
+
   _scan(overridePath = this.settingsOverride) {
     // ผู้ใช้เลือกไฟล์ใหม่ระหว่างรัน = สลับทันที (เดิมยึดไฟล์แรกที่เจอจนรีสตาร์ท คำสั่งจึงไปผิดเทอร์มินัลได้)
     if (overridePath && overridePath !== this.bridgePath && fs.existsSync(overridePath)) {

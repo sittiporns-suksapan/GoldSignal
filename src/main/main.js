@@ -25,7 +25,7 @@ const { createLine } = require('./line');
 const handlers = new Map();
 const handle = (channel, fn) => { handlers.set(channel, fn); ipcMain.handle(channel, fn); };
 // คำสั่งที่ห้ามเรียกจากเว็บ: เปิดหน้าต่าง/กล่องเลือกไฟล์บนเครื่อง + จัดการรหัสเว็บ (ต้องทำที่เครื่องเท่านั้น)
-const WEB_BLOCKED = new Set(['pick-bridge-file', 'open-plugins-dir', 'open-history-window', 'open-new-window', 'web-access-get', 'web-access-set', 'web-access-logout-all', 'tunnel-start', 'tunnel-stop', 'pages-setup', 'tg-get', 'tg-set', 'tg-detect', 'tg-test', 'line-get', 'line-set', 'line-test', 'update-check']);
+const WEB_BLOCKED = new Set(['pick-bridge-file', 'list-bridges', 'switch-bridge', 'port-list', 'port-save', 'port-remove', 'port-switch', 'open-plugins-dir', 'open-history-window', 'open-new-window', 'web-access-get', 'web-access-set', 'web-access-logout-all', 'tunnel-start', 'tunnel-stop', 'pages-setup', 'tg-get', 'tg-set', 'tg-detect', 'tg-test', 'line-get', 'line-set', 'line-test', 'update-check']);
 
 // ---------- paths ----------
 const isDev = !app.isPackaged;
@@ -651,8 +651,8 @@ function boot() {
       allowOverCap: req.allowOverCap === true,
     });
     if (!v.pass) { engine.pushLog('order', `ปฏิเสธคำสั่ง ${side}: ${v.reason}`, 'warn'); return { ok: false, reason: v.reason, warn: v.warn, metrics: v.metrics, overCap: v.overCap === true }; }
-    // มติสภาบังคับเหมือนสัญญาณ (สวนมติ/ไร้มติ = กรอง ตามโหมดเข้ม) — ยกเว้นไม้มิเรอร์ตามไม้จำลอง (สวิตช์ของผู้ใช้ = ยืนยันแทนสภาเสมอ)
-    if (req.mirror !== true) {
+    // มติสภาบังคับเฉพาะไม้อัตโนมัติ (สวนมติ/ไร้มติ = กรอง ตามโหมดเข้ม) — ปุ่มกดมือ/เว็บ/Telegram/มิเรอร์ = ผู้ใช้กดเอง = ยืนยันแทนสภาเสมอ
+    if (req.mirror !== true && req.auto === true) {
       const councilVerdict = g.snap.council || null;
       const gate = gateSignal({ side }, councilVerdict, engine.settings);
       if (!gate.ok) { engine.pushLog('order', `ปฏิเสธคำสั่ง ${side}: ${gate.reason}`, 'warn'); return { ok: false, reason: gate.reason, metrics: v.metrics }; }
@@ -1108,6 +1108,108 @@ function boot() {
     engine.settings.mt5BridgePath = r.filePaths[0];
     writeSettings(sanitizeSettings(engine.settings));
     return r.filePaths[0];
+  });
+
+  // ---------- สลับพอร์ต MT5: สแกน bridge ทุกเทอร์มินัลในเครื่อง + กดสลับคลิกเดียว ----------
+  handle('list-bridges', async () => {
+    const mt5 = engine.connectors.mt5;
+    const cur = mt5.bridgePath;
+    const bridges = [];
+    for (const p of MT5Connector.findAllBridges()) {
+      const info = { path: p, current: p === cur, fresh: false };
+      try {
+        const st = fs.statSync(p);
+        info.mtime = st.mtimeMs;
+        info.fresh = Date.now() - st.mtimeMs < 30_000;
+        if (info.fresh) {
+          const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+          const a = j.account || {};
+          Object.assign(info, { login: a.login, name: a.name, server: a.server, currency: a.currency, balance: a.balance, equity: a.equity, ea: j.ea, positions: Array.isArray(j.positions) ? j.positions.length : null });
+        }
+      } catch { void 0; }
+      bridges.push(info);
+    }
+    // พอร์ตปัจจุบันที่สแกนไม่เจอ (เลือกไฟล์เอง) = ใส่ไว้หัวสุดเสมอ
+    if (cur && !bridges.some((b) => b.path === cur)) bridges.unshift({ path: cur, current: true, fresh: false });
+    return { bridges };
+  });
+  handle('switch-bridge', (_e, p) => {
+    const target = String(p || '');
+    if (path.basename(target) !== 'goldsignal_bridge.json' || !fs.existsSync(target)) return { ok: false, reason: 'ไฟล์ bridge ไม่ถูกต้อง' };
+    engine.connectors.mt5.setBridgePath(target);
+    engine.settings.mt5BridgePath = target;
+    writeSettings(sanitizeSettings(engine.settings));
+    engine.pushLog('mt5', `สลับพอร์ตไปที่: ${target}`);
+    return { ok: true, path: target };
+  });
+
+  // ---------- พอร์ตบัญชี MT5: สั่ง MT5 ล็อกอินเองด้วย terminal64.exe /config (MT5 ตัวเดียวสลับหลายบัญชีได้) ----------
+  // รหัสผ่านไม่เก็บในแอป — MT5 จำบัญชีที่เคยล็อกอินไว้เอง (ล็อกอินครั้งแรกใน MT5 ใส่รหัส 1 ครั้ง จากนั้นสลับได้ลื่น)
+  const portsFile = path.join(app.getPath('userData'), 'ports.json');
+  const readPorts = () => { try { const j = JSON.parse(fs.readFileSync(portsFile, 'utf8')); return Array.isArray(j.ports) ? j.ports : []; } catch { return []; } };
+  const writePorts = (ports) => { fs.writeFileSync(portsFile, JSON.stringify({ ports }, null, 2), 'utf8'); try { fs.chmodSync(portsFile, 0o600); } catch { void 0; } };
+  handle('port-list', () => {
+    const a = (engine.connectors.mt5.latest && engine.connectors.mt5.latest.meta && engine.connectors.mt5.latest.meta.account) || {};
+    return { ports: readPorts(), currentLogin: a.login != null ? String(a.login) : null, currentServer: a.server || null };
+  });
+  handle('port-save', (_e, p) => {
+    const login = String((p && p.login) || '').trim();
+    const server = String((p && p.server) || '').trim();
+    const name = String((p && p.name) || '').trim();
+    if (!/^\d{3,20}$/.test(login)) return { ok: false, reason: 'Login ต้องเป็นตัวเลขบัญชี MT5 (เช่น 198708651)' };
+    if (!server) return { ok: false, reason: 'ต้องระบุเซิร์ฟเวอร์ให้ตรงกับที่เห็นใน MT5 (เช่น HFMarketsGlobal-Cent16)' };
+    const ports = readPorts().filter((x) => !(x.login === login && x.server === server));
+    ports.push({ login, server, name: name || `#${login}` });
+    writePorts(ports);
+    engine.pushLog('mt5', `บันทึกพอร์ต: #${login} (${server})`);
+    return { ok: true };
+  });
+  handle('port-remove', (_e, p) => {
+    const login = String((p && p.login) || ''), server = String((p && p.server) || '');
+    writePorts(readPorts().filter((x) => !(x.login === login && x.server === server)));
+    return { ok: true };
+  });
+  handle('port-switch', async (_e, p) => {
+    const login = String((p && p.login) || '').trim(), server = String((p && p.server) || '').trim();
+    const port = readPorts().find((x) => x.login === login && x.server === server);
+    if (!port) return { ok: false, reason: 'ไม่พบพอร์ตนี้ในรายการที่บันทึกไว้' };
+    const mt5 = engine.connectors.mt5;
+    const cur = (mt5.latest && mt5.latest.meta && mt5.latest.meta.account) || {};
+    if (String(cur.login) === login && (cur.server || '') === server) return { ok: true, note: 'ใช้พอร์ตนี้อยู่แล้ว' };
+    const { spawn, execSync } = require('child_process');
+    const prefix = MT5Connector.candidateDirs().find((b) => fs.existsSync(path.join(b, 'drive_c', 'Program Files', 'MetaTrader 5', 'terminal64.exe')));
+    if (!prefix) return { ok: false, reason: 'ไม่พบ terminal64.exe ที่พาธมาตรฐาน — เปิด MT5 จาก /Applications ครั้งแรกก่อน' };
+    const wine = '/Applications/MetaTrader 5.app/Contents/SharedSupport/wine/bin/wine64';
+    if (!fs.existsSync(wine)) return { ok: false, reason: 'ไม่พบ wine ในแอป MetaTrader 5 (/Applications) — เปิด MT5 ครั้งแรกก่อน' };
+    const iniName = 'gs_login.ini';
+    const iniWin = 'C:\\' + iniName;
+    fs.writeFileSync(path.join(prefix, 'drive_c', iniName), `[Common]\nLogin=${port.login}\nServer=${port.server}\nPassword=\n`, 'utf8');
+    try { fs.chmodSync(path.join(prefix, 'drive_c', iniName), 0o600); } catch { void 0; }
+    engine.pushLog('mt5', `🔁 สั่งสลับพอร์ต: ปิด MT5 → ล็อกอิน #${port.login} (${port.server}) — ไม้เปิดคงอยู่ฝั่งโบรก`);
+    try { execSync('pkill -f terminal64', { stdio: 'ignore' }); } catch { void 0; }
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      let alive = false;
+      try { execSync('pgrep -f terminal64', { stdio: 'ignore' }); alive = true; } catch { alive = false; }
+      if (!alive) break;
+    }
+    try { execSync('pkill -9 -f terminal64', { stdio: 'ignore' }); } catch { void 0; }
+    const log = fs.openSync(path.join(prefix, 'gs_wine_launch.log'), 'a');
+    const child = spawn(wine, ['C:\\Program Files\\MetaTrader 5\\terminal64.exe', '/config:' + iniWin], { env: { ...process.env, WINEPREFIX: prefix }, detached: true, stdio: ['ignore', log, log] });
+    child.unref();
+    fs.closeSync(log);
+    // รอ bridge สดและบัญชีตรงที่สั่ง (สูงสุด ~50 วิ)
+    for (let i = 0; i < 25; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const a = (mt5.latest && mt5.latest.meta && mt5.latest.meta.account) || {};
+      if (String(a.login) === login && mt5.isLive()) {
+        try { fs.unlinkSync(path.join(prefix, 'drive_c', iniName)); } catch { void 0; }
+        engine.pushLog('mt5', `สลับพอร์ตสำเร็จ: ล็อกอิน #${login} (${server}) แล้ว`, 'ok');
+        return { ok: true, login, server };
+      }
+    }
+    try { fs.unlinkSync(path.join(prefix, 'drive_c', iniName)); } catch { void 0; }
+    return { ok: false, reason: `MT5 เปิดใหม่แล้วแต่ยังไม่เห็นบัญชี #${login} — บัญชีที่ไม่เคยใช้ใน MT5 นี้ต้องล็อกอินใน MT5 ครั้งแรก (ใส่รหัส 1 ครั้ง) แล้ว EA ต้องอยู่บนชาร์ต` };
   });
 
   // ---------- ตัวตรวจเวอร์ชันใหม่: ปุ่มตรวจเอง + อัตโนมัติทุก 6 ชม. + ครั้งแรกหลังเปิด 20 วิ ----------

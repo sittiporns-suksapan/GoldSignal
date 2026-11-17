@@ -1114,6 +1114,13 @@ body.chart-max::before { content: ""; position: fixed; inset: 0; background: rgb
 }
 .psbtn[aria-pressed="true"] small { color: var(--gold); }
 
+/* ปุ่มสลับพอร์ต MT5 — รายการเทอร์มินัลที่สแกนเจอ */
+.bridge-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.bridge-row { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); cursor: pointer; text-align: left; font: inherit; font-size: 14px; }
+.bridge-row:hover:not(:disabled) { border-color: var(--line-strong); }
+.bridge-row.cur { opacity: .55; cursor: default; }
+.bridge-row input { background: var(--inset); border: 1px solid var(--line); border-radius: 6px; color: var(--text); padding: 6px 8px; font-size: 13px; }
+
 /* ---------- เอเจนต์หลัก: ช่อง KPI + การ์ดสมอง 3 มิติ ---------- */
 @media (max-width: 1000px) {
   .kpis > .kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }   /* 5 ช่องใน 2 คอลัมน์: ช่องท้ายเต็มแถว */

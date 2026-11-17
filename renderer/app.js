@@ -3027,6 +3027,80 @@ $('btn-pick-bridge').addEventListener('click', async () => {
   if (p) { $('bridge-path').textContent = 'ไฟล์: ' + p; window.api.refreshNow(); }
 });
 
+// ปุ่มสลับพอร์ต: (1) พอร์ตบัญชี = สั่ง MT5 ล็อกอินเอง (ปิด→เปิดใหม่ด้วย config) (2) เทอร์มินัลที่สแกนเจอ = สลับไฟล์ bridge
+$('btn-switch-port').addEventListener('click', async () => {
+  const el = $('bridge-list');
+  if (!el.hidden) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = '<div class="muted small">⏳ กำลังสแกนเทอร์มินัล MT5 ทั้งเครื่อง...</div>';
+  let r, pr;
+  try { [r, pr] = await Promise.all([window.api.listBridges(), window.api.portList().catch(() => null)]); }
+  catch (err) { el.innerHTML = '<div class="muted small">✗ สแกนไม่สำเร็จ: ' + esc(err.message) + '</div>'; return; }
+  // (1) พอร์ตบัญชีที่บันทึกไว้ — กด = สั่ง MT5 ล็อกอินเอง
+  const portRows = (pr && pr.ports || []).map((pt) => {
+    const cur = pr.currentLogin === pt.login && pr.currentServer === pt.server;
+    return `<button class="bridge-row${cur ? ' cur' : ''}" data-port="${esc(pt.login)}|${esc(pt.server)}"${cur ? ' disabled' : ''}>
+      <span>${cur ? '<b>✓ ใช้อยู่</b> • ' : ''}👤 <b>${esc(pt.name)}</b> #${esc(pt.login)}</span>
+      <span class="muted small">${esc(pt.server)} — กด = สั่ง MT5 ล็อกอินเอง (MT5 ปิด→เปิดใหม่ ~30 วิ)</span>
+    </button>`;
+  }).join('');
+  const addForm = `<div class="bridge-row">
+    <span><b>➕ เพิ่มพอร์ต</b> — ใส่บัญชี MT5 ที่ต้องการ (ล็อกอินใน MT5 ครั้งแรก 1 ครั้งให้เครื่องจำรหัส แล้วสลับได้ลื่นตลอด)</span>
+    <span class="small"><input id="port-name" placeholder="ชื่อพอร์ต (เช่น เซนต์)" size="12" /> <input id="port-login" placeholder="Login ตัวเลข" size="12" /> <input id="port-server" placeholder="เซิร์ฟเวอร์ เช่น HFMarketsGlobal-Cent16" size="26" /> <button id="port-save" class="ghost">บันทึก</button></span>
+  </div>`;
+  // (2) เทอร์มินัล MT5 ที่สแกนเจอ
+  const rows = (r.bridges || []).map((b) => {
+    const acct = b.login ? `${esc(b.name || '')} <b>#${esc(String(b.login))}</b>` : '<b>พอร์ต (ไฟล์เก่า — เปิด MT5 เพื่ออ่านใหม่)</b>';
+    const state = b.current ? '<b>✓ ใช้อยู่</b> • '
+      : (b.fresh ? '' : '<span class="down">ไฟล์นิ่ง — เปิด MT5/EA พอร์ตนี้ก่อน</span> • ');
+    const money = b.balance != null ? ` • ${fmtD(b.balance, 2)} ${esc(b.currency || '')}` : '';
+    const pos = b.positions != null ? ` • ไม้เปิด ${b.positions}` : '';
+    const ea = b.ea ? ` • EA ${esc(String(b.ea))}` : '';
+    return `<button class="bridge-row${b.current ? ' cur' : ''}" data-bridge="${esc(b.path)}"${b.current ? ' disabled' : ''}>
+      <span>${state}${acct}</span>
+      <span class="muted small">${esc(b.server || '—')}${money}${pos}${ea}</span>
+    </button>`;
+  }).join('');
+  el.innerHTML = (portRows ? portRows + addForm + '<div class="muted small">— เทอร์มินัล MT5 ที่สแกนเจอ (มี EA บนชาร์ต) —</div>' : addForm) + (rows || '<div class="muted small">ไม่พบไฟล์ bridge อื่น</div>');
+  // สลับพอร์ตบัญชี
+  el.querySelectorAll('[data-port]').forEach((btn) => btn.addEventListener('click', async () => {
+    const [login, server] = btn.dataset.port.split('|');
+    if (!confirm('สั่ง MT5 ล็อกอินพอร์ต #' + login + ' (' + server + ')?\n\nMT5 จะปิดแล้วเปิดใหม่เอง ~30 วิ • ไม้เปิดคงอยู่ฝั่งโบรก • ระบบรอ bridge สดก่อนคืนค่า')) return;
+    btn.innerHTML = '<span>⏳ กำลังสลับ — ปิด/เปิด MT5 ใหม่ + รอล็อกอิน...</span>';
+    const res = await window.api.portSwitch({ login, server });
+    if (res && res.ok) {
+      toast('🔁 สลับพอร์ตเรียบร้อย — MT5 ล็อกอิน #' + login + ' แล้ว', 'ok', 12000);
+      el.hidden = true;
+      window.api.refreshNow();
+    } else {
+      toast('✗ ' + ((res && res.reason) || 'สลับไม่สำเร็จ'), 'err', 15000);
+      btn.disabled = false;
+      $('btn-switch-port').click(); $('btn-switch-port').click();
+    }
+  }));
+  // บันทึกพอร์ตใหม่
+  const saveBtn = el.querySelector('#port-save');
+  if (saveBtn) saveBtn.addEventListener('click', async () => {
+    const res = await window.api.portSave({ name: el.querySelector('#port-name').value, login: el.querySelector('#port-login').value, server: el.querySelector('#port-server').value });
+    if (res && res.ok) {
+      toast('💾 บันทึกพอร์ตแล้ว — ล็อกอินบัญชีนี้ใน MT5 ครั้งแรก 1 ครั้ง แล้วกดสลับได้เลย', 'ok', 12000);
+      $('btn-switch-port').click(); $('btn-switch-port').click();
+    } else toast('✗ ' + ((res && res.reason) || 'บันทึกไม่ได้'), 'err', 9000);
+  });
+  // สลับเทอร์มินัล (เลนเดิม)
+  el.querySelectorAll('[data-bridge]:not(.cur)').forEach((btn) => btn.addEventListener('click', async () => {
+    const p = btn.dataset.bridge;
+    if (!confirm('สลับพอร์ต MT5 ไปที่\n' + p + ' ?\n\nคำสั่งค้างของพอร์ตเดิมจะถูกถอน (ไม่ไปโผล่พอร์ตใหม่)')) return;
+    const res = await window.api.switchBridge(p);
+    if (res && res.ok) {
+      toast('🔁 สลับพอร์ตเรียบร้อย — รอข้อมูลบัญชีใหม่สักครู่', 'ok');
+      $('bridge-path').textContent = 'ไฟล์: ' + p;
+      el.hidden = true;
+      window.api.refreshNow();
+    } else toast('✗ ' + ((res && res.reason) || 'สลับไม่ได้'), 'err', 9000);
+  }));
+});
+
 $('btn-install-ea').addEventListener('click', async () => {
   $('ea-install-result').textContent = '⏳ กำลังติดตั้งและคอมไพล์ (ใช้เวลาไม่กี่วินาที)...';
   const r = await window.api.installEa();
