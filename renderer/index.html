@@ -200,6 +200,7 @@
               <span id="o-tabs" class="seg-ctl hist-tabs" role="tablist" aria-label="แยกการ์ดโอกาส / ไม้จำลอง">
                 <button data-o="opps" class="active" role="tab">โอกาส<span id="o-sig-n" class="seg-n"></span></button>
                 <button data-o="sim" role="tab">ไม้จำลอง • สภา<span id="o-sim-n" class="seg-n"></span></button>
+                <button data-o="agent" role="tab">เอเจนต์หลัก<span id="o-agent-n" class="seg-n"></span></button>
               </span>
               <span id="signals-count" class="pill"></span>
             </div>
@@ -210,6 +211,10 @@
               <p class="hist-note">ไม้จำลอง: ราคาแตะจุดรอเข้า (ฝั่งละ 1 ไม้) วัดความแม่นของโซน — แนบ <b>มติสภา ณ จังหวะเปิดไม้</b> ให้เห็นกันตลอด • ไม่ใช้เงินจริง</p>
               <div id="zonehist-mini" class="zh"></div>
             </div>
+            <div id="o-pane-agent" class="o-pane" hidden>
+              <p class="hist-note">ไม้ที่ <b>เอเจนต์หลัก</b> ตัดสินใจเข้าเอง (ทีละ 1 ไม้) พร้อมเหตุผลล่าสุด — เสมือน หรือส่งจริงเมื่อเปิดสวิตช์</p>
+              <div id="agenthist-mini" class="zh"></div>
+            </div>
           </div>
 
           <div class="card" id="history-card">
@@ -218,6 +223,7 @@
               <span id="hist-tabs" class="seg-ctl hist-tabs" role="tablist" aria-label="ประเภทประวัติ">
                 <button data-h="real" class="active" role="tab">ไม้จริง (MT5)<span id="hist-real-n" class="seg-n"></span></button>
                 <button data-h="sim" role="tab">ไม้จำลอง<span id="hist-sim-n" class="seg-n"></span></button>
+                <button data-h="agent" role="tab">เอเจนต์หลัก<span id="hist-agent-n" class="seg-n"></span></button>
               </span>
             </div>
             <div id="hist-real" class="hist-pane">
@@ -227,6 +233,10 @@
             <div id="hist-sim" class="hist-pane" hidden>
               <p class="hist-note">ไม้จำลอง = ระบบเปิดสมมติเมื่อราคาแตะจุดรอเข้า (ฝั่งละ 1 ไม้) เพื่อวัดผลกลยุทธ์ — <b>ไม่ใช้เงินจริง</b></p>
               <div id="zonehist" class="zh"></div>
+            </div>
+            <div id="hist-agent" class="hist-pane" hidden>
+              <p class="hist-note">ไม้เสมือนที่ <b>เอเจนต์หลัก</b> ตัดสินใจเข้าเอง (ทีละ 1 ไม้) — ส่งไม้จริงตามเฉพาะเมื่อเปิดสวิตช์ "ส่งไม้จริง"</p>
+              <div id="agenthist" class="zh"></div>
             </div>
           </div>
 

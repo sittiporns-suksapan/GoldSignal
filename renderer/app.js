@@ -2031,7 +2031,34 @@ const renderOnce = (name, key, box, html) => { if (box && memoHtml(name, key, ht
 // กันเหนียว render ซ้ำ: zone มีราคาลอยตัวสด → key รวม bid/ask เพื่อวาดเมื่อมีอะไรเปลี่ยนจริง (ชื่อ zoneRendersKey — zoneKey ถูกใช้โดยวาดเส้นกราฟ)
 function zoneRendersKey(snap) {
   const m = snap.meta || {};
-  return `${(snap.zoneHistory || []).length}|${(snap.zoneOpen || []).length}|${(snap.roundLog || []).length}|${m.bid}|${m.ask}`;
+  const ma = snap.mainAgent || {};
+  return `${(snap.zoneHistory || []).length}|${(snap.zoneOpen || []).length}|${(snap.roundLog || []).length}|${m.bid}|${m.ask}|${(ma.recent || []).length}|${ma.open ? ma.open.id : ''}`;
+}
+// ไม้จำลองที่ตรงกับไม้ของเอเจนต์หลัก: ฝั่งเดียวกัน • ราคาเข้าห่าง ≤ 1.5 • เปิดห่าง ≤ 30 นาที
+// shortcut: จับคู่ด้วยราคา/เวลา (เอเจนต์เข้าจากสัญญาณ ไม่ได้อ้าง id ไม้จำลอง) — ถ้าเอนจินส่ง id อ้างอิงมาเมื่อไร ให้เทียบ id แทน
+function mainAgentTook(snap, t) {
+  const ma = snap.mainAgent || {};
+  const all = [...(ma.recent || []), ...(ma.open ? [ma.open] : [])];
+  return all.some((a) => a.side === t.side && Math.abs(Number(a.entry) - Number(t.entry)) <= 1.5
+    && Math.abs(Number(a.openedAt) - Number(t.openedAt)) <= 30 * 60_000);
+}
+const maTag = (snap, t) => (mainAgentTook(snap, t) ? '<span class="ma-tag">🤖 เอเจนต์หลักออกไม้</span>' : '');
+function renderAgentHistory(snap) {
+  const ma = snap.mainAgent || {};
+  const on = (appSettings || {}).mainAgent === true, real = (appSettings || {}).mainAgentReal === true;
+  const a = (ma.stats && ma.stats.all) || {};
+  const head = `<div class="zh-score"><b>🤖 เอเจนต์หลัก: ${on ? 'เปิด' : 'ปิด'}</b> • ${real ? 'ส่งไม้จริง' : 'เสมือน'} • `
+    + (a.n ? `${a.n} ไม้ • ชนะ ${a.winRate}% • คาดหวัง ${a.expectancy}R • รวม <b class="${a.sumR >= 0 ? 'up' : 'down'}">${a.sumR >= 0 ? '+' : ''}${a.sumR}R</b>` : 'ยังไม่มีไม้')
+    + `<br><span class="muted">ตัดสินใจล่าสุด: ${esc((ma.last && ma.last.why) || '-')}</span></div>`;
+  const side = (x) => (x === 'buy' ? 'BUY' : 'SELL');
+  const lines = [
+    ...(ma.open ? [`<div class="zh-line"><span class="t">เปิดอยู่</span><span>${side(ma.open.side)} ${fmtD(ma.open.entry, 2)} • SL ${fmtD(ma.open.sl, 2)} • TP ${ma.open.tp ? fmtD(ma.open.tp, 2) : '-'}</span><span class="res open">คาดหวัง ${ma.open.ev}R</span></div>`] : []),
+    ...(ma.recent || []).slice().reverse().map((t) => `<div class="zh-line"><span class="t">${fmtTs(t.closedAt || t.openedAt)}</span><span>${side(t.side)} ${fmtD(t.entry, 2)} → ${fmtD(t.exit, 2)}</span><span class="res ${esc(t.result || '')}">${esc(t.result || '-')} ${t.r >= 0 ? '+' : ''}${t.r}R</span></div>`),
+  ];
+  const html = `<div class="zh-side zh-agent">${head}<div class="zh-rows">${lines.length ? lines.join('') : '<div class="empty sm">ยังไม่มีไม้ของเอเจนต์หลัก</div>'}</div></div>`;
+  const key = `${(ma.recent || []).length}|${ma.open ? ma.open.id : ''}|${ma.last ? ma.last.ts : ''}|${on}|${real}`;
+  renderOnce('agentHist', key, $('agenthist'), html);
+  if ($('agenthist-mini')) renderOnce('agentHistMini', key, $('agenthist-mini'), html);
 }
 function renderZoneHistory(snap) {
   const html = zoneHistoryHtml(snap);
@@ -2063,8 +2090,8 @@ function zoneHistoryHtml(snap) {
       if (verdictSide !== t.side) return `<span class="zcouncil none">สภา: ${verdictSide === 'buy' ? 'ซื้อ' : 'ขาย'} ${c.confidence}% — <b>สวนไม้</b> → ไม้จริงไม่ผ่าน (สภายับอีกฝั่ง)</span>`;
       return `<span class="zcouncil ${c.side}">สภา ณ เปิดไม้: ${c.side === 'buy' ? 'ซื้อ' : 'ขาย'} ${c.confidence}% • เห็นพ้อง ${c.agree}${c.quorumNeed ? `/${c.quorumNeed}+` : ''} → ✅ ผ่านมติ (ฝั่งตรงกัน — ผ่านเกตความเสี่ยงต่อได้)</span>`; };
     const lines = [
-      ...openRows.map((t) => `<div class="zh-line"><span class="t">เปิดอยู่</span><span>${t.side === 'buy' ? 'BUY' : 'SELL'} ${fmtD(t.entry, 2)} • SL ${fmtD(t.sl, 2)} • TP ${fmtD(t.tp, 2)}</span>${(() => { const l = liveOf(t); return l ? `<span class="res open ${l.pnl >= 0 ? 'up' : 'down'}">${l.pnl >= 0 ? '+' : '-'}$${fmtD(Math.abs(l.pnl), 2)} (${l.pts >= 0 ? '+' : ''}${Math.round(l.pts)} จุด)</span>` : '<span class="res open">เปิด</span>'; })()}${cTxt(t)}</div>`),
-      ...rows.map((t) => `<div class="zh-line"><span class="t">${fmtTs(t.closedAt || t.openedAt)}</span><span>${t.side === 'buy' ? 'BUY' : 'SELL'} ${fmtD(t.entry, 2)} → ${fmtD(t.exit != null ? t.exit : 0, 2)}</span><span class="res ${t.status || ''}">${t.status || '-'} ${t.pnl != null ? (t.pnl >= 0 ? '+' : '') + fmtD(t.pnl, 2) : ''}</span>${cTxt(t)}</div>`),
+      ...openRows.map((t) => `<div class="zh-line"><span class="t">เปิดอยู่</span><span>${t.side === 'buy' ? 'BUY' : 'SELL'} ${fmtD(t.entry, 2)} • SL ${fmtD(t.sl, 2)} • TP ${fmtD(t.tp, 2)}</span>${(() => { const l = liveOf(t); return l ? `<span class="res open ${l.pnl >= 0 ? 'up' : 'down'}">${l.pnl >= 0 ? '+' : '-'}$${fmtD(Math.abs(l.pnl), 2)} (${l.pts >= 0 ? '+' : ''}${Math.round(l.pts)} จุด)</span>` : '<span class="res open">เปิด</span>'; })()}${maTag(snap, t)}${cTxt(t)}</div>`),
+      ...rows.map((t) => `<div class="zh-line"><span class="t">${fmtTs(t.closedAt || t.openedAt)}</span><span>${t.side === 'buy' ? 'BUY' : 'SELL'} ${fmtD(t.entry, 2)} → ${fmtD(t.exit != null ? t.exit : 0, 2)}</span><span class="res ${t.status || ''}">${t.status || '-'} ${t.pnl != null ? (t.pnl >= 0 ? '+' : '') + fmtD(t.pnl, 2) : ''}</span>${maTag(snap, t)}${cTxt(t)}</div>`),
     ];
     return `<div class="zh-side ${side}"><h5>${side === 'buy' ? 'ไม้จำลองซื้อ (BUY)' : 'ไม้จำลองขาย (SELL)'}</h5>
       <div class="zh-score">${score}</div>
@@ -2372,11 +2399,12 @@ $('commentary-more').addEventListener('toggle', () => { if (lastSnap) renderDefe
 /* ---------- การ์ดประวัติการเทรด: แท็บไม้จริง / ไม้จำลอง (วาดเฉพาะแท็บที่เปิด) ---------- */
 let histTab = store.get('gsHist', 'real');
 function showHist(name) {
-  histTab = name === 'sim' ? 'sim' : 'real';
+  histTab = name === 'sim' || name === 'agent' ? name : 'real';
   store.set('gsHist', histTab);
   document.querySelectorAll('#hist-tabs button').forEach((b) => b.classList.toggle('active', b.dataset.h === histTab));
   $('hist-real').hidden = histTab !== 'real';
   $('hist-sim').hidden = histTab !== 'sim';
+  $('hist-agent').hidden = histTab !== 'agent';
   if (lastSnap) renderHistory(lastSnap);
 }
 document.querySelectorAll('#hist-tabs button').forEach((b) => b.addEventListener('click', () => showHist(b.dataset.h)));
@@ -2385,7 +2413,12 @@ function renderHistory(snap) {
   const sim = (snap.zoneHistory || []).length + (snap.zoneOpen || []).length;
   $('hist-real-n').textContent = real ? String(real) : '';
   $('hist-sim-n').textContent = sim ? String(sim) : '';
-  if (histTab === 'real') renderRealHistory(snap.meta); else renderZoneHistory(snap);
+  const ma = snap.mainAgent || {};
+  const agent = (ma.recent || []).length + (ma.open ? 1 : 0);
+  $('hist-agent-n').textContent = agent ? String(agent) : '';
+  if (histTab === 'real') renderRealHistory(snap.meta);
+  else if (histTab === 'agent') renderAgentHistory(snap);
+  else renderZoneHistory(snap);
 }
 showHist(histTab);
 
@@ -2394,12 +2427,13 @@ showHist(histTab);
 const oppTabsCtl = document.getElementById('o-tabs');
 if (oppTabsCtl) {
   const showOpp = (name) => {
-    const tab = name === 'sim' ? 'sim' : 'opps';
+    const tab = name === 'sim' || name === 'agent' ? name : 'opps';
     store.set('gsOppTab', tab);
     document.querySelectorAll('#o-tabs button').forEach((b) => b.classList.toggle('active', b.dataset.o === tab));
     $('o-pane-opps').hidden = tab !== 'opps';
     $('o-pane-sim').hidden = tab !== 'sim';
-    if (lastSnap) renderZoneHistory(lastSnap);
+    $('o-pane-agent').hidden = tab !== 'agent';
+    if (lastSnap) { renderZoneHistory(lastSnap); renderAgentHistory(lastSnap); }
   };
   oppTabsCtl.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => showOpp(b.dataset.o)));
   showOpp(store.get('gsOppTab', 'opps'));
@@ -2407,9 +2441,13 @@ if (oppTabsCtl) {
 function renderOppCounts(snap) {
   const nSig = (snap.signals || []).length;
   const nSim = (snap.zoneHistory || []).length + (snap.zoneOpen || []).length;
-  const a = $('o-sig-n'), b = $('o-sim-n');
+  const ma = snap.mainAgent || {};
+  const nAgent = (ma.recent || []).length + (ma.open ? 1 : 0);
+  const a = $('o-sig-n'), b = $('o-sim-n'), c = $('o-agent-n');
   if (a) a.textContent = nSig ? String(nSig) : '';
   if (b) b.textContent = nSim ? String(nSim) : '';
+  if (c) c.textContent = nAgent ? String(nAgent) : '';
+  renderAgentHistory(snap);   // แท็บเอเจนต์หลักในการ์ดโอกาส (renderOnce = วาดเฉพาะเมื่อข้อมูลเปลี่ยน)
 }
 
 /* ---------- แถบตัวเลขหลัก (KPI) — สรุปสิ่งที่ต้องรู้ในแวบเดียว ---------- */

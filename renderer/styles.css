@@ -1128,3 +1128,7 @@ body.chart-max::before { content: ""; position: fixed; inset: 0; background: rgb
 .ma-stats b { display: block; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ma-stats b.up { color: var(--up-text); }
 .ma-stats b.down { color: var(--down-text); }
+
+/* เอเจนต์หลัก: ป้ายบนไม้จำลองที่เอเจนต์ออกไม้ */
+.ma-tag { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: rgba(212, 175, 55, .18); color: #e8c766; }
+.zh-agent { grid-column: 1 / -1; }   /* แท็บเอเจนต์หลัก: รายการเดียว เต็มความกว้าง */

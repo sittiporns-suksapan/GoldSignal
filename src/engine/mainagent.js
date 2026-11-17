@@ -152,7 +152,7 @@ class MainAgent {
   snapshot() {
     const h = this.history, mid = Math.floor(h.length / 2);
     return {
-      open: this.open, last: this.lastDecision, recent: h.slice(-10),
+      open: this.open, last: this.lastDecision, recent: h.slice(-50),
       stats: { all: summarize(h), firstHalf: summarize(h.slice(0, mid)), secondHalf: summarize(h.slice(mid)), calib: summarize(this.learned) },
     };
   }
