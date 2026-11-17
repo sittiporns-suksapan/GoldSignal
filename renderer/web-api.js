@@ -68,6 +68,13 @@
     getWebUrl: () => call('get-web-url'),
     closeAll: () => call('close-all'),
     pickBridgeFile: onlyOnHost('เลือกไฟล์ bridge'),
+    // สลับพอร์ต/เทอร์มินัล MT5 อยู่ใน WEB_BLOCKED — ทำได้จากแอปบนเครื่องเท่านั้น
+    listBridges: onlyOnHost('สลับพอร์ต MT5'),
+    switchBridge: onlyOnHost('สลับพอร์ต MT5'),
+    portList: onlyOnHost('สลับพอร์ต MT5'),
+    portSave: onlyOnHost('สลับพอร์ต MT5'),
+    portRemove: onlyOnHost('สลับพอร์ต MT5'),
+    portSwitch: onlyOnHost('สลับพอร์ต MT5'),
     reportError: (msg, stack) => call('client-error', { msg: String(msg).slice(0, 500), stack: String(stack || '').slice(0, 2000) }).catch(() => {}),
     getRoundHistory: () => call('get-round-history'),
     openHistoryWindow: () => { window.open('/history.html', '_blank', 'noopener'); return Promise.resolve(true); },
